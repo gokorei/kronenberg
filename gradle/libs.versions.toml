@@ -9,7 +9,7 @@ kotest = "5.9.1"
 mockk = "1.13.17"
 dokka = "2.0.0"
 binary-compatibility-validator = "0.17.0"
-spotless = "7.0.2"
+spotless = "8.10.0"
 
 [libraries]
 # Kotlin & Compiler Embeddable
