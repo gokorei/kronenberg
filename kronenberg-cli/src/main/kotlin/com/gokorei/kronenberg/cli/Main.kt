@@ -67,18 +67,22 @@ public object JUnitXmlReportExporter {
                         )
                     sb.appendLine("        <failure message=\"$msg\" type=\"MutationSurvived\">$body</failure>")
                 }
+
                 MutantStatus.TIMED_OUT -> {
                     val msg = escapeXml(result.failureMessage ?: "Mutant execution timed out")
                     sb.appendLine("        <failure message=\"$msg\" type=\"Timeout\">$msg</failure>")
                 }
+
                 MutantStatus.COMPILE_ERROR -> {
                     val msg = escapeXml(result.failureMessage ?: "Mutant failed to compile")
                     sb.appendLine("        <error message=\"$msg\" type=\"CompileError\">$msg</error>")
                 }
+
                 MutantStatus.BASELINE_ERROR -> {
                     val msg = escapeXml(result.failureMessage ?: "Baseline execution failed before mutation")
                     sb.appendLine("        <error message=\"$msg\" type=\"BaselineError\">$msg</error>")
                 }
+
                 MutantStatus.KILLED -> {
                     // Passing test case
                 }
