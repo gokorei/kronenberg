@@ -297,6 +297,7 @@ public class BooleanInversionMutator : AstMutator {
                     ),
                 )
             }
+
             is KtConstantExpression -> {
                 val text = element.text
                 val range = element.textRange
@@ -314,6 +315,7 @@ public class BooleanInversionMutator : AstMutator {
                     ),
                 )
             }
+
             is KtBinaryExpression -> {
                 val opRef = element.operationReference
                 val sign = opRef.operationSignTokenType
@@ -337,7 +339,10 @@ public class BooleanInversionMutator : AstMutator {
                     ),
                 )
             }
-            else -> emptyList()
+
+            else -> {
+                emptyList()
+            }
         }
     }
 }

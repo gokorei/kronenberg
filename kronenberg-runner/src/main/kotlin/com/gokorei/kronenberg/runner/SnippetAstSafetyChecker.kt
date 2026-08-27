@@ -35,6 +35,7 @@ public object SnippetAstSafetyChecker {
                         exitProcessAliases.add("exitProcess")
                     }
                 }
+
                 "java.lang.System.exit" -> {
                     if (alias != null) {
                         directExitAliases.add(alias)
@@ -42,6 +43,7 @@ public object SnippetAstSafetyChecker {
                         directExitAliases.add("exit")
                     }
                 }
+
                 "java.lang.ProcessBuilder" -> {
                     if (alias != null) {
                         processBuilderAliases.add(alias)

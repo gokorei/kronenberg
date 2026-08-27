@@ -1,5 +1,8 @@
 @file:Suppress("K1_ANALYSIS", "DEPRECATION", "OPT_IN_USAGE")
-@file:OptIn(org.jetbrains.kotlin.K1Deprecation::class)
+@file:OptIn(
+    org.jetbrains.kotlin.K1Deprecation::class,
+    org.jetbrains.kotlin.config.CompilerConfiguration.Internals::class,
+)
 
 package com.gokorei.kronenberg.ast
 
