@@ -1,0 +1,33 @@
+name: ✨ Feature / Mutator Request
+description: Suggest a new AST mutator rule, execution optimization, or CLI command
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea for a new AST mutation operator, runner feature, or CLI capability? Let us know!
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / Motivation
+      description: Is your feature request related to a problem or a gap in mutant coverage?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed_syntax
+    attributes:
+      label: Proposed Syntax / Transformation
+      description: Show an example of the original Kotlin AST and how it should be mutated.
+      render: kotlin
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any alternative approaches or mutator designs considered.
+    validations:
+      required: false

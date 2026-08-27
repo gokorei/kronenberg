@@ -1,0 +1,41 @@
+name: 🐛 Bug Report
+description: Report a bug, unexpected mutant survival, or execution issue
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue! Please fill out the sections below.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction Code
+      description: Provide a minimal Kotlin snippet and test that reproduces the behavior.
+      render: kotlin
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Kronenberg Version
+      placeholder: e.g. 0.1.0-SNAPSHOT
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: e.g. JDK 21.0.4, macOS / Linux, Kotlin 2.3.20
+    validations:
+      required: false
