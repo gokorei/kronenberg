@@ -1,5 +1,6 @@
 package com.gokorei.kronenberg.ast
 
+import com.gokorei.kronenberg.model.AstEdit
 import com.gokorei.kronenberg.model.MutatorCategory
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -350,6 +351,36 @@ class AstMutatorsSpec {
             mutator.category shouldBe MutatorCategory.COLLECTION_OPERATOR
             val edits = findMutations("suspend fun wait() { delay(1000L) }", mutator)
             edits.firstOrNull()?.replacement shouldBe "0L"
+        }
+    }
+
+    @Nested
+    inner class TypedAstMutatorTests {
+        private val customMutator =
+            object : TypedAstMutator<org.jetbrains.kotlin.psi.KtCallExpression>(org.jetbrains.kotlin.psi.KtCallExpression::class) {
+                override val name: String = "TakeIfCustomMutator"
+                override val category: MutatorCategory = MutatorCategory.COLLECTION_OPERATOR
+                override val description: String = "Inverts takeIf <-> takeUnless"
+
+                override fun canMutateTyped(element: org.jetbrains.kotlin.psi.KtCallExpression): Boolean =
+                    element.calleeExpression?.text in setOf("takeIf", "takeUnless")
+
+                override fun mutateTyped(
+                    element: org.jetbrains.kotlin.psi.KtCallExpression,
+                    context: MutationContext,
+                ): List<AstEdit> {
+                    val callee = element.calleeExpression ?: return emptyList()
+                    val rep = if (callee.text == "takeIf") "takeUnless" else "takeIf"
+                    return listOf(context.edit(callee, rep, "Inverted ${callee.text} -> $rep"))
+                }
+            }
+
+        @Test
+        fun `custom TypedAstMutator seamlessly inverts target calls with context edit`() {
+            val edits = findMutations("fun check(x: Int) = x.takeIf { it > 0 }", customMutator)
+            edits.size shouldBe 1
+            edits.first().replacement shouldBe "takeUnless"
+            edits.first().description shouldBe "Inverted takeIf -> takeUnless"
         }
     }
 }

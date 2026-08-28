@@ -11,13 +11,12 @@ import org.jetbrains.kotlin.psi.KtPrefixExpression
 /**
  * Mutates relational boundary operators (< <-> <=, > <-> >=, == <-> !=).
  */
-public class RelationalBoundaryMutator : AstMutator {
+public class RelationalBoundaryMutator : TypedAstMutator<KtBinaryExpression>(KtBinaryExpression::class) {
     override val name: String = "RelationalBoundaryMutator"
     override val category: MutatorCategory = MutatorCategory.RELATIONAL_BOUNDARY
     override val description: String = "Mutates relational comparisons (< <-> <=, > <-> >=, == <-> !=)"
 
-    override fun canMutate(element: PsiElement): Boolean {
-        if (element !is KtBinaryExpression) return false
+    override fun canMutateTyped(element: KtBinaryExpression): Boolean {
         val sign = element.operationReference.operationSignTokenType
         return sign == KtTokens.LT ||
             sign == KtTokens.LTEQ ||
@@ -27,15 +26,13 @@ public class RelationalBoundaryMutator : AstMutator {
             sign == KtTokens.EXCLEQ
     }
 
-    override fun mutate(
-        element: PsiElement,
+    override fun mutateTyped(
+        element: KtBinaryExpression,
         context: MutationContext,
     ): List<AstEdit> {
-        val expr = element as? KtBinaryExpression ?: return emptyList()
-        val opRef = expr.operationReference
-        val opElement = opRef.operationSignTokenType
+        val opRef = element.operationReference
         val replacements =
-            when (opElement) {
+            when (opRef.operationSignTokenType) {
                 KtTokens.LT -> listOf("<=" to "Replaced < with <=")
                 KtTokens.LTEQ -> listOf("<" to "Replaced <= with <")
                 KtTokens.GT -> listOf(">=" to "Replaced > with >=")
@@ -46,17 +43,7 @@ public class RelationalBoundaryMutator : AstMutator {
             }
 
         return replacements.map { (replacement, desc) ->
-            val range = opRef.textRange
-            val (line, col) = context.lineAndCol(range.startOffset)
-            AstEdit(
-                startOffset = range.startOffset,
-                endOffset = range.endOffset,
-                replacement = replacement,
-                originalText = expr.text,
-                description = desc,
-                line = line,
-                column = col,
-            )
+            context.edit(opRef, replacement, desc, originalText = element.text)
         }
     }
 }
@@ -64,13 +51,12 @@ public class RelationalBoundaryMutator : AstMutator {
 /**
  * Mutates arithmetic operators (+ <-> -, * <-> /, % <-> *).
  */
-public class ArithmeticOperatorMutator : AstMutator {
+public class ArithmeticOperatorMutator : TypedAstMutator<KtBinaryExpression>(KtBinaryExpression::class) {
     override val name: String = "ArithmeticOperatorMutator"
     override val category: MutatorCategory = MutatorCategory.ARITHMETIC_OPERATOR
     override val description: String = "Mutates binary arithmetic operators (+ <-> -, * <-> /, % <-> *)"
 
-    override fun canMutate(element: PsiElement): Boolean {
-        if (element !is KtBinaryExpression) return false
+    override fun canMutateTyped(element: KtBinaryExpression): Boolean {
         val sign = element.operationReference.operationSignTokenType
         return sign == KtTokens.PLUS ||
             sign == KtTokens.MINUS ||
@@ -79,15 +65,13 @@ public class ArithmeticOperatorMutator : AstMutator {
             sign == KtTokens.PERC
     }
 
-    override fun mutate(
-        element: PsiElement,
+    override fun mutateTyped(
+        element: KtBinaryExpression,
         context: MutationContext,
     ): List<AstEdit> {
-        val expr = element as? KtBinaryExpression ?: return emptyList()
-        val opRef = expr.operationReference
-        val opElement = opRef.operationSignTokenType
+        val opRef = element.operationReference
         val replacements =
-            when (opElement) {
+            when (opRef.operationSignTokenType) {
                 KtTokens.PLUS -> listOf("-" to "Replaced + with -")
                 KtTokens.MINUS -> listOf("+" to "Replaced - with +")
                 KtTokens.MUL -> listOf("/" to "Replaced * with /")
@@ -97,17 +81,7 @@ public class ArithmeticOperatorMutator : AstMutator {
             }
 
         return replacements.map { (replacement, desc) ->
-            val range = opRef.textRange
-            val (line, col) = context.lineAndCol(range.startOffset)
-            AstEdit(
-                startOffset = range.startOffset,
-                endOffset = range.endOffset,
-                replacement = replacement,
-                originalText = expr.text,
-                description = desc,
-                line = line,
-                column = col,
-            )
+            context.edit(opRef, replacement, desc, originalText = element.text)
         }
     }
 }
@@ -115,13 +89,12 @@ public class ArithmeticOperatorMutator : AstMutator {
 /**
  * Mutates compound assignments (+= <-> -=, *= <-> /=, %= <-> *=).
  */
-public class CompoundAssignmentMutator : AstMutator {
+public class CompoundAssignmentMutator : TypedAstMutator<KtBinaryExpression>(KtBinaryExpression::class) {
     override val name: String = "CompoundAssignmentMutator"
     override val category: MutatorCategory = MutatorCategory.COMPOUND_ASSIGNMENT
     override val description: String = "Mutates compound assignments (+= <-> -=, *= <-> /=, %= <-> *=)"
 
-    override fun canMutate(element: PsiElement): Boolean {
-        if (element !is KtBinaryExpression) return false
+    override fun canMutateTyped(element: KtBinaryExpression): Boolean {
         val sign = element.operationReference.operationSignTokenType
         return sign == KtTokens.PLUSEQ ||
             sign == KtTokens.MINUSEQ ||
@@ -130,15 +103,13 @@ public class CompoundAssignmentMutator : AstMutator {
             sign == KtTokens.PERCEQ
     }
 
-    override fun mutate(
-        element: PsiElement,
+    override fun mutateTyped(
+        element: KtBinaryExpression,
         context: MutationContext,
     ): List<AstEdit> {
-        val expr = element as? KtBinaryExpression ?: return emptyList()
-        val opRef = expr.operationReference
-        val sign = opRef.operationSignTokenType
+        val opRef = element.operationReference
         val replacements =
-            when (sign) {
+            when (opRef.operationSignTokenType) {
                 KtTokens.PLUSEQ -> listOf("-=" to "Replaced += with -=")
                 KtTokens.MINUSEQ -> listOf("+=" to "Replaced -= with +=")
                 KtTokens.MULTEQ -> listOf("/=" to "Replaced *= with /=")
@@ -148,17 +119,7 @@ public class CompoundAssignmentMutator : AstMutator {
             }
 
         return replacements.map { (rep, desc) ->
-            val range = opRef.textRange
-            val (line, col) = context.lineAndCol(range.startOffset)
-            AstEdit(
-                startOffset = range.startOffset,
-                endOffset = range.endOffset,
-                replacement = rep,
-                originalText = expr.text,
-                description = desc,
-                line = line,
-                column = col,
-            )
+            context.edit(opRef, rep, desc, originalText = element.text)
         }
     }
 }
@@ -192,51 +153,25 @@ public class UnaryOperatorMutator : AstMutator {
     ): List<AstEdit> {
         if (element is KtPrefixExpression) {
             val base = element.baseExpression ?: return emptyList()
-            val token = element.operationToken
             val rep =
-                when (token) {
+                when (element.operationToken) {
                     KtTokens.PLUS -> "-${base.text}"
                     KtTokens.MINUS -> "+${base.text}"
                     KtTokens.PLUSPLUS -> "--${base.text}"
                     KtTokens.MINUSMINUS -> "++${base.text}"
                     else -> return emptyList()
                 }
-            val range = element.textRange
-            val (line, col) = context.lineAndCol(range.startOffset)
-            return listOf(
-                AstEdit(
-                    startOffset = range.startOffset,
-                    endOffset = range.endOffset,
-                    replacement = rep,
-                    originalText = element.text,
-                    description = "Mutated unary prefix ${element.text} -> $rep",
-                    line = line,
-                    column = col,
-                ),
-            )
+            return listOf(context.edit(element, rep, "Mutated unary prefix ${element.text} -> $rep"))
         }
         if (element is KtPostfixExpression) {
             val base = element.baseExpression ?: return emptyList()
-            val token = element.operationToken
             val rep =
-                when (token) {
+                when (element.operationToken) {
                     KtTokens.PLUSPLUS -> "${base.text}--"
                     KtTokens.MINUSMINUS -> "${base.text}++"
                     else -> return emptyList()
                 }
-            val range = element.textRange
-            val (line, col) = context.lineAndCol(range.startOffset)
-            return listOf(
-                AstEdit(
-                    startOffset = range.startOffset,
-                    endOffset = range.endOffset,
-                    replacement = rep,
-                    originalText = element.text,
-                    description = "Mutated unary postfix ${element.text} -> $rep",
-                    line = line,
-                    column = col,
-                ),
-            )
+            return listOf(context.edit(element, rep, "Mutated unary postfix ${element.text} -> $rep"))
         }
         return emptyList()
     }
@@ -245,24 +180,20 @@ public class UnaryOperatorMutator : AstMutator {
 /**
  * Mutates bitwise operators (a and b <-> a or b, a xor b <-> a and b).
  */
-public class BitwiseOperatorMutator : AstMutator {
+public class BitwiseOperatorMutator : TypedAstMutator<KtBinaryExpression>(KtBinaryExpression::class) {
     override val name: String = "BitwiseOperatorMutator"
     override val category: MutatorCategory = MutatorCategory.BITWISE_OPERATOR
     override val description: String = "Mutates bitwise infix operators (and <-> or, xor <-> and)"
 
     private val supported = setOf("and", "or", "xor")
 
-    override fun canMutate(element: PsiElement): Boolean {
-        if (element !is KtBinaryExpression) return false
-        return element.operationReference.text in supported
-    }
+    override fun canMutateTyped(element: KtBinaryExpression): Boolean = element.operationReference.text in supported
 
-    override fun mutate(
-        element: PsiElement,
+    override fun mutateTyped(
+        element: KtBinaryExpression,
         context: MutationContext,
     ): List<AstEdit> {
-        val expr = element as? KtBinaryExpression ?: return emptyList()
-        val opRef = expr.operationReference
+        val opRef = element.operationReference
         val sign = opRef.text
         val rep =
             when (sign) {
@@ -271,18 +202,6 @@ public class BitwiseOperatorMutator : AstMutator {
                 "xor" -> "and"
                 else -> return emptyList()
             }
-        val range = opRef.textRange
-        val (line, col) = context.lineAndCol(range.startOffset)
-        return listOf(
-            AstEdit(
-                startOffset = range.startOffset,
-                endOffset = range.endOffset,
-                replacement = rep,
-                originalText = expr.text,
-                description = "Mutated bitwise operator '$sign' to '$rep'",
-                line = line,
-                column = col,
-            ),
-        )
+        return listOf(context.edit(opRef, rep, "Mutated bitwise operator '$sign' to '$rep'", originalText = element.text))
     }
 }

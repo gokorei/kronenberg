@@ -3,7 +3,10 @@ package com.gokorei.kronenberg.ast
 import com.gokorei.kronenberg.model.AstEdit
 import com.gokorei.kronenberg.model.MutatorCategory
 import org.jetbrains.kotlin.com.intellij.psi.PsiElement
+import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.psi.KtFile
+import kotlin.reflect.KClass
+import kotlin.reflect.cast
 
 /**
  * Context provided to AST mutators during PSI traversal.
@@ -13,6 +16,28 @@ public data class MutationContext(
     val file: KtFile,
 ) {
     public fun lineAndCol(offset: Int): Pair<Int, Int> = computeLineAndColumn(code, offset)
+
+    /**
+     * Ergonomic factory method creating an [AstEdit] directly from a target [PsiElement].
+     */
+    public fun edit(
+        target: PsiElement,
+        replacement: String,
+        description: String,
+        originalText: String = target.text,
+    ): AstEdit {
+        val range = target.textRange
+        val (line, col) = lineAndCol(range.startOffset)
+        return AstEdit(
+            startOffset = range.startOffset,
+            endOffset = range.endOffset,
+            replacement = replacement,
+            originalText = originalText,
+            description = description,
+            line = line,
+            column = col,
+        )
+    }
 }
 
 /**
@@ -58,6 +83,38 @@ public interface AstMutator {
      */
     public fun mutate(
         element: PsiElement,
+        context: MutationContext,
+    ): List<AstEdit>
+}
+
+/**
+ * Base class for strongly typed AST mutators targeting a specific [KtElement] subtype,
+ * removing boilerplate type checks and manual casts.
+ */
+public abstract class TypedAstMutator<T : KtElement>(
+    private val targetClass: KClass<T>,
+) : AstMutator {
+    final override fun canMutate(element: PsiElement): Boolean =
+        targetClass.isInstance(element) && canMutateTyped(targetClass.cast(element))
+
+    final override fun mutate(
+        element: PsiElement,
+        context: MutationContext,
+    ): List<AstEdit> {
+        if (!targetClass.isInstance(element)) return emptyList()
+        return mutateTyped(targetClass.cast(element), context)
+    }
+
+    /**
+     * Predicate determining if this specific typed element can be mutated.
+     */
+    protected open fun canMutateTyped(element: T): Boolean = true
+
+    /**
+     * Produces discrete AST replacements for the strongly typed element.
+     */
+    protected abstract fun mutateTyped(
+        element: T,
         context: MutationContext,
     ): List<AstEdit>
 }

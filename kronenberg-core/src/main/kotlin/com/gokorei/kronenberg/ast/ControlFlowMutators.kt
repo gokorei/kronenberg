@@ -44,37 +44,13 @@ public class BooleanInversionMutator : AstMutator {
         return when (element) {
             is KtPrefixExpression -> {
                 val base = element.baseExpression ?: return emptyList()
-                val range = element.textRange
-                val (line, col) = context.lineAndCol(range.startOffset)
-                listOf(
-                    AstEdit(
-                        startOffset = range.startOffset,
-                        endOffset = range.endOffset,
-                        replacement = base.text,
-                        originalText = element.text,
-                        description = "Negation inverted (removed '!')",
-                        line = line,
-                        column = col,
-                    ),
-                )
+                listOf(context.edit(element, base.text, "Negation inverted (removed '!')"))
             }
 
             is KtConstantExpression -> {
                 val text = element.text
-                val range = element.textRange
-                val (line, col) = context.lineAndCol(range.startOffset)
                 val replacement = if (text == "true") "false" else "true"
-                listOf(
-                    AstEdit(
-                        startOffset = range.startOffset,
-                        endOffset = range.endOffset,
-                        replacement = replacement,
-                        originalText = text,
-                        description = "Inverted boolean literal from '$text' to '$replacement'",
-                        line = line,
-                        column = col,
-                    ),
-                )
+                listOf(context.edit(element, replacement, "Inverted boolean literal from '$text' to '$replacement'"))
             }
 
             is KtBinaryExpression -> {
@@ -86,19 +62,7 @@ public class BooleanInversionMutator : AstMutator {
                     } else {
                         "&&" to "Replaced || with &&"
                     }
-                val range = opRef.textRange
-                val (line, col) = context.lineAndCol(range.startOffset)
-                listOf(
-                    AstEdit(
-                        startOffset = range.startOffset,
-                        endOffset = range.endOffset,
-                        replacement = replacement,
-                        originalText = element.text,
-                        description = desc,
-                        line = line,
-                        column = col,
-                    ),
-                )
+                listOf(context.edit(opRef, replacement, desc, originalText = element.text))
             }
 
             else -> {
@@ -111,36 +75,23 @@ public class BooleanInversionMutator : AstMutator {
 /**
  * Replaces boolean conditions in if-expressions with constant true / false.
  */
-public class ConditionReplacementMutator : AstMutator {
+public class ConditionReplacementMutator : TypedAstMutator<KtIfExpression>(KtIfExpression::class) {
     override val name: String = "ConditionReplacementMutator"
     override val category: MutatorCategory = MutatorCategory.CONDITION_REPLACEMENT
     override val description: String = "Replaces boolean if-conditions with constant true and false"
 
-    override fun canMutate(element: PsiElement): Boolean {
-        if (element !is KtIfExpression) return false
+    override fun canMutateTyped(element: KtIfExpression): Boolean {
         val cond = element.condition ?: return false
         return cond.text != "true" && cond.text != "false"
     }
 
-    override fun mutate(
-        element: PsiElement,
+    override fun mutateTyped(
+        element: KtIfExpression,
         context: MutationContext,
     ): List<AstEdit> {
-        val ifExpr = element as? KtIfExpression ?: return emptyList()
-        val cond = ifExpr.condition ?: return emptyList()
-        val range = cond.textRange
-        val (line, col) = context.lineAndCol(range.startOffset)
-
+        val cond = element.condition ?: return emptyList()
         return listOf("true", "false").map { boolRep ->
-            AstEdit(
-                startOffset = range.startOffset,
-                endOffset = range.endOffset,
-                replacement = boolRep,
-                originalText = cond.text,
-                description = "Replaced condition '${cond.text}' with '$boolRep'",
-                line = line,
-                column = col,
-            )
+            context.edit(cond, boolRep, "Replaced condition '${cond.text}' with '$boolRep'")
         }
     }
 }
@@ -148,21 +99,18 @@ public class ConditionReplacementMutator : AstMutator {
 /**
  * Mutates return expressions by substituting default values (0, false, empty string, collections, null).
  */
-public class ReturnValueMutator : AstMutator {
+public class ReturnValueMutator : TypedAstMutator<KtReturnExpression>(KtReturnExpression::class) {
     override val name: String = "ReturnValueMutator"
     override val category: MutatorCategory = MutatorCategory.RETURN_VALUE
     override val description: String = "Mutates return values (return true -> false, return x -> 0, return str -> \"\", emptyList, null)"
 
-    override fun canMutate(element: PsiElement): Boolean = element is KtReturnExpression && element.returnedExpression != null
+    override fun canMutateTyped(element: KtReturnExpression): Boolean = element.returnedExpression != null
 
-    override fun mutate(
-        element: PsiElement,
+    override fun mutateTyped(
+        element: KtReturnExpression,
         context: MutationContext,
     ): List<AstEdit> {
-        val returnExpr = element as? KtReturnExpression ?: return emptyList()
-        val returned = returnExpr.returnedExpression ?: return emptyList()
-        val range = returned.textRange
-        val (line, col) = context.lineAndCol(range.startOffset)
+        val returned = element.returnedExpression ?: return emptyList()
         val text = returned.text.trim()
         val isStringExpr = returned is KtStringTemplateExpression || (returned is KtConstantExpression && text.startsWith("\""))
 
@@ -186,7 +134,7 @@ public class ReturnValueMutator : AstMutator {
         }
 
         // Check if enclosing function return type is nullable
-        var parent = returnExpr.parent
+        var parent = element.parent
         while (parent != null && parent !is KtNamedFunction) {
             parent = parent.parent
         }
@@ -196,15 +144,7 @@ public class ReturnValueMutator : AstMutator {
         }
 
         return replacements.filter { text != it.first }.map { (replacement, desc) ->
-            AstEdit(
-                startOffset = range.startOffset,
-                endOffset = range.endOffset,
-                replacement = replacement,
-                originalText = returnExpr.text,
-                description = desc,
-                line = line,
-                column = col,
-            )
+            context.edit(returned, replacement, desc, originalText = element.text)
         }
     }
 }
@@ -212,42 +152,30 @@ public class ReturnValueMutator : AstMutator {
 /**
  * Mutates standalone void statements by replacing them with Unit.
  */
-public class VoidMethodCallMutator : AstMutator {
+public class VoidMethodCallMutator : TypedAstMutator<KtCallExpression>(KtCallExpression::class) {
     override val name: String = "VoidMethodCallMutator"
     override val category: MutatorCategory = MutatorCategory.VOID_METHOD_CALL
     override val description: String = "Omits side-effect method calls by replacing statement with Unit"
 
-    override fun canMutate(element: PsiElement): Boolean {
-        if (element !is KtCallExpression) return false
+    override fun canMutateTyped(element: KtCallExpression): Boolean {
         val parent = element.parent
         return parent is KtBlockExpression || (parent is KtDotQualifiedExpression && parent.parent is KtBlockExpression)
     }
 
-    override fun mutate(
-        element: PsiElement,
+    override fun mutateTyped(
+        element: KtCallExpression,
         context: MutationContext,
     ): List<AstEdit> {
-        val callExpr = element as? KtCallExpression ?: return emptyList()
-        val parent = callExpr.parent
+        val parent = element.parent
         val targetElement: PsiElement =
             if (parent is KtDotQualifiedExpression && parent.parent is KtBlockExpression) {
                 parent
             } else {
-                callExpr
+                element
             }
 
-        val range = targetElement.textRange
-        val (line, col) = context.lineAndCol(range.startOffset)
         return listOf(
-            AstEdit(
-                startOffset = range.startOffset,
-                endOffset = range.endOffset,
-                replacement = "Unit",
-                originalText = targetElement.text,
-                description = "Omitted statement '${targetElement.text.take(30)}'",
-                line = line,
-                column = col,
-            ),
+            context.edit(targetElement, "Unit", "Omitted statement '${targetElement.text.take(30)}'"),
         )
     }
 }
