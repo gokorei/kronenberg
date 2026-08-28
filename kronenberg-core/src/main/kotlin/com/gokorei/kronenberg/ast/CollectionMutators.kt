@@ -2,13 +2,12 @@ package com.gokorei.kronenberg.ast
 
 import com.gokorei.kronenberg.model.AstEdit
 import com.gokorei.kronenberg.model.MutatorCategory
-import org.jetbrains.kotlin.com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.psi.KtCallExpression
 
 /**
  * Inverts higher-order collection methods (filter <-> filterNot, any <-> all, take <-> drop, first <-> last, map <-> mapNotNull, sorted <-> sortedDescending, minOrNull <-> maxOrNull).
  */
-public class CollectionOperatorMutator : AstMutator {
+public class CollectionOperatorMutator : TypedAstMutator<KtCallExpression>(KtCallExpression::class) {
     override val name: String = "CollectionOperatorMutator"
     override val category: MutatorCategory = MutatorCategory.COLLECTION_OPERATOR
     override val description: String =
@@ -36,21 +35,18 @@ public class CollectionOperatorMutator : AstMutator {
             "associateBy",
         )
 
-    override fun canMutate(element: PsiElement): Boolean {
-        if (element !is KtCallExpression) return false
+    override fun canMutateTyped(element: KtCallExpression): Boolean {
         val calleeName = element.calleeExpression?.text
         return calleeName in supportedMethods
     }
 
-    override fun mutate(
-        element: PsiElement,
+    override fun mutateTyped(
+        element: KtCallExpression,
         context: MutationContext,
     ): List<AstEdit> {
-        val callExpr = element as? KtCallExpression ?: return emptyList()
-        val callee = callExpr.calleeExpression ?: return emptyList()
-        val calleeName = callee.text
+        val callee = element.calleeExpression ?: return emptyList()
         val replacements =
-            when (calleeName) {
+            when (callee.text) {
                 "filter" -> listOf("filterNot" to "Inverted filter -> filterNot")
                 "filterNot" -> listOf("filter" to "Inverted filterNot -> filter")
                 "any" -> listOf("all" to "Inverted any -> all")
@@ -73,17 +69,7 @@ public class CollectionOperatorMutator : AstMutator {
             }
 
         return replacements.map { (rep, desc) ->
-            val range = callee.textRange
-            val (line, col) = context.lineAndCol(range.startOffset)
-            AstEdit(
-                startOffset = range.startOffset,
-                endOffset = range.endOffset,
-                replacement = rep,
-                originalText = callee.text,
-                description = desc,
-                line = line,
-                column = col,
-            )
+            context.edit(callee, rep, desc, originalText = callee.text)
         }
     }
 }
@@ -91,44 +77,32 @@ public class CollectionOperatorMutator : AstMutator {
 /**
  * Mutates Kotlin Coroutine and Flow operators (delay(x) -> delay(0), flow.filter <-> filterNot, first <-> last).
  */
-public class CoroutineFlowMutator : AstMutator {
+public class CoroutineFlowMutator : TypedAstMutator<KtCallExpression>(KtCallExpression::class) {
     override val name: String = "CoroutineFlowMutator"
     override val category: MutatorCategory = MutatorCategory.COLLECTION_OPERATOR
     override val description: String = "Mutates Coroutine and Flow operators (delay, flow filter/first/last)"
 
     private val supportedFlowMethods = setOf("filter", "filterNot", "first", "last")
 
-    override fun canMutate(element: PsiElement): Boolean {
-        if (element !is KtCallExpression) return false
+    override fun canMutateTyped(element: KtCallExpression): Boolean {
         val callee = element.calleeExpression?.text ?: return false
         return callee == "delay" || callee in supportedFlowMethods
     }
 
-    override fun mutate(
-        element: PsiElement,
+    override fun mutateTyped(
+        element: KtCallExpression,
         context: MutationContext,
     ): List<AstEdit> {
-        val callExpr = element as? KtCallExpression ?: return emptyList()
-        val callee = callExpr.calleeExpression ?: return emptyList()
+        val callee = element.calleeExpression ?: return emptyList()
         val calleeName = callee.text
 
         if (calleeName == "delay") {
-            val valueArgs = callExpr.valueArgumentList ?: return emptyList()
+            val valueArgs = element.valueArgumentList ?: return emptyList()
             if (valueArgs.arguments.isNotEmpty()) {
                 val arg = valueArgs.arguments.first()
                 if (arg.text.trim() != "0L" && arg.text.trim() != "0") {
-                    val range = arg.textRange
-                    val (line, col) = context.lineAndCol(range.startOffset)
                     return listOf(
-                        AstEdit(
-                            startOffset = range.startOffset,
-                            endOffset = range.endOffset,
-                            replacement = "0L",
-                            originalText = arg.text,
-                            description = "Mutated delay argument '${arg.text}' to '0L'",
-                            line = line,
-                            column = col,
-                        ),
+                        context.edit(arg, "0L", "Mutated delay argument '${arg.text}' to '0L'"),
                     )
                 }
             }
