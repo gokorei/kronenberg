@@ -1,3 +1,23 @@
+public final class com/gokorei/kronenberg/runner/CallGraphReachability {
+	public static final field INSTANCE Lcom/gokorei/kronenberg/runner/CallGraphReachability;
+	public final fun computeLineAndColumn (Ljava/lang/String;I)Lkotlin/Pair;
+	public final fun extractCalledFunctionNames (Lorg/jetbrains/kotlin/psi/KtNamedFunction;)Ljava/util/Set;
+	public final fun findEnclosingFunctionName (Ljava/lang/String;I)Ljava/lang/String;
+}
+
+public final class com/gokorei/kronenberg/runner/CandidateTestFunction {
+	public fun <init> (Ljava/lang/String;Ljava/util/Set;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/Set;
+	public final fun copy (Ljava/lang/String;Ljava/util/Set;)Lcom/gokorei/kronenberg/runner/CandidateTestFunction;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/runner/CandidateTestFunction;Ljava/lang/String;Ljava/util/Set;ILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/CandidateTestFunction;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCalledFunctionNames ()Ljava/util/Set;
+	public final fun getName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public abstract class com/gokorei/kronenberg/runner/CompileResult {
 }
 
@@ -109,6 +129,25 @@ public abstract interface class com/gokorei/kronenberg/runner/MutationResultCach
 	public abstract fun put (Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutantResult;)V
 }
 
+public final class com/gokorei/kronenberg/runner/ParsedTestCode {
+	public fun <init> (Ljava/lang/String;Ljava/util/List;Ljava/lang/String;ZLjava/util/List;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Z
+	public final fun component5 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/util/List;Ljava/lang/String;ZLjava/util/List;)Lcom/gokorei/kronenberg/runner/ParsedTestCode;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/runner/ParsedTestCode;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;ZLjava/util/List;ILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/ParsedTestCode;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCandidateTests ()Ljava/util/List;
+	public final fun getHasMain ()Z
+	public final fun getImports ()Ljava/util/List;
+	public final fun getPackageDirective ()Ljava/lang/String;
+	public final fun getRawBody ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/gokorei/kronenberg/runner/RunnerOutcome {
 	public fun <init> (Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public synthetic fun <init> (Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -142,6 +181,13 @@ public abstract interface class com/gokorei/kronenberg/runner/SnippetCompiler {
 
 public final class com/gokorei/kronenberg/runner/SnippetCompiler$DefaultImpls {
 	public static synthetic fun compile$default (Lcom/gokorei/kronenberg/runner/SnippetCompiler;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/CompileResult;
+}
+
+public final class com/gokorei/kronenberg/runner/TestHarnessSynthesizer {
+	public static final field INSTANCE Lcom/gokorei/kronenberg/runner/TestHarnessSynthesizer;
+	public final fun mergeSourceWithParsedTest (Ljava/lang/String;Lcom/gokorei/kronenberg/runner/ParsedTestCode;Lcom/gokorei/kronenberg/model/AstMutant;)Ljava/lang/String;
+	public final fun parseTestCode (Ljava/lang/String;Ljava/lang/String;)Lcom/gokorei/kronenberg/runner/ParsedTestCode;
+	public final fun stripPackageAndImports (Ljava/lang/String;Lorg/jetbrains/kotlin/psi/KtFile;)Ljava/lang/String;
 }
 
 public final class com/gokorei/kronenberg/runner/ThreadLocalPrintStream : java/io/PrintStream {
