@@ -26,10 +26,16 @@ public class MutatorRegistry(
             }
         }
 
+    public fun mutatorsForCategories(categories: Set<MutatorCategory>): List<AstMutator> =
+        registeredMutators.filter { it.category in categories }
+
+    public fun mutatorsForCategory(category: MutatorCategory): List<AstMutator> = registeredMutators.filter { it.category == category }
+
     public companion object {
         public fun defaultMutators(): List<AstMutator> =
             listOf(
                 RelationalBoundaryMutator(),
+                EqualityMutator(),
                 ArithmeticOperatorMutator(),
                 CompoundAssignmentMutator(),
                 UnaryOperatorMutator(),

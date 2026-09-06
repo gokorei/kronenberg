@@ -79,7 +79,7 @@ public class CollectionOperatorMutator : TypedAstMutator<KtCallExpression>(KtCal
  */
 public class CoroutineFlowMutator : TypedAstMutator<KtCallExpression>(KtCallExpression::class) {
     override val name: String = "CoroutineFlowMutator"
-    override val category: MutatorCategory = MutatorCategory.COLLECTION_OPERATOR
+    override val category: MutatorCategory = MutatorCategory.COROUTINE
     override val description: String = "Mutates Coroutine and Flow operators (delay, flow filter/first/last)"
 
     private val supportedFlowMethods = setOf("filter", "filterNot", "first", "last")

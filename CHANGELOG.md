@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed `DestructuringMutator` to use exact PSI parenthesis tokens (`lPar` and `rPar`), preventing syntax corruption when whitespace is present inside destructuring declarations.
 - Reclassified `PreconditionMutator` from `CONDITION_REPLACEMENT` to `PRECONDITION` so defensive precondition assertions (`require`, `check`, `requireNotNull`, `checkNotNull`) are active during standard audit runs.
 
+### Changed
+- Added `COROUTINE`, `SCOPE_FUNCTION`, and `RESULT_ERROR_HANDLING` to `MutatorCategory`, and introduced `EqualityMutator` covering structural and referential equality comparisons (`==` $\leftrightarrow$ `!=`, `===` $\leftrightarrow$ `!==`).
+- Reclassified `ScopeFunctionMutator` and `TakeIfMutator` to `SCOPE_FUNCTION`, `CoroutineFlowMutator` and `CoroutineConcurrencyMutator` to `COROUTINE`, and `ResultMutator` to `RESULT_ERROR_HANDLING`.
+- Added `mutatorsForCategory` and `mutatorsForCategories` filtering APIs to `MutatorRegistry`.
+
 ### Added
 - Initial project scaffolding for multi-module Gradle layout (`kronenberg-core`, `kronenberg-runner`, `kronenberg-cli`).
 - Open source community standards, governance, and documentation (Apache 2.0 License, Contributing Guide, Code of Conduct, Security Policy).

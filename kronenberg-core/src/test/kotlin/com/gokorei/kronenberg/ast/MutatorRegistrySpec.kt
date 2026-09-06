@@ -57,4 +57,30 @@ class MutatorRegistrySpec {
         val registry = MutatorRegistry().register(customMutator)
         registry.mutators().map { it.name } shouldContain "CustomAssertMutator"
     }
+
+    @Test
+    fun `default registry contains EqualityMutator and categorizes mutators appropriately`() {
+        val registry = MutatorRegistry.default()
+        val all = registry.mutators(includeExtreme = true)
+
+        all.map { it.name } shouldContain "EqualityMutator"
+
+        val equalityMutators = registry.mutatorsForCategory(MutatorCategory.EQUALITY)
+        equalityMutators.map { it.name } shouldContain "EqualityMutator"
+
+        val coroutineMutators = registry.mutatorsForCategory(MutatorCategory.COROUTINE)
+        coroutineMutators.map { it.name } shouldContain "CoroutineFlowMutator"
+        coroutineMutators.map { it.name } shouldContain "CoroutineConcurrencyMutator"
+
+        val scopeMutators = registry.mutatorsForCategory(MutatorCategory.SCOPE_FUNCTION)
+        scopeMutators.map { it.name } shouldContain "TakeIfMutator"
+        scopeMutators.map { it.name } shouldContain "ScopeFunctionMutator"
+
+        val resultMutators = registry.mutatorsForCategory(MutatorCategory.RESULT_ERROR_HANDLING)
+        resultMutators.map { it.name } shouldContain "ResultMutator"
+
+        val combined = registry.mutatorsForCategories(setOf(MutatorCategory.COROUTINE, MutatorCategory.RESULT_ERROR_HANDLING))
+        combined.map { it.name } shouldContain "CoroutineConcurrencyMutator"
+        combined.map { it.name } shouldContain "ResultMutator"
+    }
 }

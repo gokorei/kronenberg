@@ -9,7 +9,7 @@ import org.jetbrains.kotlin.psi.KtCallExpression
  */
 public class ResultMutator : TypedAstMutator<KtCallExpression>(KtCallExpression::class) {
     override val name: String = "ResultMutator"
-    override val category: MutatorCategory = MutatorCategory.COLLECTION_OPERATOR
+    override val category: MutatorCategory = MutatorCategory.RESULT_ERROR_HANDLING
     override val description: String =
         "Mutates Result and functional error handling calls (getOrElse, getOrDefault, getOrNull, onSuccess, onFailure)"
 

@@ -121,6 +121,15 @@ public final class com/gokorei/kronenberg/ast/ElvisLeftHandMutator : com/gokorei
 	public synthetic fun mutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;Lcom/gokorei/kronenberg/ast/MutationContext;)Ljava/util/List;
 }
 
+public final class com/gokorei/kronenberg/ast/EqualityMutator : com/gokorei/kronenberg/ast/TypedAstMutator {
+	public fun <init> ()V
+	public synthetic fun canMutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;)Z
+	public fun getCategory ()Lcom/gokorei/kronenberg/model/MutatorCategory;
+	public fun getDescription ()Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public synthetic fun mutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;Lcom/gokorei/kronenberg/ast/MutationContext;)Ljava/util/List;
+}
+
 public final class com/gokorei/kronenberg/ast/K2SnippetFrontend {
 	public static final field INSTANCE Lcom/gokorei/kronenberg/ast/K2SnippetFrontend;
 	public final fun parsePsi (Ljava/lang/String;)Lorg/jetbrains/kotlin/psi/KtFile;
@@ -158,6 +167,8 @@ public final class com/gokorei/kronenberg/ast/MutatorRegistry {
 	public synthetic fun <init> (Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun mutators (Z)Ljava/util/List;
 	public static synthetic fun mutators$default (Lcom/gokorei/kronenberg/ast/MutatorRegistry;ZILjava/lang/Object;)Ljava/util/List;
+	public final fun mutatorsForCategories (Ljava/util/Set;)Ljava/util/List;
+	public final fun mutatorsForCategory (Lcom/gokorei/kronenberg/model/MutatorCategory;)Ljava/util/List;
 	public final fun register (Lcom/gokorei/kronenberg/ast/AstMutator;)Lcom/gokorei/kronenberg/ast/MutatorRegistry;
 }
 
@@ -535,6 +546,7 @@ public final class com/gokorei/kronenberg/model/MutatorCategory : java/lang/Enum
 	public static final field COLLECTION_OPERATOR Lcom/gokorei/kronenberg/model/MutatorCategory;
 	public static final field COMPOUND_ASSIGNMENT Lcom/gokorei/kronenberg/model/MutatorCategory;
 	public static final field CONDITION_REPLACEMENT Lcom/gokorei/kronenberg/model/MutatorCategory;
+	public static final field COROUTINE Lcom/gokorei/kronenberg/model/MutatorCategory;
 	public static final field Companion Lcom/gokorei/kronenberg/model/MutatorCategory$Companion;
 	public static final field EQUALITY Lcom/gokorei/kronenberg/model/MutatorCategory;
 	public static final field EXTREME Lcom/gokorei/kronenberg/model/MutatorCategory;
@@ -543,7 +555,9 @@ public final class com/gokorei/kronenberg/model/MutatorCategory : java/lang/Enum
 	public static final field PRECONDITION Lcom/gokorei/kronenberg/model/MutatorCategory;
 	public static final field RANGE_OPERATOR Lcom/gokorei/kronenberg/model/MutatorCategory;
 	public static final field RELATIONAL_BOUNDARY Lcom/gokorei/kronenberg/model/MutatorCategory;
+	public static final field RESULT_ERROR_HANDLING Lcom/gokorei/kronenberg/model/MutatorCategory;
 	public static final field RETURN_VALUE Lcom/gokorei/kronenberg/model/MutatorCategory;
+	public static final field SCOPE_FUNCTION Lcom/gokorei/kronenberg/model/MutatorCategory;
 	public static final field UNARY_OPERATOR Lcom/gokorei/kronenberg/model/MutatorCategory;
 	public static final field VOID_METHOD_CALL Lcom/gokorei/kronenberg/model/MutatorCategory;
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
