@@ -72,7 +72,38 @@ public final class com/gokorei/kronenberg/ast/ConditionReplacementMutator : com/
 	public synthetic fun mutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;Lcom/gokorei/kronenberg/ast/MutationContext;)Ljava/util/List;
 }
 
+public final class com/gokorei/kronenberg/ast/CoroutineConcurrencyMutator : com/gokorei/kronenberg/ast/AstMutator {
+	public static final field Companion Lcom/gokorei/kronenberg/ast/CoroutineConcurrencyMutator$Companion;
+	public fun <init> ()V
+	public fun canMutate (Lorg/jetbrains/kotlin/com/intellij/psi/PsiElement;)Z
+	public fun getCategory ()Lcom/gokorei/kronenberg/model/MutatorCategory;
+	public fun getDescription ()Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public fun mutate (Lorg/jetbrains/kotlin/com/intellij/psi/PsiElement;Lcom/gokorei/kronenberg/ast/MutationContext;)Ljava/util/List;
+}
+
+public final class com/gokorei/kronenberg/ast/CoroutineConcurrencyMutator$Companion {
+}
+
 public final class com/gokorei/kronenberg/ast/CoroutineFlowMutator : com/gokorei/kronenberg/ast/TypedAstMutator {
+	public fun <init> ()V
+	public synthetic fun canMutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;)Z
+	public fun getCategory ()Lcom/gokorei/kronenberg/model/MutatorCategory;
+	public fun getDescription ()Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public synthetic fun mutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;Lcom/gokorei/kronenberg/ast/MutationContext;)Ljava/util/List;
+}
+
+public final class com/gokorei/kronenberg/ast/DataClassCopyMutator : com/gokorei/kronenberg/ast/TypedAstMutator {
+	public fun <init> ()V
+	public synthetic fun canMutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;)Z
+	public fun getCategory ()Lcom/gokorei/kronenberg/model/MutatorCategory;
+	public fun getDescription ()Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public synthetic fun mutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;Lcom/gokorei/kronenberg/ast/MutationContext;)Ljava/util/List;
+}
+
+public final class com/gokorei/kronenberg/ast/DestructuringMutator : com/gokorei/kronenberg/ast/TypedAstMutator {
 	public fun <init> ()V
 	public synthetic fun canMutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;)Z
 	public fun getCategory ()Lcom/gokorei/kronenberg/model/MutatorCategory;
@@ -153,6 +184,19 @@ public final class com/gokorei/kronenberg/ast/NullSafetyMutator : com/gokorei/kr
 	public synthetic fun mutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;Lcom/gokorei/kronenberg/ast/MutationContext;)Ljava/util/List;
 }
 
+public final class com/gokorei/kronenberg/ast/PreconditionMutator : com/gokorei/kronenberg/ast/TypedAstMutator {
+	public static final field Companion Lcom/gokorei/kronenberg/ast/PreconditionMutator$Companion;
+	public fun <init> ()V
+	public synthetic fun canMutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;)Z
+	public fun getCategory ()Lcom/gokorei/kronenberg/model/MutatorCategory;
+	public fun getDescription ()Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public synthetic fun mutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;Lcom/gokorei/kronenberg/ast/MutationContext;)Ljava/util/List;
+}
+
+public final class com/gokorei/kronenberg/ast/PreconditionMutator$Companion {
+}
+
 public final class com/gokorei/kronenberg/ast/RangeOperatorMutator : com/gokorei/kronenberg/ast/TypedAstMutator {
 	public fun <init> ()V
 	public synthetic fun canMutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;)Z
@@ -169,6 +213,19 @@ public final class com/gokorei/kronenberg/ast/RelationalBoundaryMutator : com/go
 	public fun getDescription ()Ljava/lang/String;
 	public fun getName ()Ljava/lang/String;
 	public synthetic fun mutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;Lcom/gokorei/kronenberg/ast/MutationContext;)Ljava/util/List;
+}
+
+public final class com/gokorei/kronenberg/ast/ResultMutator : com/gokorei/kronenberg/ast/TypedAstMutator {
+	public static final field Companion Lcom/gokorei/kronenberg/ast/ResultMutator$Companion;
+	public fun <init> ()V
+	public synthetic fun canMutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;)Z
+	public fun getCategory ()Lcom/gokorei/kronenberg/model/MutatorCategory;
+	public fun getDescription ()Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public synthetic fun mutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;Lcom/gokorei/kronenberg/ast/MutationContext;)Ljava/util/List;
+}
+
+public final class com/gokorei/kronenberg/ast/ResultMutator$Companion {
 }
 
 public final class com/gokorei/kronenberg/ast/ReturnValueMutator : com/gokorei/kronenberg/ast/TypedAstMutator {
@@ -189,6 +246,19 @@ public final class com/gokorei/kronenberg/ast/SafeCallMutator : com/gokorei/kron
 	public synthetic fun mutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;Lcom/gokorei/kronenberg/ast/MutationContext;)Ljava/util/List;
 }
 
+public final class com/gokorei/kronenberg/ast/ScopeFunctionMutator : com/gokorei/kronenberg/ast/TypedAstMutator {
+	public static final field Companion Lcom/gokorei/kronenberg/ast/ScopeFunctionMutator$Companion;
+	public fun <init> ()V
+	public synthetic fun canMutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;)Z
+	public fun getCategory ()Lcom/gokorei/kronenberg/model/MutatorCategory;
+	public fun getDescription ()Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public synthetic fun mutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;Lcom/gokorei/kronenberg/ast/MutationContext;)Ljava/util/List;
+}
+
+public final class com/gokorei/kronenberg/ast/ScopeFunctionMutator$Companion {
+}
+
 public final class com/gokorei/kronenberg/ast/SmartCastMutator : com/gokorei/kronenberg/ast/AstMutator {
 	public fun <init> ()V
 	public fun canMutate (Lorg/jetbrains/kotlin/com/intellij/psi/PsiElement;)Z
@@ -199,6 +269,15 @@ public final class com/gokorei/kronenberg/ast/SmartCastMutator : com/gokorei/kro
 }
 
 public final class com/gokorei/kronenberg/ast/StringTemplateMutator : com/gokorei/kronenberg/ast/TypedAstMutator {
+	public fun <init> ()V
+	public synthetic fun canMutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;)Z
+	public fun getCategory ()Lcom/gokorei/kronenberg/model/MutatorCategory;
+	public fun getDescription ()Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public synthetic fun mutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;Lcom/gokorei/kronenberg/ast/MutationContext;)Ljava/util/List;
+}
+
+public final class com/gokorei/kronenberg/ast/TakeIfMutator : com/gokorei/kronenberg/ast/TypedAstMutator {
 	public fun <init> ()V
 	public synthetic fun canMutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;)Z
 	public fun getCategory ()Lcom/gokorei/kronenberg/model/MutatorCategory;
