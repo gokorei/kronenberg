@@ -58,6 +58,28 @@ public object GitDiffParser {
         }
         return lines.distinct().sorted()
     }
+
+    public fun parseStagedKotlinFileNames(gitOutput: String): List<String> =
+        gitOutput
+            .lines()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && it.endsWith(".kt") && !it.endsWith(".kts") }
+
+    public fun extractStagedKotlinFiles(workingDir: File = File(".")): List<Path> {
+        val cmd = listOf("git", "diff", "--cached", "--name-only")
+        val process =
+            runCatching {
+                ProcessBuilder(cmd)
+                    .directory(workingDir)
+                    .redirectErrorStream(true)
+                    .start()
+            }.getOrNull() ?: return emptyList()
+
+        val output = process.inputStream.bufferedReader().readText()
+        process.waitFor(2, TimeUnit.SECONDS)
+
+        return parseStagedKotlinFileNames(output).map { workingDir.toPath().resolve(it) }
+    }
 }
 
 /**

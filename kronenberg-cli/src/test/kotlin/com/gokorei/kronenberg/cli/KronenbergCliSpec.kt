@@ -250,4 +250,39 @@ class KronenbergCliSpec {
             testFile.toFile().delete()
         }
     }
+
+    @Test
+    fun `git diff parser extracts staged kotlin files from git output`() {
+        val rawDiffNames = "src/main/Foo.kt\nsrc/test/BarSpec.kt\nREADME.md\nbuild.gradle.kts\n"
+        val staged = GitDiffParser.parseStagedKotlinFileNames(rawDiffNames)
+        staged shouldBe listOf("src/main/Foo.kt", "src/test/BarSpec.kt")
+    }
+
+    @Test
+    fun `audit command with --pre-commit exits 0 when no staged kotlin files exist`() {
+        val cli = KronenbergCli().subcommands(AuditCommand())
+        // In a temp dir or without staged files, pre-commit should report clean or evaluate staged
+        val result = cli.test("audit --pre-commit")
+        result.statusCode shouldBe 0
+        result.output shouldContain "pre-commit"
+    }
+
+    @Test
+    fun `audit command with --pre-commit runs fast audit on provided source and test`() {
+        val srcFile = createTempFile("PreCommitSample", ".kt")
+        val testFile = createTempFile("PreCommitSampleTest", ".kt")
+        try {
+            srcFile.writeText("fun add(a: Int, b: Int) = a + b")
+            testFile.writeText("fun main() { check(add(1, 2) == 3) }")
+
+            val cli = KronenbergCli().subcommands(AuditCommand())
+            val result = cli.test("audit --pre-commit --source $srcFile --test $testFile --threshold 50.0")
+
+            result.statusCode shouldBe 0
+            result.output shouldContain "KRONENBERG MUTATION AUDIT"
+        } finally {
+            srcFile.toFile().delete()
+            testFile.toFile().delete()
+        }
+    }
 }

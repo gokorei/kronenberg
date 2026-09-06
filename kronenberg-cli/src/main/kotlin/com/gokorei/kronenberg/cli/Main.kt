@@ -174,6 +174,11 @@ public class AuditCommand :
         help = "Only evaluate mutants on lines modified in staged Git changes",
     ).flag(default = false)
 
+    private val preCommit: Boolean by option(
+        "--pre-commit",
+        help = "Fast staged audit mode designed for Git pre-commit hooks",
+    ).flag(default = false)
+
     private val cache: Boolean by option(
         "--cache",
         help = "Enable deterministic mutant evaluation caching",
@@ -211,10 +216,14 @@ public class AuditCommand :
     )
 
     override fun run() {
+        val effectiveStaged = staged || preCommit
+        val effectiveTimeout = if (preCommit && timeout == 2000L) 500L else timeout
+        val effectiveHom = if (preCommit) false else hom
+
         val pipeline = DefaultMutationExecutionPipeline()
         val changedLines =
-            if (source != null && (diff != null || staged)) {
-                GitDiffParser.extractChangedLines(source!!, diff, staged)
+            if (source != null && (diff != null || effectiveStaged)) {
+                GitDiffParser.extractChangedLines(source!!, diff, effectiveStaged)
             } else {
                 null
             }
@@ -230,8 +239,8 @@ public class AuditCommand :
             MutationConfig(
                 minScore = threshold,
                 includeExtreme = extreme,
-                higherOrderMutants = hom,
-                baselineTimeoutMs = timeout,
+                higherOrderMutants = effectiveHom,
+                baselineTimeoutMs = effectiveTimeout,
                 maxMutants = maxMutants,
                 targetLines = changedLines,
                 enableCache = cache,
@@ -240,9 +249,17 @@ public class AuditCommand :
 
         val report: MutationReport =
             if (sourceDir != null) {
-                auditDirectory(pipeline, sourceDir!!, testDir, config)
+                auditDirectory(pipeline, sourceDir!!, testDir, config, effectiveStaged, diff)
             } else if (source != null && test != null) {
                 auditSingleFile(pipeline, source!!, test!!, config)
+            } else if (preCommit) {
+                val stagedFiles = GitDiffParser.extractStagedKotlinFiles()
+                if (stagedFiles.isEmpty()) {
+                    echo("\u001B[32m✔ Git pre-commit: No staged Kotlin files to audit.\u001B[0m")
+                    return
+                }
+                echo("Git pre-commit: Found ${stagedFiles.size} staged Kotlin file(s).")
+                auditFiles(pipeline, stagedFiles, testDir, config)
             } else {
                 echo("\u001B[31mError: Must provide either (--source and --test) or (--source-dir).\u001B[0m")
                 throw ProgramResult(1)
@@ -295,6 +312,8 @@ public class AuditCommand :
         srcDir: Path,
         tstDir: Path?,
         config: MutationConfig,
+        staged: Boolean = false,
+        diffRef: String? = null,
     ): MutationReport {
         val srcFiles =
             Files
@@ -302,6 +321,18 @@ public class AuditCommand :
                 .filter { it.isRegularFile() && it.toString().endsWith(".kt") }
                 .toList()
 
+        return auditFiles(pipeline, srcFiles, tstDir ?: srcDir, config, staged, diffRef, baseDir = srcDir)
+    }
+
+    private fun auditFiles(
+        pipeline: DefaultMutationExecutionPipeline,
+        srcFiles: List<Path>,
+        tstDir: Path?,
+        baseConfig: MutationConfig,
+        staged: Boolean = false,
+        diffRef: String? = null,
+        baseDir: Path? = null,
+    ): MutationReport {
         val allResults = mutableListOf<MutantResult>()
         var totalMutants = 0
         var killedCount = 0
@@ -310,9 +341,22 @@ public class AuditCommand :
         var compileErrorCount = 0
 
         for (srcFile in srcFiles) {
+            val fileChangedLines =
+                if (staged || diffRef != null) {
+                    GitDiffParser.extractChangedLines(srcFile, diffRef, staged)
+                } else {
+                    baseConfig.targetLines
+                }
+
+            // If staged/diff is requested and no lines changed in this file, skip auditing it
+            if ((staged || diffRef != null) && fileChangedLines?.isEmpty() == true) {
+                continue
+            }
+
+            val fileConfig = baseConfig.copy(targetLines = fileChangedLines)
             val baseName = srcFile.nameWithoutExtension
             val matchingTestFile =
-                if (tstDir != null) {
+                if (tstDir != null && Files.isDirectory(tstDir)) {
                     Files
                         .walk(tstDir)
                         .filter {
@@ -325,18 +369,19 @@ public class AuditCommand :
                         }.findFirst()
                         .orElse(null)
                 } else {
-                    null
+                    // Try adjacent or src/test path inference if no explicit tstDir provided
+                    findAdjacentTestFile(srcFile)
                 }
 
             val testCode = matchingTestFile?.readText() ?: ""
             if (testCode.isNotBlank()) {
-                val relPath = srcDir.relativize(srcFile).toString()
+                val relPath = baseDir?.relativize(srcFile)?.toString() ?: srcFile.fileName.toString()
                 val fileReport =
                     runBlocking {
                         pipeline.execute(
                             sourceCode = srcFile.readText(),
                             testCode = testCode,
-                            config = config,
+                            config = fileConfig,
                             sourceFilePath = relPath,
                         )
                     }
@@ -366,6 +411,17 @@ public class AuditCommand :
             mutationScore = (score * 10.0).toInt() / 10.0,
             results = allResults,
         )
+    }
+
+    private fun findAdjacentTestFile(srcFile: Path): Path? {
+        val baseName = srcFile.nameWithoutExtension
+        val parent = srcFile.parent ?: return null
+        val candidates =
+            listOf(
+                parent.resolve("${baseName}Test.kt"),
+                parent.resolve("${baseName}Spec.kt"),
+            )
+        return candidates.firstOrNull { Files.isRegularFile(it) }
     }
 
     private fun renderTerminalReport(report: MutationReport) {
