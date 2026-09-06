@@ -160,7 +160,7 @@ public class RangeOperatorMutator : TypedAstMutator<KtBinaryExpression>(KtBinary
     ): List<AstEdit> {
         val opRef = element.operationReference
         val sign = opRef.text
-        val replacement = if (sign == "until" || sign == "downTo" || sign == "..<") ".." else "until"
+        val replacement = if (sign == "until" || sign == "downTo" || sign == "..<") ".." else "..<"
         return listOf(
             context.edit(opRef, replacement, "Mutated range operator '$sign' to '$replacement'", originalText = element.text),
         )

@@ -283,6 +283,17 @@ class AstMutatorsSpec {
             val edits = findMutations("fun count(n: Int) = (0..<n).toList()", mutator)
             edits.firstOrNull()?.replacement shouldBe ".."
         }
+
+        @Test
+        fun `mutates closed range operator to rangeUntil operator without syntax error`() {
+            val code = "fun count(n: Int) = (0..n).toList()"
+            val edits = findMutations(code, mutator)
+            edits.firstOrNull()?.replacement shouldBe "..<"
+
+            val generator = AstMutantGenerator()
+            val mutants = generator.generateMutants(code)
+            mutants.any { it.replacementText == "..<" && it.mutatedSource.contains("0..<n") } shouldBe true
+        }
     }
 
     @Nested
