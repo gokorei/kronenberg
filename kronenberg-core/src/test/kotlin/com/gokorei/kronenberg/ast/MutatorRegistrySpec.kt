@@ -32,6 +32,13 @@ class MutatorRegistrySpec {
     }
 
     @Test
+    fun `default mutators include PreconditionMutator in standard audit mode`() {
+        val registry = MutatorRegistry.default()
+        val standard = registry.mutators(includeExtreme = false)
+        standard.map { it.name } shouldContain "PreconditionMutator"
+    }
+
+    @Test
     fun `custom mutators can be registered via SPI`() {
         val customMutator =
             object : AstMutator {
