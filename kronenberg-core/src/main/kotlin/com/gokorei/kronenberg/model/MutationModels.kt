@@ -43,6 +43,7 @@ public enum class MutatorCategory {
     NULL_SAFETY,
     RANGE_OPERATOR,
     EXTREME,
+    PRECONDITION,
 }
 
 /**

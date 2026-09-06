@@ -37,7 +37,7 @@ class PreconditionMutatorsSpec {
 
         @Test
         fun `mutates require with negation and bypass`() {
-            mutator.category shouldBe MutatorCategory.CONDITION_REPLACEMENT
+            mutator.category shouldBe MutatorCategory.PRECONDITION
             val edits = findMutations("fun check(amount: Int) { require(amount > 0) { \"invalid\" } }", mutator)
             edits.size shouldBe 2
             edits.any { it.replacement == "!(amount > 0)" } shouldBe true
