@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Strengthened `DogfoodMutationAuditSpec` assertions across all 7 scenarios to assert non-trivial mutant generation (`totalMutants > 0`), kill rate (`killedCount > 0`), zero survival (`survivedCount == 0`), and threshold passage (`isPassed == true`).
 
 ### Added
+- Preserved source file path (`filePath: String? = null`) on `AstMutant`, `AstEdit`, and `MutationContext`, propagating relative file paths throughout directory audits into terminal output, HTML reports, and SARIF code scanning alerts.
 - Initial project scaffolding for multi-module Gradle layout (`kronenberg-core`, `kronenberg-runner`, `kronenberg-cli`).
 - Open source community standards, governance, and documentation (Apache 2.0 License, Contributing Guide, Code of Conduct, Security Policy).
 - GitHub Actions CI matrix and release automation workflows.

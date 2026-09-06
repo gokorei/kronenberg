@@ -61,6 +61,7 @@ public data class AstEdit(
     val description: String,
     val line: Int,
     val column: Int,
+    val filePath: String? = null,
 )
 
 /**
@@ -76,6 +77,7 @@ public data class AstMutant(
     val originalText: String,
     val replacementText: String,
     val mutatedSource: String,
+    val filePath: String? = null,
 )
 
 /**

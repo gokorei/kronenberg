@@ -61,6 +61,14 @@ class AstMutantGeneratorSpec {
     }
 
     @Test
+    fun `preserves filePath in generated mutants when provided`() {
+        val source = "fun add(a: Int, b: Int): Int = a + b"
+        val mutants = generator.generateMutants(source, filePath = "src/common/Math.kt")
+        mutants shouldHaveAtLeastSize 1
+        mutants.all { it.filePath == "src/common/Math.kt" } shouldBe true
+    }
+
+    @Test
     fun `computeLineAndColumn correctly calculates 1-indexed coordinates`() {
         val source = "line1\nline2\nline3"
         // Offset 0 = line 1, col 1
