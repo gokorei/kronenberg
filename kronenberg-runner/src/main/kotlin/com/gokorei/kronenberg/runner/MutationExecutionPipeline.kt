@@ -61,7 +61,7 @@ public class DefaultMutationExecutionPipeline(
         }
 
         // 1. Verify baseline code and tests
-        val baselineCompile = compiler.compile(baselineCombined)
+        val baselineCompile = compiler.compile(baselineCombined, extraClasspath = config.extraClasspath)
         if (baselineCompile !is CompileResult.Compiled) {
             val failMsg = (baselineCompile as? CompileResult.Failed)?.message ?: "Baseline compilation failed"
             return MutationReport(
@@ -78,7 +78,11 @@ public class DefaultMutationExecutionPipeline(
 
         val baselineOutcome =
             try {
-                runner.run(baselineCompile.outDir, timeoutMs = config.baselineTimeoutMs)
+                runner.run(
+                    baselineCompile.outDir,
+                    timeoutMs = config.baselineTimeoutMs,
+                    extraClasspath = config.extraClasspath,
+                )
             } finally {
                 compiler.cleanup(baselineCompile)
             }
@@ -162,7 +166,7 @@ public class DefaultMutationExecutionPipeline(
                                         failureMessage = "Blocked dangerous mutant containing host-terminating call",
                                     )
                                 } else {
-                                    val compiledMutant = compiler.compile(combinedMutantCode)
+                                    val compiledMutant = compiler.compile(combinedMutantCode, extraClasspath = config.extraClasspath)
 
                                     if (compiledMutant !is CompileResult.Compiled) {
                                         MutantResult(
@@ -173,7 +177,12 @@ public class DefaultMutationExecutionPipeline(
                                         )
                                     } else {
                                         try {
-                                            val outcome = runner.run(compiledMutant.outDir, timeoutMs = calibratedTimeoutMs)
+                                            val outcome =
+                                                runner.run(
+                                                    compiledMutant.outDir,
+                                                    timeoutMs = calibratedTimeoutMs,
+                                                    extraClasspath = config.extraClasspath,
+                                                )
                                             MutantResult(
                                                 mutant = mutant,
                                                 status = outcome.status,

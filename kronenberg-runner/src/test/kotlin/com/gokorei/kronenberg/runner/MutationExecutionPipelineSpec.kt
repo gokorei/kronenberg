@@ -6,6 +6,7 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 
@@ -142,6 +143,53 @@ class MutationExecutionPipelineSpec {
             report.baselineError.shouldNotBeNull()
             report.baselineError!! shouldContain "forbidden host-terminating calls"
             report.totalMutants shouldBe 0
+        }
+    }
+
+    @Test
+    fun `executes mutation pass successfully against external classes provided via extraClasspath`() {
+        val compiler = DefaultSnippetCompiler()
+        val externalHelperSource =
+            """
+            package com.example.external
+            object MathHelper {
+                fun add(a: Int, b: Int): Int = a + b
+            }
+            """.trimIndent()
+        val compiledHelper = compiler.compile(externalHelperSource)
+        try {
+            compiledHelper.shouldBeInstanceOf<CompileResult.Compiled>()
+            val helperOutDir = (compiledHelper as CompileResult.Compiled).outDir.toString()
+
+            val source =
+                """
+                import com.example.external.MathHelper
+
+                fun calculateTotal(a: Int, b: Int): Int {
+                    return MathHelper.add(a, b) + 10
+                }
+                """.trimIndent()
+
+            val test =
+                """
+                fun testCalculateTotal() {
+                    check(calculateTotal(2, 3) == 15)
+                }
+                """.trimIndent()
+
+            runBlocking {
+                val report =
+                    pipeline.execute(
+                        sourceCode = source,
+                        testCode = test,
+                        config = MutationConfig(extraClasspath = listOf(helperOutDir)),
+                    )
+                report.baselineError shouldBe null
+                report.totalMutants shouldNotBe 0
+                report.killedCount shouldNotBe 0
+            }
+        } finally {
+            compiler.cleanup(compiledHelper)
         }
     }
 }

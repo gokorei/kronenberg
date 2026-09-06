@@ -121,4 +121,5 @@ public data class MutationConfig(
     val maxMutants: Int? = null,
     val targetLines: List<Int>? = null,
     val enableCache: Boolean = false,
+    val extraClasspath: List<String> = emptyList(),
 )

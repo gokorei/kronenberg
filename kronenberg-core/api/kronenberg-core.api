@@ -465,8 +465,8 @@ public final class com/gokorei/kronenberg/model/MutantStatus$Companion {
 public final class com/gokorei/kronenberg/model/MutationConfig {
 	public static final field Companion Lcom/gokorei/kronenberg/model/MutationConfig$Companion;
 	public fun <init> ()V
-	public fun <init> (DDJZZLjava/lang/Integer;Ljava/util/List;Z)V
-	public synthetic fun <init> (DDJZZLjava/lang/Integer;Ljava/util/List;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (DDJZZLjava/lang/Integer;Ljava/util/List;ZLjava/util/List;)V
+	public synthetic fun <init> (DDJZZLjava/lang/Integer;Ljava/util/List;ZLjava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()D
 	public final fun component2 ()D
 	public final fun component3 ()J
@@ -475,11 +475,13 @@ public final class com/gokorei/kronenberg/model/MutationConfig {
 	public final fun component6 ()Ljava/lang/Integer;
 	public final fun component7 ()Ljava/util/List;
 	public final fun component8 ()Z
-	public final fun copy (DDJZZLjava/lang/Integer;Ljava/util/List;Z)Lcom/gokorei/kronenberg/model/MutationConfig;
-	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/model/MutationConfig;DDJZZLjava/lang/Integer;Ljava/util/List;ZILjava/lang/Object;)Lcom/gokorei/kronenberg/model/MutationConfig;
+	public final fun component9 ()Ljava/util/List;
+	public final fun copy (DDJZZLjava/lang/Integer;Ljava/util/List;ZLjava/util/List;)Lcom/gokorei/kronenberg/model/MutationConfig;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/model/MutationConfig;DDJZZLjava/lang/Integer;Ljava/util/List;ZLjava/util/List;ILjava/lang/Object;)Lcom/gokorei/kronenberg/model/MutationConfig;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getBaselineTimeoutMs ()J
 	public final fun getEnableCache ()Z
+	public final fun getExtraClasspath ()Ljava/util/List;
 	public final fun getHigherOrderMutants ()Z
 	public final fun getIncludeExtreme ()Z
 	public final fun getMaxMutants ()Ljava/lang/Integer;
