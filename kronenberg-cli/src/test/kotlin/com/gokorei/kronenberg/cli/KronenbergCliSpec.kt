@@ -5,6 +5,7 @@ import com.github.ajalt.clikt.testing.test
 import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.types.shouldBeInstanceOf
 import org.junit.jupiter.api.Test
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.createTempFile
@@ -199,5 +200,54 @@ class KronenbergCliSpec {
         val result = cli.test("audit --source /non/existent/file.kt --test /non/existent/test.kt")
 
         (result.statusCode != 0) shouldBe true
+    }
+
+    @Test
+    fun `audit command accepts --classpath and compiles against external dependencies`() {
+        val compiler =
+            com.gokorei.kronenberg.runner
+                .DefaultSnippetCompiler()
+        val helperSource =
+            """
+            package com.example.service
+            class Greeter {
+                fun greet(name: String): String = "Hello, " + name
+            }
+            """.trimIndent()
+        val compiledHelper = compiler.compile(helperSource)
+        val srcFile = createTempFile("ServiceCaller", ".kt")
+        val testFile = createTempFile("ServiceCallerTest", ".kt")
+
+        try {
+            compiledHelper.shouldBeInstanceOf<com.gokorei.kronenberg.runner.CompileResult.Compiled>()
+            val helperCp = (compiledHelper as com.gokorei.kronenberg.runner.CompileResult.Compiled).outDir.toString()
+
+            srcFile.writeText(
+                """
+                import com.example.service.Greeter
+
+                fun createGreeting(name: String): String {
+                    return Greeter().greet(name) + "!"
+                }
+                """.trimIndent(),
+            )
+            testFile.writeText(
+                """
+                fun testGreeting() {
+                    check(createGreeting("World") == "Hello, World!")
+                }
+                """.trimIndent(),
+            )
+
+            val cli = KronenbergCli().subcommands(AuditCommand())
+            val result = cli.test("audit --source $srcFile --test $testFile -cp $helperCp --threshold 50.0")
+
+            result.statusCode shouldBe 0
+            result.output shouldContain "KRONENBERG MUTATION AUDIT"
+        } finally {
+            compiler.cleanup(compiledHelper)
+            srcFile.toFile().delete()
+            testFile.toFile().delete()
+        }
     }
 }

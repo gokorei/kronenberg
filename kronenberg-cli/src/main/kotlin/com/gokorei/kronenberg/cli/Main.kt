@@ -204,6 +204,12 @@ public class AuditCommand :
         help = "Emit GitHub Actions workflow annotations for surviving mutants",
     ).flag(default = false)
 
+    private val classpath: String? by option(
+        "--classpath",
+        "-cp",
+        help = "Additional classpath entries (separated by colon, semicolon, or comma) for compilation and execution",
+    )
+
     override fun run() {
         val pipeline = DefaultMutationExecutionPipeline()
         val changedLines =
@@ -212,6 +218,13 @@ public class AuditCommand :
             } else {
                 null
             }
+
+        val extraClasspathList =
+            classpath
+                ?.split(Regex("[:;,]"))
+                ?.map { it.trim() }
+                ?.filter { it.isNotEmpty() }
+                ?: emptyList()
 
         val config =
             MutationConfig(
@@ -222,6 +235,7 @@ public class AuditCommand :
                 maxMutants = maxMutants,
                 targetLines = changedLines,
                 enableCache = cache,
+                extraClasspath = extraClasspathList,
             )
 
         val report: MutationReport =
