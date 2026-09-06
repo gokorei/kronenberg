@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Fixed `RangeOperatorMutator` to mutate `..` to `..<` (Kotlin 1.9+ `rangeUntil`) rather than `until`, preventing syntax errors caused by missing whitespace in expressions like `0..10`.
+
 ### Added
 - Initial project scaffolding for multi-module Gradle layout (`kronenberg-core`, `kronenberg-runner`, `kronenberg-cli`).
 - Open source community standards, governance, and documentation (Apache 2.0 License, Contributing Guide, Code of Conduct, Security Policy).
