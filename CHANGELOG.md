@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `COROUTINE`, `SCOPE_FUNCTION`, and `RESULT_ERROR_HANDLING` to `MutatorCategory`, and introduced `EqualityMutator` covering structural and referential equality comparisons (`==` $\leftrightarrow$ `!=`, `===` $\leftrightarrow$ `!==`).
 - Reclassified `ScopeFunctionMutator` and `TakeIfMutator` to `SCOPE_FUNCTION`, `CoroutineFlowMutator` and `CoroutineConcurrencyMutator` to `COROUTINE`, and `ResultMutator` to `RESULT_ERROR_HANDLING`.
 - Added `mutatorsForCategory` and `mutatorsForCategories` filtering APIs to `MutatorRegistry`.
+- Strengthened `DogfoodMutationAuditSpec` assertions across all 7 scenarios to assert non-trivial mutant generation (`totalMutants > 0`), kill rate (`killedCount > 0`), zero survival (`survivedCount == 0`), and threshold passage (`isPassed == true`).
 
 ### Added
 - Initial project scaffolding for multi-module Gradle layout (`kronenberg-core`, `kronenberg-runner`, `kronenberg-cli`).

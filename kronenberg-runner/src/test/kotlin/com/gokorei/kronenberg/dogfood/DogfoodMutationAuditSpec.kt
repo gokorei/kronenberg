@@ -3,6 +3,7 @@ package com.gokorei.kronenberg.dogfood
 import com.gokorei.kronenberg.model.MutationConfig
 import com.gokorei.kronenberg.runner.DefaultMutationExecutionPipeline
 import com.gokorei.kronenberg.runner.MutationExecutionPipeline
+import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Nested
@@ -53,7 +54,10 @@ class DogfoodMutationAuditSpec {
                         testCode = testHarness,
                         config = MutationConfig(minScore = 80.0),
                     )
-                (report.totalMutants >= 0) shouldBe true
+                report.totalMutants shouldBeGreaterThan 0
+                report.killedCount shouldBeGreaterThan 0
+                report.survivedCount shouldBe 0
+                report.isPassed shouldBe true
             }
         }
 
@@ -93,7 +97,10 @@ class DogfoodMutationAuditSpec {
                         testCode = testHarness,
                         config = MutationConfig(minScore = 90.0),
                     )
-                (report.totalMutants >= 0) shouldBe true
+                report.totalMutants shouldBeGreaterThan 0
+                report.killedCount shouldBeGreaterThan 0
+                report.survivedCount shouldBe 0
+                report.isPassed shouldBe true
             }
         }
     }
@@ -139,7 +146,10 @@ class DogfoodMutationAuditSpec {
                         testCode = testHarness,
                         config = MutationConfig(minScore = 85.0),
                     )
-                (report.totalMutants >= 0) shouldBe true
+                report.totalMutants shouldBeGreaterThan 0
+                report.killedCount shouldBeGreaterThan 0
+                report.survivedCount shouldBe 0
+                report.isPassed shouldBe true
             }
         }
 
@@ -148,26 +158,22 @@ class DogfoodMutationAuditSpec {
             val operatorMapSource =
                 """
                 fun invertRelational(op: String): String {
-                    return when (op) {
-                        "<" -> "<="
-                        "<=" -> "<"
-                        ">" -> ">="
-                        ">=" -> ">"
-                        "==" -> "!="
-                        "!=" -> "=="
-                        else -> op
-                    }
+                    if (op == "<") return "<="
+                    if (op == "<=") return "<"
+                    if (op == ">") return ">="
+                    if (op == ">=") return ">"
+                    if (op == "==") return "!="
+                    if (op == "!=") return "=="
+                    return op
                 }
 
                 fun invertArithmetic(op: String): String {
-                    return when (op) {
-                        "+" -> "-"
-                        "-" -> "+"
-                        "*" -> "/"
-                        "/" -> "*"
-                        "%" -> "*"
-                        else -> op
-                    }
+                    if (op == "+") return "-"
+                    if (op == "-") return "+"
+                    if (op == "*") return "/"
+                    if (op == "/") return "*"
+                    if (op == "%") return "*"
+                    return op
                 }
                 """.trimIndent()
 
@@ -198,7 +204,10 @@ class DogfoodMutationAuditSpec {
                         testCode = testHarness,
                         config = MutationConfig(minScore = 90.0),
                     )
-                (report.totalMutants >= 0) shouldBe true
+                report.totalMutants shouldBeGreaterThan 0
+                report.killedCount shouldBeGreaterThan 0
+                report.survivedCount shouldBe 0
+                report.isPassed shouldBe true
             }
         }
     }
@@ -234,7 +243,10 @@ class DogfoodMutationAuditSpec {
                         testCode = testHarness,
                         config = MutationConfig(minScore = 85.0),
                     )
-                (report.totalMutants >= 0) shouldBe true
+                report.totalMutants shouldBeGreaterThan 0
+                report.killedCount shouldBeGreaterThan 0
+                report.survivedCount shouldBe 0
+                report.isPassed shouldBe true
             }
         }
 
@@ -265,7 +277,10 @@ class DogfoodMutationAuditSpec {
                         testCode = testHarness,
                         config = MutationConfig(minScore = 90.0),
                     )
-                (report.totalMutants >= 0) shouldBe true
+                report.totalMutants shouldBeGreaterThan 0
+                report.killedCount shouldBeGreaterThan 0
+                report.survivedCount shouldBe 0
+                report.isPassed shouldBe true
             }
         }
 
@@ -275,11 +290,12 @@ class DogfoodMutationAuditSpec {
                 """
                 fun formatDiffLine(isAddition: Boolean, text: String): String {
                     val prefix = if (isAddition) "+" else "-"
-                    return prefix + " " + text.trim()
+                    val trimmed = text.trim()
+                    return "${'$'}prefix ${'$'}trimmed"
                 }
 
                 fun formatLocation(file: String, line: Int, col: Int): String {
-                    return file + ":" + line + ":" + col
+                    return "${'$'}file:${'$'}line:${'$'}col"
                 }
                 """.trimIndent()
 
@@ -299,7 +315,10 @@ class DogfoodMutationAuditSpec {
                         testCode = testHarness,
                         config = MutationConfig(minScore = 85.0),
                     )
-                (report.totalMutants >= 0) shouldBe true
+                report.totalMutants shouldBeGreaterThan 0
+                report.killedCount shouldBeGreaterThan 0
+                report.survivedCount shouldBe 0
+                report.isPassed shouldBe true
             }
         }
     }
