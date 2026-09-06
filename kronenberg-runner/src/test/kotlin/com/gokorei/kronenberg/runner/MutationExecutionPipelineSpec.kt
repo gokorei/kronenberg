@@ -94,6 +94,48 @@ class MutationExecutionPipelineSpec {
     }
 
     @Test
+    fun `auto-synthesizes main dispatcher for class-based test suites with JUnit5 annotations`() {
+        val source =
+            """
+            fun calculateDiscount(price: Double, isMember: Boolean): Double {
+                if (isMember) {
+                    return price * 0.8
+                }
+                return price
+            }
+            """.trimIndent()
+
+        val classBasedTest =
+            """
+            import org.junit.jupiter.api.Test
+
+            class DiscountTest {
+                @Test
+                fun verifyMemberDiscount() {
+                    check(calculateDiscount(100.0, true) == 80.0)
+                }
+
+                @Test
+                fun verifyNonMemberDiscount() {
+                    check(calculateDiscount(100.0, false) == 100.0)
+                }
+            }
+            """.trimIndent()
+
+        runBlocking {
+            val report = pipeline.execute(source, classBasedTest, MutationConfig())
+            report.baselineError shouldBe null
+            report.totalMutants shouldNotBe 0
+            report.killedCount shouldNotBe 0
+            val killed = report.results.firstOrNull { it.status == MutantStatus.KILLED }
+            killed.shouldNotBeNull()
+            val message = killed.failureMessage
+            message.shouldNotBeNull()
+            message shouldContain "DiscountTest"
+        }
+    }
+
+    @Test
     fun `executes mutants concurrently and outputs deterministic results`() {
         val source =
             """
@@ -158,8 +200,8 @@ class MutationExecutionPipelineSpec {
             """.trimIndent()
         val compiledHelper = compiler.compile(externalHelperSource)
         try {
-            compiledHelper.shouldBeInstanceOf<CompileResult.Compiled>()
-            val helperOutDir = (compiledHelper as CompileResult.Compiled).outDir.toString()
+            val compiled = compiledHelper.shouldBeInstanceOf<CompileResult.Compiled>()
+            val helperOutDir = compiled.outDir.toString()
 
             val source =
                 """

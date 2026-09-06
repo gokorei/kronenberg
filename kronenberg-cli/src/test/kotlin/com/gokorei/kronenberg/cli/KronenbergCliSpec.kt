@@ -219,8 +219,8 @@ class KronenbergCliSpec {
         val testFile = createTempFile("ServiceCallerTest", ".kt")
 
         try {
-            compiledHelper.shouldBeInstanceOf<com.gokorei.kronenberg.runner.CompileResult.Compiled>()
-            val helperCp = (compiledHelper as com.gokorei.kronenberg.runner.CompileResult.Compiled).outDir.toString()
+            val compiled = compiledHelper.shouldBeInstanceOf<com.gokorei.kronenberg.runner.CompileResult.Compiled>()
+            val helperCp = compiled.outDir.toString()
 
             srcFile.writeText(
                 """
