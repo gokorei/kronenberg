@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Fixed `RangeOperatorMutator` to mutate `..` to `..<` (Kotlin 1.9+ `rangeUntil`) rather than `until`, preventing syntax errors caused by missing whitespace in expressions like `0..10`.
 - Fixed `DestructuringMutator` to use exact PSI parenthesis tokens (`lPar` and `rPar`), preventing syntax corruption when whitespace is present inside destructuring declarations.
+- Reclassified `PreconditionMutator` from `CONDITION_REPLACEMENT` to `PRECONDITION` so defensive precondition assertions (`require`, `check`, `requireNotNull`, `checkNotNull`) are active during standard audit runs.
 
 ### Added
 - Initial project scaffolding for multi-module Gradle layout (`kronenberg-core`, `kronenberg-runner`, `kronenberg-cli`).

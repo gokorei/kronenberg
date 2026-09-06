@@ -10,7 +10,7 @@ import org.jetbrains.kotlin.psi.KtPrefixExpression
  */
 public class PreconditionMutator : TypedAstMutator<KtCallExpression>(KtCallExpression::class) {
     override val name: String = "PreconditionMutator"
-    override val category: MutatorCategory = MutatorCategory.CONDITION_REPLACEMENT
+    override val category: MutatorCategory = MutatorCategory.PRECONDITION
     override val description: String = "Mutates defensive precondition assertions (require, check, requireNotNull, checkNotNull)"
 
     override fun canMutateTyped(element: KtCallExpression): Boolean {
