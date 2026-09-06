@@ -48,6 +48,13 @@ public class MutatorRegistry(
                 SmartCastMutator(),
                 StringTemplateMutator(),
                 CoroutineFlowMutator(),
+                TakeIfMutator(),
+                ScopeFunctionMutator(),
+                PreconditionMutator(),
+                ResultMutator(),
+                DataClassCopyMutator(),
+                DestructuringMutator(),
+                CoroutineConcurrencyMutator(),
             )
 
         public fun default(): MutatorRegistry = MutatorRegistry(defaultMutators())

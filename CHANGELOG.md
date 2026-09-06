@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dokka V2 documentation generation.
 - `kronenberg-core`:
   - Pluggable `AstMutator` SPI and `MutatorRegistry` with dynamic SPI extension support.
-  - 19 AST mutation rules powered by pure K2 PSI AST visitors:
+  - 26 AST mutation rules powered by pure K2 PSI AST visitors:
     - `RelationalBoundaryMutator`: `<` $\leftrightarrow$ `<=`, `>` $\leftrightarrow$ `>=`, `==` $\leftrightarrow$ `!=`
     - `ArithmeticOperatorMutator`: `+` $\leftrightarrow$ `-`, `*` $\leftrightarrow$ `/`, `%` $\leftrightarrow$ `*`
     - `CompoundAssignmentMutator`: `+=` $\leftrightarrow$ `-=`, `*=` $\leftrightarrow$ `/=`, `%=` $\leftrightarrow$ `*=`
@@ -36,6 +36,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - `SmartCastMutator`: `is` $\leftrightarrow$ `!is`, `as` $\leftrightarrow$ `as?`
     - `StringTemplateMutator`: Interpolated expressions `${expr}` $\to$ `""`
     - `CoroutineFlowMutator`: `delay(x)` $\to$ `delay(0L)` and Flow stream operator mutations
+    - `TakeIfMutator`: `takeIf` $\leftrightarrow$ `takeUnless` predicate inversions
+    - `ScopeFunctionMutator`: `apply` $\leftrightarrow$ `also`, `let` $\leftrightarrow$ `run` scope function swapping
+    - `PreconditionMutator`: `require`/`check` condition negation and bypass, `requireNotNull`/`checkNotNull` unwrapping
+    - `ResultMutator`: `Result.getOrElse`/`getOrDefault`/`getOrNull` $\to$ `getOrThrow`, `onSuccess` $\leftrightarrow$ `onFailure`
+    - `DataClassCopyMutator`: Data class `copy()` parameter override stripping and single-argument omission
+    - `DestructuringMutator`: Multi-variable destructuring declaration positional variable swapping
+    - `CoroutineConcurrencyMutator`: `Dispatchers.IO` $\leftrightarrow$ `Default`, `SupervisorJob()` $\leftrightarrow$ `Job()`, `supervisorScope` $\leftrightarrow$ `coroutineScope`, `async` $\to$ `launch`
   - `AstMutantGenerator` for First-Order (FOM) and Higher-Order (HOM) compound mutant generation with strided sampling and line-range targeting.
   - Pure in-memory AST parsing via `K2SnippetFrontend.parsePsi`.
 - `kronenberg-runner`:
