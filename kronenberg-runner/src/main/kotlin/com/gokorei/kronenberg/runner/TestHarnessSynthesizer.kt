@@ -2,6 +2,8 @@ package com.gokorei.kronenberg.runner
 
 import com.gokorei.kronenberg.ast.K2SnippetFrontend
 import com.gokorei.kronenberg.model.AstMutant
+import org.jetbrains.kotlin.psi.KtClass
+import org.jetbrains.kotlin.psi.KtClassOrObject
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtNamedFunction
 
@@ -11,6 +13,7 @@ import org.jetbrains.kotlin.psi.KtNamedFunction
 public data class CandidateTestFunction(
     val name: String,
     val calledFunctionNames: Set<String>,
+    val className: String? = null,
 )
 
 /**
@@ -49,22 +52,47 @@ public object TestHarnessSynthesizer {
 
         val candidateTests = mutableListOf<CandidateTestFunction>()
         if (!hasMain) {
-            val testFunctions =
+            // 1. Top-level test functions
+            val topLevelTestFunctions =
                 testFile.declarations.filterIsInstance<KtNamedFunction>().filter { fn ->
-                    val name = fn.name ?: ""
-                    val isTestNamed = name.startsWith("test", ignoreCase = true) || name.endsWith("test", ignoreCase = true)
-                    val isAnnotated = fn.annotationEntries.any { it.shortName?.asString() == "Test" }
-                    (isTestNamed || isAnnotated) && fn.valueParameters.isEmpty()
+                    isTestFunctionCandidate(fn)
                 }
 
-            for (fn in testFunctions) {
+            for (fn in topLevelTestFunctions) {
                 val fnName = fn.name ?: continue
                 val calledNames = CallGraphReachability.extractCalledFunctionNames(fn)
-                candidateTests.add(CandidateTestFunction(fnName, calledNames))
+                candidateTests.add(CandidateTestFunction(fnName, calledNames, className = null))
+            }
+
+            // 2. Class-based member test functions
+            val testClasses =
+                testFile.declarations.filterIsInstance<KtClass>().filter { ktClass ->
+                    !ktClass.isInterface() && !ktClass.isAnnotation() && !ktClass.isEnum()
+                }
+
+            for (ktClass in testClasses) {
+                val className = ktClass.name ?: continue
+                val memberFunctions =
+                    ktClass.body?.functions.orEmpty().filter { fn ->
+                        isTestFunctionCandidate(fn)
+                    }
+
+                for (fn in memberFunctions) {
+                    val fnName = fn.name ?: continue
+                    val calledNames = CallGraphReachability.extractCalledFunctionNames(fn)
+                    candidateTests.add(CandidateTestFunction(fnName, calledNames, className = className))
+                }
             }
         }
 
         return ParsedTestCode(pkg, imports, rawBody, hasMain, candidateTests)
+    }
+
+    private fun isTestFunctionCandidate(fn: KtNamedFunction): Boolean {
+        val name = fn.name ?: ""
+        val isTestNamed = name.startsWith("test", ignoreCase = true) || name.endsWith("test", ignoreCase = true)
+        val isAnnotated = fn.annotationEntries.any { it.shortName?.asString() == "Test" }
+        return (isTestNamed || isAnnotated) && fn.valueParameters.isEmpty()
     }
 
     /**
@@ -102,8 +130,16 @@ public object TestHarnessSynthesizer {
                 sb.appendLine()
                 sb.appendLine("fun main() {")
                 orderedTests.forEach { testFn ->
+                    val displayName =
+                        if (testFn.className != null) "${testFn.className}.${testFn.name}()" else "${testFn.name}()"
+                    val invocation =
+                        if (testFn.className != null) {
+                            "${testFn.className}().${testFn.name}()"
+                        } else {
+                            "${testFn.name}()"
+                        }
                     sb.appendLine(
-                        "    try { ${testFn.name}() } catch (t: Throwable) { throw AssertionError(\"Killed by ${testFn.name}(): \" + t.message, t) }",
+                        "    try { $invocation } catch (t: Throwable) { throw AssertionError(\"Killed by $displayName: \" + t.message, t) }",
                     )
                 }
                 sb.appendLine("}")

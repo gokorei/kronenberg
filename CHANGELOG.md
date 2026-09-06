@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Strengthened `DogfoodMutationAuditSpec` assertions across all 7 scenarios to assert non-trivial mutant generation (`totalMutants > 0`), kill rate (`killedCount > 0`), zero survival (`survivedCount == 0`), and threshold passage (`isPassed == true`).
 
 ### Added
+- Supported class-based test discovery and synthetic harness generation in `TestHarnessSynthesizer`, discovering member test functions (`@Test` or `test*` naming) inside `KtClass` declarations and instantiating test classes with per-test kill attribution in synthetic `fun main()`.
 - Added `--classpath` / `-cp` option to `AuditCommand` CLI and wired `extraClasspath: List<String>` into `MutationConfig` and `MutationExecutionPipeline` for compiling and executing snippets against external dependencies.
 - Preserved source file path (`filePath: String? = null`) on `AstMutant`, `AstEdit`, and `MutationContext`, propagating relative file paths throughout directory audits into terminal output, HTML reports, and SARIF code scanning alerts.
 - Initial project scaffolding for multi-module Gradle layout (`kronenberg-core`, `kronenberg-runner`, `kronenberg-cli`).
