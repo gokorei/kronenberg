@@ -44,6 +44,9 @@ public enum class MutatorCategory {
     RANGE_OPERATOR,
     EXTREME,
     PRECONDITION,
+    COROUTINE,
+    SCOPE_FUNCTION,
+    RESULT_ERROR_HANDLING,
 }
 
 /**

@@ -9,21 +9,19 @@ import org.jetbrains.kotlin.psi.KtPostfixExpression
 import org.jetbrains.kotlin.psi.KtPrefixExpression
 
 /**
- * Mutates relational boundary operators (< <-> <=, > <-> >=, == <-> !=).
+ * Mutates relational boundary operators (< <-> <=, > <-> >=).
  */
 public class RelationalBoundaryMutator : TypedAstMutator<KtBinaryExpression>(KtBinaryExpression::class) {
     override val name: String = "RelationalBoundaryMutator"
     override val category: MutatorCategory = MutatorCategory.RELATIONAL_BOUNDARY
-    override val description: String = "Mutates relational comparisons (< <-> <=, > <-> >=, == <-> !=)"
+    override val description: String = "Mutates relational comparisons (< <-> <=, > <-> >=)"
 
     override fun canMutateTyped(element: KtBinaryExpression): Boolean {
         val sign = element.operationReference.operationSignTokenType
         return sign == KtTokens.LT ||
             sign == KtTokens.LTEQ ||
             sign == KtTokens.GT ||
-            sign == KtTokens.GTEQ ||
-            sign == KtTokens.EQEQ ||
-            sign == KtTokens.EXCLEQ
+            sign == KtTokens.GTEQ
     }
 
     override fun mutateTyped(
@@ -37,8 +35,42 @@ public class RelationalBoundaryMutator : TypedAstMutator<KtBinaryExpression>(KtB
                 KtTokens.LTEQ -> listOf("<" to "Replaced <= with <")
                 KtTokens.GT -> listOf(">=" to "Replaced > with >=")
                 KtTokens.GTEQ -> listOf(">" to "Replaced >= with >")
+                else -> emptyList()
+            }
+
+        return replacements.map { (replacement, desc) ->
+            context.edit(opRef, replacement, desc, originalText = element.text)
+        }
+    }
+}
+
+/**
+ * Mutates structural and referential equality operators (== <-> !=, === <-> !==).
+ */
+public class EqualityMutator : TypedAstMutator<KtBinaryExpression>(KtBinaryExpression::class) {
+    override val name: String = "EqualityMutator"
+    override val category: MutatorCategory = MutatorCategory.EQUALITY
+    override val description: String = "Mutates equality comparisons (== <-> !=, === <-> !==)"
+
+    override fun canMutateTyped(element: KtBinaryExpression): Boolean {
+        val sign = element.operationReference.operationSignTokenType
+        return sign == KtTokens.EQEQ ||
+            sign == KtTokens.EXCLEQ ||
+            sign == KtTokens.EQEQEQ ||
+            sign == KtTokens.EXCLEQEQEQ
+    }
+
+    override fun mutateTyped(
+        element: KtBinaryExpression,
+        context: MutationContext,
+    ): List<AstEdit> {
+        val opRef = element.operationReference
+        val replacements =
+            when (opRef.operationSignTokenType) {
                 KtTokens.EQEQ -> listOf("!=" to "Replaced == with !=")
                 KtTokens.EXCLEQ -> listOf("==" to "Replaced != with ==")
+                KtTokens.EQEQEQ -> listOf("!==" to "Replaced === with !==")
+                KtTokens.EXCLEQEQEQ -> listOf("===" to "Replaced !== with ===")
                 else -> emptyList()
             }
 

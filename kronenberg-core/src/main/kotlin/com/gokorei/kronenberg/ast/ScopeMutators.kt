@@ -9,7 +9,7 @@ import org.jetbrains.kotlin.psi.KtCallExpression
  */
 public class TakeIfMutator : TypedAstMutator<KtCallExpression>(KtCallExpression::class) {
     override val name: String = "TakeIfMutator"
-    override val category: MutatorCategory = MutatorCategory.COLLECTION_OPERATOR
+    override val category: MutatorCategory = MutatorCategory.SCOPE_FUNCTION
     override val description: String = "Inverts predicate filtering calls (takeIf <-> takeUnless)"
 
     override fun canMutateTyped(element: KtCallExpression): Boolean {
@@ -39,7 +39,7 @@ public class TakeIfMutator : TypedAstMutator<KtCallExpression>(KtCallExpression:
  */
 public class ScopeFunctionMutator : TypedAstMutator<KtCallExpression>(KtCallExpression::class) {
     override val name: String = "ScopeFunctionMutator"
-    override val category: MutatorCategory = MutatorCategory.COLLECTION_OPERATOR
+    override val category: MutatorCategory = MutatorCategory.SCOPE_FUNCTION
     override val description: String = "Mutates Kotlin standard library scope functions (apply <-> also, let <-> run)"
 
     override fun canMutateTyped(element: KtCallExpression): Boolean {

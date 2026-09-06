@@ -37,7 +37,7 @@ class CoroutineConcurrencyMutatorsSpec {
 
         @Test
         fun `mutates Dispatchers IO to Default and vice versa`() {
-            mutator.category shouldBe MutatorCategory.COLLECTION_OPERATOR
+            mutator.category shouldBe MutatorCategory.COROUTINE
             val editsIo = findMutations("suspend fun runWork() = withContext(Dispatchers.IO) { 1 }", mutator)
             editsIo.any { it.replacement == "Dispatchers.Default" } shouldBe true
 

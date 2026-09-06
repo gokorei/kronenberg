@@ -36,7 +36,7 @@ class ResultMutatorsSpec {
 
         @Test
         fun `mutates getOrElse and getOrDefault and getOrNull to getOrThrow`() {
-            mutator.category shouldBe MutatorCategory.COLLECTION_OPERATOR
+            mutator.category shouldBe MutatorCategory.RESULT_ERROR_HANDLING
             val edits1 = findMutations("fun compute(res: Result<Int>) = res.getOrElse { 0 }", mutator)
             edits1.any { it.replacement == "getOrThrow" } shouldBe true
 
