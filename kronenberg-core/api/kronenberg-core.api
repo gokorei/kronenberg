@@ -11,8 +11,8 @@ public final class com/gokorei/kronenberg/ast/AstMutantGenerator {
 	public fun <init> ()V
 	public fun <init> (Lcom/gokorei/kronenberg/ast/MutatorRegistry;)V
 	public synthetic fun <init> (Lcom/gokorei/kronenberg/ast/MutatorRegistry;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun generateMutants (Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutationConfig;)Ljava/util/List;
-	public static synthetic fun generateMutants$default (Lcom/gokorei/kronenberg/ast/AstMutantGenerator;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutationConfig;ILjava/lang/Object;)Ljava/util/List;
+	public final fun generateMutants (Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutationConfig;Ljava/lang/String;)Ljava/util/List;
+	public static synthetic fun generateMutants$default (Lcom/gokorei/kronenberg/ast/AstMutantGenerator;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutationConfig;Ljava/lang/String;ILjava/lang/Object;)Ljava/util/List;
 }
 
 public abstract interface class com/gokorei/kronenberg/ast/AstMutator {
@@ -145,16 +145,19 @@ public final class com/gokorei/kronenberg/ast/LiteralMutationMutator : com/gokor
 }
 
 public final class com/gokorei/kronenberg/ast/MutationContext {
-	public fun <init> (Ljava/lang/String;Lorg/jetbrains/kotlin/psi/KtFile;)V
+	public fun <init> (Ljava/lang/String;Lorg/jetbrains/kotlin/psi/KtFile;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Lorg/jetbrains/kotlin/psi/KtFile;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Lorg/jetbrains/kotlin/psi/KtFile;
-	public final fun copy (Ljava/lang/String;Lorg/jetbrains/kotlin/psi/KtFile;)Lcom/gokorei/kronenberg/ast/MutationContext;
-	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/ast/MutationContext;Ljava/lang/String;Lorg/jetbrains/kotlin/psi/KtFile;ILjava/lang/Object;)Lcom/gokorei/kronenberg/ast/MutationContext;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Lorg/jetbrains/kotlin/psi/KtFile;Ljava/lang/String;)Lcom/gokorei/kronenberg/ast/MutationContext;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/ast/MutationContext;Ljava/lang/String;Lorg/jetbrains/kotlin/psi/KtFile;Ljava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/ast/MutationContext;
 	public final fun edit (Lorg/jetbrains/kotlin/com/intellij/psi/PsiElement;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/gokorei/kronenberg/model/AstEdit;
 	public static synthetic fun edit$default (Lcom/gokorei/kronenberg/ast/MutationContext;Lorg/jetbrains/kotlin/com/intellij/psi/PsiElement;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/model/AstEdit;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getCode ()Ljava/lang/String;
 	public final fun getFile ()Lorg/jetbrains/kotlin/psi/KtFile;
+	public final fun getFilePath ()Ljava/lang/String;
 	public fun hashCode ()I
 	public final fun lineAndCol (I)Lkotlin/Pair;
 	public fun toString ()Ljava/lang/String;
@@ -325,7 +328,8 @@ public final class com/gokorei/kronenberg/ast/VoidMethodCallMutator : com/gokore
 
 public final class com/gokorei/kronenberg/model/AstEdit {
 	public static final field Companion Lcom/gokorei/kronenberg/model/AstEdit$Companion;
-	public fun <init> (IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;II)V
+	public fun <init> (IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;IILjava/lang/String;)V
+	public synthetic fun <init> (IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;IILjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()I
 	public final fun component2 ()I
 	public final fun component3 ()Ljava/lang/String;
@@ -333,12 +337,14 @@ public final class com/gokorei/kronenberg/model/AstEdit {
 	public final fun component5 ()Ljava/lang/String;
 	public final fun component6 ()I
 	public final fun component7 ()I
-	public final fun copy (IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;II)Lcom/gokorei/kronenberg/model/AstEdit;
-	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/model/AstEdit;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;IIILjava/lang/Object;)Lcom/gokorei/kronenberg/model/AstEdit;
+	public final fun component8 ()Ljava/lang/String;
+	public final fun copy (IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;IILjava/lang/String;)Lcom/gokorei/kronenberg/model/AstEdit;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/model/AstEdit;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;IILjava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/model/AstEdit;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getColumn ()I
 	public final fun getDescription ()Ljava/lang/String;
 	public final fun getEndOffset ()I
+	public final fun getFilePath ()Ljava/lang/String;
 	public final fun getLine ()I
 	public final fun getOriginalText ()Ljava/lang/String;
 	public final fun getReplacement ()Ljava/lang/String;
@@ -364,7 +370,8 @@ public final class com/gokorei/kronenberg/model/AstEdit$Companion {
 
 public final class com/gokorei/kronenberg/model/AstMutant {
 	public static final field Companion Lcom/gokorei/kronenberg/model/AstMutant$Companion;
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutatorCategory;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutatorCategory;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutatorCategory;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()Lcom/gokorei/kronenberg/model/MutatorCategory;
@@ -373,11 +380,13 @@ public final class com/gokorei/kronenberg/model/AstMutant {
 	public final fun component6 ()Ljava/lang/String;
 	public final fun component7 ()Ljava/lang/String;
 	public final fun component8 ()Ljava/lang/String;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutatorCategory;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/gokorei/kronenberg/model/AstMutant;
-	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/model/AstMutant;Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutatorCategory;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/model/AstMutant;
+	public final fun component9 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutatorCategory;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/gokorei/kronenberg/model/AstMutant;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/model/AstMutant;Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutatorCategory;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/model/AstMutant;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getCategory ()Lcom/gokorei/kronenberg/model/MutatorCategory;
 	public final fun getColumn ()I
+	public final fun getFilePath ()Ljava/lang/String;
 	public final fun getId ()Ljava/lang/String;
 	public final fun getLine ()I
 	public final fun getMutatedSource ()Ljava/lang/String;

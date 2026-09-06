@@ -135,10 +135,11 @@ public object HtmlReportExporter {
                             MutantStatus.COMPILE_ERROR -> "badge-error" to "COMPILE_ERROR"
                             MutantStatus.BASELINE_ERROR -> "badge-error" to "BASELINE_ERROR"
                         }
+                    val locationText = if (m.filePath != null) "${m.filePath}:${m.line}:${m.column}" else "L${m.line}:C${m.column}"
                     appendLine("        <tr>")
                     appendLine("          <td><span class=\"badge $badgeClass\">$badgeText</span></td>")
                     appendLine("          <td>${m.mutatorName}</td>")
-                    appendLine("          <td>L${m.line}:C${m.column}</td>")
+                    appendLine("          <td>${escapeHtml(locationText)}</td>")
                     appendLine("          <td><code>${escapeHtml(m.originalText)}</code></td>")
                     appendLine("          <td><code>${escapeHtml(m.replacementText)}</code></td>")
                     appendLine("          <td>${escapeHtml(res.failureMessage.orEmpty())}</td>")
@@ -205,7 +206,7 @@ public object SarifReportExporter {
                                 buildJsonObject {
                                     putJsonObject("physicalLocation") {
                                         putJsonObject("artifactLocation") {
-                                            put("uri", sourceFilePath)
+                                            put("uri", m.filePath ?: sourceFilePath)
                                         }
                                         putJsonObject("region") {
                                             put("startLine", m.line)
@@ -252,8 +253,9 @@ public object SarifReportExporter {
         val survived = report.results.filter { it.status == MutantStatus.SURVIVED }
         for (res in survived) {
             val m = res.mutant
+            val targetPath = m.filePath ?: sourceFilePath
             println(
-                "::warning file=$sourceFilePath,line=${m.line},col=${m.column}::Surviving mutant: replaced '${m.originalText}' with '${m.replacementText}'",
+                "::warning file=$targetPath,line=${m.line},col=${m.column}::Surviving mutant: replaced '${m.originalText}' with '${m.replacementText}'",
             )
         }
     }

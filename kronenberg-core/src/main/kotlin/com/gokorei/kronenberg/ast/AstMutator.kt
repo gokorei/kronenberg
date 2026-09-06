@@ -14,6 +14,7 @@ import kotlin.reflect.cast
 public data class MutationContext(
     val code: String,
     val file: KtFile,
+    val filePath: String? = null,
 ) {
     public fun lineAndCol(offset: Int): Pair<Int, Int> = computeLineAndColumn(code, offset)
 
@@ -36,6 +37,7 @@ public data class MutationContext(
             description = description,
             line = line,
             column = col,
+            filePath = filePath,
         )
     }
 }

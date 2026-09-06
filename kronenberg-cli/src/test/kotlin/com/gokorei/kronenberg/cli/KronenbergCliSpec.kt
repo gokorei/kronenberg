@@ -2,6 +2,7 @@ package com.gokorei.kronenberg.cli
 
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.testing.test
+import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
@@ -151,6 +152,44 @@ class KronenbergCliSpec {
         } finally {
             srcDir.toFile().deleteRecursively()
             testDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `audit command preserves relative file paths in batch directory audit`() {
+        val srcDir = createTempDirectory("batch-src-paths")
+        val testDir = createTempDirectory("batch-test-paths")
+        val htmlFile = createTempFile("report", ".html")
+        val sarifFile = createTempFile("report", ".sarif")
+        try {
+            val subPkg = srcDir.resolve("pkg")
+            java.nio.file.Files
+                .createDirectories(subPkg)
+            val src1 = subPkg.resolve("MathUtils.kt")
+            val test1 = testDir.resolve("MathUtilsTest.kt")
+            src1.writeText("fun square(x: Int): Int = x * x")
+            test1.writeText("fun testSquare() { /* unasserted, mutant survives */ }")
+
+            val cli = KronenbergCli().subcommands(AuditCommand())
+            val result =
+                cli.test(
+                    "audit --source-dir $srcDir --test-dir $testDir --json --html-report $htmlFile --sarif $sarifFile --threshold 0.0",
+                )
+
+            result.statusCode shouldBe 0
+            val report =
+                kotlinx.serialization.json.Json
+                    .decodeFromString<com.gokorei.kronenberg.model.MutationReport>(result.output)
+            report.totalMutants shouldBeGreaterThan 0
+            report.results.all { it.mutant.filePath == "pkg/MathUtils.kt" } shouldBe true
+
+            htmlFile.readText() shouldContain "pkg/MathUtils.kt"
+            sarifFile.readText() shouldContain "pkg/MathUtils.kt"
+        } finally {
+            srcDir.toFile().deleteRecursively()
+            testDir.toFile().deleteRecursively()
+            htmlFile.toFile().delete()
+            sarifFile.toFile().delete()
         }
     }
 

@@ -272,6 +272,7 @@ public class AuditCommand :
                 sourceCode = src.readText(),
                 testCode = tst.readText(),
                 config = config,
+                sourceFilePath = src.fileName.toString(),
             )
         }
 
@@ -315,12 +316,14 @@ public class AuditCommand :
 
             val testCode = matchingTestFile?.readText() ?: ""
             if (testCode.isNotBlank()) {
+                val relPath = srcDir.relativize(srcFile).toString()
                 val fileReport =
                     runBlocking {
                         pipeline.execute(
                             sourceCode = srcFile.readText(),
                             testCode = testCode,
                             config = config,
+                            sourceFilePath = relPath,
                         )
                     }
                 totalMutants += fileReport.totalMutants
@@ -372,7 +375,7 @@ public class AuditCommand :
             echo("\n\u001B[31m🚨 SURVIVED MUTANTS (${survived.size}):\u001B[0m")
             survived.forEachIndexed { idx, res ->
                 val m = res.mutant
-                val srcLabel = source?.fileName?.toString() ?: "source"
+                val srcLabel = m.filePath ?: source?.fileName?.toString() ?: "source"
                 echo(" [$idx] ${m.mutatorName} at $srcLabel:${m.line}:${m.column}")
                 echo("     - Original:    ${m.originalText}")
                 echo("     + Replacement: ${m.replacementText}")
