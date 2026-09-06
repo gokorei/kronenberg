@@ -71,5 +71,22 @@ class DataClassMutatorsSpec {
             edits.size shouldBe 1
             edits.first().replacement shouldBe "(b, a, c)"
         }
+
+        @Test
+        fun `correctly handles destructuring with whitespace inside parentheses`() {
+            val code = "fun split(p: Pair<Int, String>) { val (  first  ,  second  ) = p }"
+            val edits = findMutations(code, mutator)
+            edits.size shouldBe 1
+            edits.first().replacement shouldBe "(second, first)"
+
+            val generator = AstMutantGenerator()
+            val mutants =
+                generator.generateMutants(
+                    code,
+                    com.gokorei.kronenberg.model
+                        .MutationConfig(includeExtreme = true),
+                )
+            mutants.any { it.mutatedSource.contains("val (second, first) = p") } shouldBe true
+        }
     }
 }
