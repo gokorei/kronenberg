@@ -37,7 +37,7 @@ class ScopeMutatorsSpec {
 
         @Test
         fun `inverts takeIf to takeUnless`() {
-            mutator.category shouldBe MutatorCategory.COLLECTION_OPERATOR
+            mutator.category shouldBe MutatorCategory.SCOPE_FUNCTION
             val edits = findMutations("fun check(x: Int) = x.takeIf { it > 0 }", mutator)
             edits.size shouldBe 1
             edits.first().replacement shouldBe "takeUnless"
@@ -58,6 +58,7 @@ class ScopeMutatorsSpec {
 
         @Test
         fun `mutates apply to also`() {
+            mutator.category shouldBe MutatorCategory.SCOPE_FUNCTION
             val edits = findMutations("fun configure(sb: StringBuilder) = sb.apply { append(1) }", mutator)
             edits.any { it.replacement == "also" } shouldBe true
         }

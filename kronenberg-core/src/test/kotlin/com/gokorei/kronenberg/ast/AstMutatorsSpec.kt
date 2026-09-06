@@ -47,15 +47,58 @@ class AstMutatorsSpec {
         }
 
         @Test
+        fun `mutates less than or equal to less than`() {
+            val edits = findMutations("fun check(x: Int): Boolean = x <= 10", mutator)
+            edits.firstOrNull()?.replacement shouldBe "<"
+        }
+
+        @Test
+        fun `mutates greater than to greater than or equal`() {
+            val edits = findMutations("fun check(x: Int): Boolean = x > 10", mutator)
+            edits.firstOrNull()?.replacement shouldBe ">="
+        }
+
+        @Test
         fun `mutates greater than or equal to greater than`() {
             val edits = findMutations("fun check(x: Int): Boolean = x >= 10", mutator)
             edits.firstOrNull()?.replacement shouldBe ">"
         }
 
         @Test
+        fun `does not mutate equality or inequality`() {
+            val eqEdits = findMutations("fun check(x: Int): Boolean = x == 10", mutator)
+            eqEdits shouldBe emptyList()
+            val neEdits = findMutations("fun check(x: Int): Boolean = x != 10", mutator)
+            neEdits shouldBe emptyList()
+        }
+    }
+
+    @Nested
+    inner class EqualityMutatorTests {
+        private val mutator = EqualityMutator()
+
+        @Test
         fun `mutates equality to inequality`() {
+            mutator.category shouldBe MutatorCategory.EQUALITY
             val edits = findMutations("fun check(x: Int): Boolean = x == 10", mutator)
             edits.firstOrNull()?.replacement shouldBe "!="
+        }
+
+        @Test
+        fun `mutates inequality to equality`() {
+            mutator.category shouldBe MutatorCategory.EQUALITY
+            val edits = findMutations("fun check(x: Int): Boolean = x != 10", mutator)
+            edits.firstOrNull()?.replacement shouldBe "=="
+        }
+
+        @Test
+        fun `mutates referential equality and inequality`() {
+            mutator.category shouldBe MutatorCategory.EQUALITY
+            val editsEq = findMutations("fun check(a: Any, b: Any): Boolean = a === b", mutator)
+            editsEq.firstOrNull()?.replacement shouldBe "!=="
+
+            val editsNe = findMutations("fun check(a: Any, b: Any): Boolean = a !== b", mutator)
+            editsNe.firstOrNull()?.replacement shouldBe "==="
         }
     }
 
@@ -359,7 +402,7 @@ class AstMutatorsSpec {
 
         @Test
         fun `mutates delay call argument to zero`() {
-            mutator.category shouldBe MutatorCategory.COLLECTION_OPERATOR
+            mutator.category shouldBe MutatorCategory.COROUTINE
             val edits = findMutations("suspend fun wait() { delay(1000L) }", mutator)
             edits.firstOrNull()?.replacement shouldBe "0L"
         }

@@ -11,7 +11,7 @@ import org.jetbrains.kotlin.psi.KtDotQualifiedExpression
  */
 public class CoroutineConcurrencyMutator : AstMutator {
     override val name: String = "CoroutineConcurrencyMutator"
-    override val category: MutatorCategory = MutatorCategory.COLLECTION_OPERATOR
+    override val category: MutatorCategory = MutatorCategory.COROUTINE
     override val description: String = "Mutates Kotlin coroutine dispatchers, cancellation hierarchies, and builders"
 
     override fun canMutate(element: PsiElement): Boolean {
