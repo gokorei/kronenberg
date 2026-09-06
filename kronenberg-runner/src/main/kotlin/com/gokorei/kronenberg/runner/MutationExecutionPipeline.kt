@@ -22,6 +22,7 @@ public interface MutationExecutionPipeline : AutoCloseable {
         sourceCode: String,
         testCode: String,
         config: MutationConfig = MutationConfig(),
+        sourceFilePath: String? = null,
     ): MutationReport
 }
 
@@ -38,6 +39,7 @@ public class DefaultMutationExecutionPipeline(
         sourceCode: String,
         testCode: String,
         config: MutationConfig,
+        sourceFilePath: String?,
     ): MutationReport {
         val trimmedSource = sourceCode.trim()
         val trimmedTest = testCode.trim()
@@ -113,7 +115,7 @@ public class DefaultMutationExecutionPipeline(
                 .coerceIn(50L, 10_000L)
 
         // 2. Generate AST mutants
-        val mutants = generator.generateMutants(trimmedSource, config)
+        val mutants = generator.generateMutants(trimmedSource, config, filePath = sourceFilePath)
         if (mutants.isEmpty()) {
             return MutationReport(
                 totalMutants = 0,

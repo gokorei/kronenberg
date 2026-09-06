@@ -73,10 +73,11 @@ public class AstMutantGenerator(
     public fun generateMutants(
         sourceCode: String,
         config: MutationConfig = MutationConfig(),
+        filePath: String? = null,
     ): List<AstMutant> {
         if (sourceCode.isBlank()) return emptyList()
         val file = K2SnippetFrontend.parsePsi(sourceCode)
-        val context = MutationContext(sourceCode, file)
+        val context = MutationContext(sourceCode, file, filePath = filePath)
         val activeMutators = registry.mutators(config.includeExtreme)
         val edits = mutableListOf<Pair<AstMutator, AstEdit>>()
 
@@ -111,6 +112,7 @@ public class AstMutantGenerator(
                     originalText = edit.originalText,
                     replacementText = edit.replacement,
                     mutatedSource = mutatedSource,
+                    filePath = filePath ?: edit.filePath,
                 ),
             )
         }
@@ -150,6 +152,7 @@ public class AstMutantGenerator(
                         originalText = "${p1.second.originalText} & ${p2.second.originalText}",
                         replacementText = "${p1.second.replacement} & ${p2.second.replacement}",
                         mutatedSource = src,
+                        filePath = filePath ?: p1.second.filePath,
                     ),
                 )
             }
