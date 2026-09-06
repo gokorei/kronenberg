@@ -61,7 +61,30 @@ kronenberg audit --source src/main/kotlin/OrderService.kt --test src/test/kotlin
 
 # Export structured results for CI/CD
 kronenberg audit --source src/main/kotlin/Engine.kt --test src/test/kotlin/EngineTest.kt --json --output report.json
+
+# Fast staged audit mode for Git pre-commit hooks
+kronenberg audit --pre-commit
 ```
+
+### Git Pre-Commit Hook
+
+Install Kronenberg as a fast local pre-commit hook to block commits that introduce untested mutations in staged changes:
+
+Create or update `.git/hooks/pre-commit`:
+```bash
+#!/usr/bin/env bash
+set -e
+
+echo "🔍 Running Kronenberg staged mutation audit..."
+./gradlew :kronenberg-cli:run --quiet --args="audit --pre-commit --threshold 80.0"
+```
+Make the script executable: `chmod +x .git/hooks/pre-commit`.
+
+When `--pre-commit` is specified:
+- Inspects staged Kotlin files via `git diff --cached`.
+- Enforces fast baseline execution timeouts (default 500ms) and First-Order Mutants (FOM).
+- Only evaluates mutants on lines modified in staged changes.
+- Exits `0` if all mutations meet the threshold, or `1` on failure.
 
 ### Using as a Gradle Dependency
 
