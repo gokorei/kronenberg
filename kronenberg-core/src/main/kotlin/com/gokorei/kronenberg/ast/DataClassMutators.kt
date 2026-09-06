@@ -83,9 +83,9 @@ public class DestructuringMutator : TypedAstMutator<KtDestructuringDeclaration>(
         val rest = if (entries.size > 2) entries.drop(2).joinToString(prefix = ", ", separator = ", ") { it.text } else ""
         val swappedText = "($second, $first$rest)"
 
-        // Target the bracketed entries range
-        val startOffset = entries.first().textRange.startOffset - 1 // '('
-        val endOffset = entries.last().textRange.endOffset + 1 // ')'
+        // Target the bracketed entries range using exact parenthesis tokens
+        val startOffset = element.lPar?.textRange?.startOffset ?: (entries.first().textRange.startOffset - 1)
+        val endOffset = element.rPar?.textRange?.endOffset ?: (entries.last().textRange.endOffset + 1)
 
         val (line, col) = context.lineAndCol(element.textRange.startOffset)
         return listOf(
