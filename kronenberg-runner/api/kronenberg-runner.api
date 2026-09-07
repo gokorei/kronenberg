@@ -151,6 +151,25 @@ public final class com/gokorei/kronenberg/runner/ParsedTestCode {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class com/gokorei/kronenberg/runner/ProposedTest {
+	public fun <init> (Lcom/gokorei/kronenberg/model/AstMutant;Ljava/lang/String;Lcom/gokorei/kronenberg/runner/TestStyle;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Lcom/gokorei/kronenberg/model/AstMutant;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lcom/gokorei/kronenberg/runner/TestStyle;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun copy (Lcom/gokorei/kronenberg/model/AstMutant;Ljava/lang/String;Lcom/gokorei/kronenberg/runner/TestStyle;Ljava/lang/String;Ljava/lang/String;)Lcom/gokorei/kronenberg/runner/ProposedTest;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/runner/ProposedTest;Lcom/gokorei/kronenberg/model/AstMutant;Ljava/lang/String;Lcom/gokorei/kronenberg/runner/TestStyle;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/ProposedTest;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMutant ()Lcom/gokorei/kronenberg/model/AstMutant;
+	public final fun getRationale ()Ljava/lang/String;
+	public final fun getStyle ()Lcom/gokorei/kronenberg/runner/TestStyle;
+	public final fun getTargetFunctionName ()Ljava/lang/String;
+	public final fun getTestMethodCode ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/gokorei/kronenberg/runner/RunnerOutcome {
 	public fun <init> (Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public synthetic fun <init> (Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -186,11 +205,25 @@ public final class com/gokorei/kronenberg/runner/SnippetCompiler$DefaultImpls {
 	public static synthetic fun compile$default (Lcom/gokorei/kronenberg/runner/SnippetCompiler;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/CompileResult;
 }
 
+public final class com/gokorei/kronenberg/runner/SurvivingMutantTestProposer {
+	public static final field INSTANCE Lcom/gokorei/kronenberg/runner/SurvivingMutantTestProposer;
+	public final fun proposeTest (Lcom/gokorei/kronenberg/model/AstMutant;Ljava/lang/String;Lcom/gokorei/kronenberg/runner/TestStyle;)Lcom/gokorei/kronenberg/runner/ProposedTest;
+	public static synthetic fun proposeTest$default (Lcom/gokorei/kronenberg/runner/SurvivingMutantTestProposer;Lcom/gokorei/kronenberg/model/AstMutant;Ljava/lang/String;Lcom/gokorei/kronenberg/runner/TestStyle;ILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/ProposedTest;
+}
+
 public final class com/gokorei/kronenberg/runner/TestHarnessSynthesizer {
 	public static final field INSTANCE Lcom/gokorei/kronenberg/runner/TestHarnessSynthesizer;
 	public final fun mergeSourceWithParsedTest (Ljava/lang/String;Lcom/gokorei/kronenberg/runner/ParsedTestCode;Lcom/gokorei/kronenberg/model/AstMutant;)Ljava/lang/String;
 	public final fun parseTestCode (Ljava/lang/String;Ljava/lang/String;)Lcom/gokorei/kronenberg/runner/ParsedTestCode;
 	public final fun stripPackageAndImports (Ljava/lang/String;Lorg/jetbrains/kotlin/psi/KtFile;)Ljava/lang/String;
+}
+
+public final class com/gokorei/kronenberg/runner/TestStyle : java/lang/Enum {
+	public static final field JUNIT5 Lcom/gokorei/kronenberg/runner/TestStyle;
+	public static final field KOTEST Lcom/gokorei/kronenberg/runner/TestStyle;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/gokorei/kronenberg/runner/TestStyle;
+	public static fun values ()[Lcom/gokorei/kronenberg/runner/TestStyle;
 }
 
 public final class com/gokorei/kronenberg/runner/ThreadLocalPrintStream : java/io/PrintStream {

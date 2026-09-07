@@ -16,6 +16,8 @@ import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationConfig
 import com.gokorei.kronenberg.model.MutationReport
 import com.gokorei.kronenberg.runner.DefaultMutationExecutionPipeline
+import com.gokorei.kronenberg.runner.SurvivingMutantTestProposer
+import com.gokorei.kronenberg.runner.TestStyle
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -217,6 +219,11 @@ public class AuditCommand :
     private val githubAnnotations: Boolean by option(
         "--github-annotations",
         help = "Emit GitHub Actions workflow annotations for surviving mutants",
+    ).flag(default = false)
+
+    private val proposeTests: Boolean by option(
+        "--propose-tests",
+        help = "Synthesize and display template test method skeletons to kill surviving mutants",
     ).flag(default = false)
 
     private val classpath: String? by option(
@@ -467,6 +474,26 @@ public class AuditCommand :
                 echo(" [$idx] ${m.mutatorName} at $srcLabel:${m.line}:${m.column}")
                 echo("     - Original:    ${m.originalText}")
                 echo("     + Replacement: ${m.replacementText}")
+            }
+
+            if (proposeTests) {
+                echo("\n=======================================================")
+                echo("   PROPOSED TEST SKELETONS TO KILL SURVIVED MUTANTS    ")
+                echo("=======================================================")
+                survived.forEachIndexed { idx, res ->
+                    val m = res.mutant
+                    val srcText =
+                        m.filePath?.let { p ->
+                            try {
+                                Path.of(p).takeIf { Files.isRegularFile(it) }?.readText()
+                            } catch (_: Exception) {
+                                null
+                            }
+                        } ?: source?.takeIf { Files.isRegularFile(it) }?.readText() ?: ""
+                    val proposal = SurvivingMutantTestProposer.proposeTest(m, srcText, TestStyle.KOTEST)
+                    echo("\n--- Proposal #$idx for ${m.mutatorName} (Line ${m.line}) ---")
+                    echo(proposal.testMethodCode)
+                }
             }
         }
         echo("")

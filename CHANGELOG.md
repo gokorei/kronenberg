@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Strengthened `DogfoodMutationAuditSpec` assertions across all 7 scenarios to assert non-trivial mutant generation (`totalMutants > 0`), kill rate (`killedCount > 0`), zero survival (`survivedCount == 0`), and threshold passage (`isPassed == true`).
 
 ### Added
+- Implemented surviving mutant test proposer and skeleton synthesizer (`SurvivingMutantTestProposer`, `--propose-tests`) generating actionable Kotest and JUnit 5 test skeletons attributed to enclosing functions via call-graph reachability.
 - Implemented SonarQube Generic Test Data XML (`SonarQubeReportExporter`, `--sonarqube`) and Code Climate Issue JSON (`CodeClimateReportExporter`, `--codeclimate`) report exporters in `kronenberg-cli`.
 - Implemented first-party Gradle plugin `:kronenberg-gradle-plugin` (`com.gokorei.kronenberg`) providing `kronenbergCheck` task, `kronenberg` configuration extension/DSL, Gradle TestKit functional tests, automatic source and classpath resolution from project `sourceSets`, and cacheable execution.
 - Added Git pre-commit hook fast audit mode via `--pre-commit` flag in `AuditCommand`, providing automatic detection of staged Kotlin files (`git diff --cached`), fast baseline timeouts (500ms), FOM enforcement, and documented pre-commit hook integration in `README.md`.

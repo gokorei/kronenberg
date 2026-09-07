@@ -90,6 +90,9 @@ kronenberg audit --source src/main/kotlin/Engine.kt --test src/test/kotlin/Engin
 # Export SonarQube Generic Test Data XML or Code Climate issues
 kronenberg audit --source-dir src/main/kotlin --test-dir src/test/kotlin --sonarqube build/reports/sonar-mutants.xml --codeclimate build/reports/codeclimate.json
 
+# Propose actionable test skeletons for surviving mutants
+kronenberg audit --source src/main/kotlin/Service.kt --test src/test/kotlin/ServiceTest.kt --propose-tests
+
 # Fast staged audit mode for Git pre-commit hooks
 kronenberg audit --pre-commit
 ```
