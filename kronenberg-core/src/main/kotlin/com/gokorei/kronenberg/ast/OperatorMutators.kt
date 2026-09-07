@@ -5,8 +5,10 @@ import com.gokorei.kronenberg.model.MutatorCategory
 import org.jetbrains.kotlin.com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.KtBinaryExpression
+import org.jetbrains.kotlin.psi.KtConstantExpression
 import org.jetbrains.kotlin.psi.KtPostfixExpression
 import org.jetbrains.kotlin.psi.KtPrefixExpression
+import org.jetbrains.kotlin.psi.KtStringTemplateExpression
 
 /**
  * Mutates relational boundary operators (< <-> <=, > <-> >=).
@@ -90,11 +92,26 @@ public class ArithmeticOperatorMutator : TypedAstMutator<KtBinaryExpression>(KtB
 
     override fun canMutateTyped(element: KtBinaryExpression): Boolean {
         val sign = element.operationReference.operationSignTokenType
-        return sign == KtTokens.PLUS ||
-            sign == KtTokens.MINUS ||
-            sign == KtTokens.MUL ||
-            sign == KtTokens.DIV ||
-            sign == KtTokens.PERC
+        val isArithmeticSign =
+            sign == KtTokens.PLUS ||
+                sign == KtTokens.MINUS ||
+                sign == KtTokens.MUL ||
+                sign == KtTokens.DIV ||
+                sign == KtTokens.PERC
+        if (!isArithmeticSign) return false
+
+        // Suppress mutating '+' when either operand is a string literal / string template (string concatenation)
+        if (sign == KtTokens.PLUS) {
+            val left = element.left
+            val right = element.right
+            val leftIsString = left is KtStringTemplateExpression || (left is KtConstantExpression && left.text.startsWith("\""))
+            val rightIsString = right is KtStringTemplateExpression || (right is KtConstantExpression && right.text.startsWith("\""))
+            if (leftIsString || rightIsString) {
+                return false
+            }
+        }
+
+        return true
     }
 
     override fun mutateTyped(
