@@ -87,6 +87,9 @@ kronenberg audit --source src/main/kotlin/OrderService.kt --test src/test/kotlin
 # Export structured results for CI/CD
 kronenberg audit --source src/main/kotlin/Engine.kt --test src/test/kotlin/EngineTest.kt --json --output report.json
 
+# Export SonarQube Generic Test Data XML or Code Climate issues
+kronenberg audit --source-dir src/main/kotlin --test-dir src/test/kotlin --sonarqube build/reports/sonar-mutants.xml --codeclimate build/reports/codeclimate.json
+
 # Fast staged audit mode for Git pre-commit hooks
 kronenberg audit --pre-commit
 ```
