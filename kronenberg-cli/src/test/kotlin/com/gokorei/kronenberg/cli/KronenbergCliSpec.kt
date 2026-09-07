@@ -342,4 +342,32 @@ class KronenbergCliSpec {
             codeClimateFile.toFile().delete()
         }
     }
+
+    @Test
+    fun `audit command proposes test skeleton for surviving mutants when --propose-tests flag is provided`() {
+        val srcFile = createTempFile("ProposeSample", ".kt")
+        val testFile = createTempFile("ProposeSampleTest", ".kt")
+        try {
+            srcFile.writeText(
+                """
+                fun evaluate(x: Int): Int {
+                    if (x > 10) return x * 2
+                    return x
+                }
+                """.trimIndent(),
+            )
+            // Test that lets mutants survive
+            testFile.writeText("fun main() { check(evaluate(5) == 5) }")
+
+            val cli = KronenbergCli().subcommands(AuditCommand())
+            val result = cli.test("audit --source $srcFile --test $testFile --propose-tests --threshold 0.0")
+
+            result.statusCode shouldBe 0
+            result.output shouldContain "PROPOSED TEST SKELETONS TO KILL SURVIVED MUTANTS"
+            result.output shouldContain "evaluate"
+        } finally {
+            srcFile.toFile().delete()
+            testFile.toFile().delete()
+        }
+    }
 }
