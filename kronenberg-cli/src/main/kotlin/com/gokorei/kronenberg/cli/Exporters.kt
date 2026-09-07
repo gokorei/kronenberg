@@ -5,6 +5,7 @@ import com.gokorei.kronenberg.model.MutationReport
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
@@ -280,5 +281,140 @@ public object SarifReportExporter {
                 "::warning file=$targetPath,line=${m.line},col=${m.column}::Surviving mutant: replaced '${m.originalText}' with '${m.replacementText}'",
             )
         }
+    }
+}
+
+/**
+ * Exporter converting MutationReport into SonarQube Generic Test Data XML format.
+ * Format documentation: https://docs.sonarqube.org/latest/analysis/generic-test/
+ */
+public object SonarQubeReportExporter {
+    public fun export(
+        report: MutationReport,
+        targetFile: Path,
+        sourceFilePath: String = "src/main/kotlin/Snippet.kt",
+    ) {
+        val groupedByFile = report.results.groupBy { it.mutant.filePath ?: sourceFilePath }
+        val sb = StringBuilder()
+        sb.appendLine("<testExecutions version=\"1\">")
+
+        for ((filePath, results) in groupedByFile) {
+            sb.appendLine("  <file path=\"$filePath\">")
+            for (res in results) {
+                val mutant = res.mutant
+                val durationMs = res.executionTimeMs
+                val testName = "${mutant.mutatorName}_line${mutant.line}_col${mutant.column}_${mutant.id.take(8)}"
+
+                when (res.status) {
+                    MutantStatus.KILLED -> {
+                        sb.appendLine("    <testCase name=\"$testName\" duration=\"$durationMs\"/>")
+                    }
+
+                    MutantStatus.SURVIVED -> {
+                        val msg = escapeXml("Mutant survived: replaced '${mutant.originalText}' with '${mutant.replacementText}'")
+                        val body =
+                            escapeXml(
+                                "Mutant ID: ${mutant.id}\nMutator: ${mutant.mutatorName}\nLocation: line ${mutant.line}, column ${mutant.column}",
+                            )
+                        sb.appendLine("    <testCase name=\"$testName\" duration=\"$durationMs\">")
+                        sb.appendLine("      <failure message=\"$msg\">$body</failure>")
+                        sb.appendLine("    </testCase>")
+                    }
+
+                    MutantStatus.TIMED_OUT -> {
+                        val msg = escapeXml(res.failureMessage ?: "Mutant execution timed out")
+                        sb.appendLine("    <testCase name=\"$testName\" duration=\"$durationMs\">")
+                        sb.appendLine("      <failure message=\"$msg\"/>")
+                        sb.appendLine("    </testCase>")
+                    }
+
+                    MutantStatus.COMPILE_ERROR -> {
+                        val msg = escapeXml(res.failureMessage ?: "Mutant failed to compile")
+                        sb.appendLine("    <testCase name=\"$testName\" duration=\"$durationMs\">")
+                        sb.appendLine("      <error message=\"$msg\"/>")
+                        sb.appendLine("    </testCase>")
+                    }
+
+                    MutantStatus.BASELINE_ERROR -> {
+                        val msg = escapeXml(res.failureMessage ?: "Baseline execution failed before mutation")
+                        sb.appendLine("    <testCase name=\"$testName\" duration=\"$durationMs\">")
+                        sb.appendLine("      <error message=\"$msg\"/>")
+                        sb.appendLine("    </testCase>")
+                    }
+                }
+            }
+            sb.appendLine("  </file>")
+        }
+        sb.appendLine("</testExecutions>")
+
+        targetFile.parent?.let { Files.createDirectories(it) }
+        Files.writeString(targetFile, sb.toString())
+    }
+
+    private fun escapeXml(str: String): String =
+        str
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&apos;")
+}
+
+/**
+ * Exporter converting MutationReport into Code Climate issue JSON format for surviving mutants.
+ * Spec documentation: https://github.com/codeclimate/platform/blob/master/spec/analyzers/SPEC.md
+ */
+public object CodeClimateReportExporter {
+    private val json = Json { prettyPrint = true }
+
+    public fun export(
+        report: MutationReport,
+        targetFile: Path,
+        sourceFilePath: String = "src/main/kotlin/Snippet.kt",
+    ) {
+        val issues =
+            report.results
+                .filter { it.status == MutantStatus.SURVIVED }
+                .map { res ->
+                    val m = res.mutant
+                    val path = m.filePath ?: sourceFilePath
+                    val description =
+                        "Surviving mutation (${m.mutatorName}): replaced '${m.originalText}' with '${m.replacementText}'. " +
+                            "Verify test coverage for this condition."
+                    val fingerprint = "$path:${m.line}:${m.mutatorName}:${m.id}".hashCode().toString()
+
+                    buildJsonObject {
+                        put("type", "issue")
+                        put("check_name", "KronenbergMutationCheck")
+                        put("description", description)
+                        put(
+                            "content",
+                            buildJsonObject {
+                                put(
+                                    "body",
+                                    "Mutant ID: ${m.id}\nMutator: ${m.mutatorName}\nOriginal:\n${m.originalText}\nReplacement:\n${m.replacementText}",
+                                )
+                            },
+                        )
+                        putJsonArray("categories") {
+                            add("Bug Risk")
+                        }
+                        putJsonObject("location") {
+                            put("path", path)
+                            putJsonObject("lines") {
+                                put("begin", m.line)
+                                put("end", m.line)
+                            }
+                        }
+                        putJsonObject("remediation_points") {
+                            put("cost", 50000)
+                        }
+                        put("severity", "minor")
+                        put("fingerprint", fingerprint)
+                    }
+                }
+
+        targetFile.parent?.let { Files.createDirectories(it) }
+        Files.writeString(targetFile, json.encodeToString(JsonArray(issues)))
     }
 }

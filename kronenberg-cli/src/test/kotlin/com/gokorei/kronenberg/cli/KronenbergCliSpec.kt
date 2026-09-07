@@ -285,4 +285,61 @@ class KronenbergCliSpec {
             testFile.toFile().delete()
         }
     }
+
+    @Test
+    fun `audit command exports sonarqube generic test data xml when --sonarqube flag is provided`() {
+        val srcFile = createTempFile("SonarSample", ".kt")
+        val testFile = createTempFile("SonarSampleTest", ".kt")
+        val sonarFile = createTempFile("sonarqube-report", ".xml")
+        try {
+            srcFile.writeText("fun add(a: Int, b: Int) = a + b")
+            testFile.writeText("fun main() { check(add(1, 2) == 3) }")
+
+            val cli = KronenbergCli().subcommands(AuditCommand())
+            val result = cli.test("audit --source $srcFile --test $testFile --sonarqube $sonarFile --threshold 50.0")
+
+            result.statusCode shouldBe 0
+            val content = sonarFile.readText()
+            content shouldContain "<testExecutions version=\"1\">"
+            content shouldContain "<file path="
+            content shouldContain "<testCase name="
+        } finally {
+            srcFile.toFile().delete()
+            testFile.toFile().delete()
+            sonarFile.toFile().delete()
+        }
+    }
+
+    @Test
+    fun `audit command exports code climate json when --codeclimate flag is provided`() {
+        val srcFile = createTempFile("CodeClimateSample", ".kt")
+        val testFile = createTempFile("CodeClimateSampleTest", ".kt")
+        val codeClimateFile = createTempFile("codeclimate-report", ".json")
+        try {
+            srcFile.writeText(
+                """
+                fun compute(x: Int): Int {
+                    if (x > 10) return x * 2
+                    return x
+                }
+                """.trimIndent(),
+            )
+            // Test that lets mutants survive to produce Code Climate issues
+            testFile.writeText("fun main() { check(compute(5) == 5) }")
+
+            val cli = KronenbergCli().subcommands(AuditCommand())
+            val result = cli.test("audit --source $srcFile --test $testFile --codeclimate $codeClimateFile --threshold 0.0")
+
+            result.statusCode shouldBe 0
+            val content = codeClimateFile.readText()
+            content shouldContain "\"type\": \"issue\""
+            content shouldContain "\"check_name\": \"KronenbergMutationCheck\""
+            content shouldContain "\"categories\":"
+            content shouldContain "\"Bug Risk\""
+        } finally {
+            srcFile.toFile().delete()
+            testFile.toFile().delete()
+            codeClimateFile.toFile().delete()
+        }
+    }
 }
