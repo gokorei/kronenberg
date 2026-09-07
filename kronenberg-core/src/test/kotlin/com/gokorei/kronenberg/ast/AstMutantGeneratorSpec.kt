@@ -69,6 +69,27 @@ class AstMutantGeneratorSpec {
     }
 
     @Test
+    fun `suppresses statically invalid mutants such as string concatenation arithmetic and type mismatched returns`() {
+        val source =
+            """
+            fun formatMessage(name: String): String {
+                val greeting = "Hello, " + name
+                return greeting
+            }
+            """.trimIndent()
+        val mutants = generator.generateMutants(source)
+
+        // ArithmeticOperatorMutator should NOT produce a mutant on String concatenation '+'
+        mutants.any { it.mutatorName == "ArithmeticOperatorMutator" } shouldBe false
+
+        // ReturnValueMutator should NOT produce 'false' or '0' for String return type
+        val returnMutants = mutants.filter { it.mutatorName == "ReturnValueMutator" }
+        returnMutants.any { it.replacementText == "false" } shouldBe false
+        returnMutants.any { it.replacementText == "0" } shouldBe false
+        returnMutants.any { it.replacementText == "\"\"" } shouldBe true
+    }
+
+    @Test
     fun `computeLineAndColumn correctly calculates 1-indexed coordinates`() {
         val source = "line1\nline2\nline3"
         // Offset 0 = line 1, col 1
