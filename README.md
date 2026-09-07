@@ -87,8 +87,8 @@ kronenberg audit --source src/main/kotlin/OrderService.kt --test src/test/kotlin
 # Export structured results for CI/CD
 kronenberg audit --source src/main/kotlin/Engine.kt --test src/test/kotlin/EngineTest.kt --json --output report.json
 
-# Export SonarQube Generic Test Data XML or Code Climate issues
-kronenberg audit --source-dir src/main/kotlin --test-dir src/test/kotlin --sonarqube build/reports/sonar-mutants.xml --codeclimate build/reports/codeclimate.json
+# Export Code Climate issues or structured JSON
+kronenberg audit --source-dir src/main/kotlin --test-dir src/test/kotlin --codeclimate build/reports/codeclimate.json
 
 # Propose actionable test skeletons for surviving mutants
 kronenberg audit --source src/main/kotlin/Service.kt --test src/test/kotlin/ServiceTest.kt --propose-tests

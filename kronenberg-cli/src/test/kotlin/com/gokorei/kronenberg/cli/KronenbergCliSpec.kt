@@ -287,30 +287,6 @@ class KronenbergCliSpec {
     }
 
     @Test
-    fun `audit command exports sonarqube generic test data xml when --sonarqube flag is provided`() {
-        val srcFile = createTempFile("SonarSample", ".kt")
-        val testFile = createTempFile("SonarSampleTest", ".kt")
-        val sonarFile = createTempFile("sonarqube-report", ".xml")
-        try {
-            srcFile.writeText("fun add(a: Int, b: Int) = a + b")
-            testFile.writeText("fun main() { check(add(1, 2) == 3) }")
-
-            val cli = KronenbergCli().subcommands(AuditCommand())
-            val result = cli.test("audit --source $srcFile --test $testFile --sonarqube $sonarFile --threshold 50.0")
-
-            result.statusCode shouldBe 0
-            val content = sonarFile.readText()
-            content shouldContain "<testExecutions version=\"1\">"
-            content shouldContain "<file path="
-            content shouldContain "<testCase name="
-        } finally {
-            srcFile.toFile().delete()
-            testFile.toFile().delete()
-            sonarFile.toFile().delete()
-        }
-    }
-
-    @Test
     fun `audit command exports code climate json when --codeclimate flag is provided`() {
         val srcFile = createTempFile("CodeClimateSample", ".kt")
         val testFile = createTempFile("CodeClimateSampleTest", ".kt")
