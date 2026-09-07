@@ -45,10 +45,35 @@ Kronenberg is organized into a clean, multi-module architecture:
 | **`kronenberg-core`** | Domain models (`AstMutant`, `MutantResult`, `MutationReport`), AST mutator SPI (`AstMutator`, `MutatorRegistry`), and standard/extreme K2 PSI mutation rules. | `kotlin-compiler-embeddable`, `kotlinx-serialization-json` |
 | **`kronenberg-runner`** | In-process K2 compilation (`SnippetCompiler`), virtual-thread sandbox (`FastSnippetRunner`), and `MutationExecutionPipeline`. | `kronenberg-core`, `kotlinx-coroutines-core` |
 | **`kronenberg-cli`** | Standalone CLI binary providing `kronenberg audit` with ANSI terminal diffs, JUnit XML, and JSON export. | `kronenberg-runner`, `clikt` |
+| **`kronenberg-gradle-plugin`** | First-party Gradle plugin providing `kronenbergCheck` task and DSL extension for seamless project builds. | `kronenberg-core`, `kronenberg-runner` |
 
 ---
 
 ## 🚀 Quickstart
+
+### Using the Gradle Plugin
+
+Apply the Kronenberg plugin in your `build.gradle.kts`:
+
+```kotlin
+plugins {
+    id("com.gokorei.kronenberg") version "0.1.0-SNAPSHOT"
+}
+
+kronenberg {
+    minScore.set(80.0)             // Minimum mutation score threshold (%)
+    baselineTimeoutMs.set(2000L)   // Baseline timeout in milliseconds
+    includeExtreme.set(false)      // Include structural/extreme mutators
+}
+```
+
+Run mutation audits directly via Gradle:
+```bash
+./gradlew kronenbergCheck
+```
+Interactive HTML and JUnit XML reports will be generated under `build/reports/kronenberg/`.
+
+---
 
 ### Using the CLI
 

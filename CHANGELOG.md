@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Strengthened `DogfoodMutationAuditSpec` assertions across all 7 scenarios to assert non-trivial mutant generation (`totalMutants > 0`), kill rate (`killedCount > 0`), zero survival (`survivedCount == 0`), and threshold passage (`isPassed == true`).
 
 ### Added
+- Implemented first-party Gradle plugin `:kronenberg-gradle-plugin` (`com.gokorei.kronenberg`) providing `kronenbergCheck` task, `kronenberg` configuration extension/DSL, Gradle TestKit functional tests, automatic source and classpath resolution from project `sourceSets`, and cacheable execution.
 - Added Git pre-commit hook fast audit mode via `--pre-commit` flag in `AuditCommand`, providing automatic detection of staged Kotlin files (`git diff --cached`), fast baseline timeouts (500ms), FOM enforcement, and documented pre-commit hook integration in `README.md`.
 - Supported class-based test discovery and synthetic harness generation in `TestHarnessSynthesizer`, discovering member test functions (`@Test` or `test*` naming) inside `KtClass` declarations and instantiating test classes with per-test kill attribution in synthetic `fun main()`.
 - Added `--classpath` / `-cp` option to `AuditCommand` CLI and wired `extraClasspath: List<String>` into `MutationConfig` and `MutationExecutionPipeline` for compiling and executing snippets against external dependencies.
