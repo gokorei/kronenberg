@@ -115,31 +115,46 @@ public class ReturnValueMutator : TypedAstMutator<KtReturnExpression>(KtReturnEx
         val isStringExpr = returned is KtStringTemplateExpression || (returned is KtConstantExpression && text.startsWith("\""))
 
         val replacements = mutableListOf<Pair<String, String>>()
-        if (isStringExpr) {
-            replacements.add("\"\"" to "Replaced return string with empty string")
-            replacements.add("\"mutated\"" to "Replaced return string with altered string")
-        } else if (text == "true") {
-            replacements.add("false" to "Replaced return value with false")
-        } else if (text == "false") {
-            replacements.add("true" to "Replaced return value with true")
-        } else if (text.startsWith("listOf(") || text.startsWith("mutableListOf(")) {
-            replacements.add("emptyList()" to "Replaced list return with emptyList()")
-        } else if (text.startsWith("setOf(") || text.startsWith("mutableSetOf(")) {
-            replacements.add("emptySet()" to "Replaced set return with emptySet()")
-        } else if (text.startsWith("mapOf(") || text.startsWith("mutableMapOf(")) {
-            replacements.add("emptyMap()" to "Replaced map return with emptyMap()")
-        } else {
-            replacements.add("0" to "Replaced return value with 0")
-            replacements.add("false" to "Replaced return value with false")
-        }
 
-        // Check if enclosing function return type is nullable
+        // Resolve enclosing function return type if available
         var parent = element.parent
         while (parent != null && parent !is KtNamedFunction) {
             parent = parent.parent
         }
         val fn = parent
-        if (fn?.typeReference?.text?.endsWith("?") == true && text != "null") {
+        val declaredType = fn?.typeReference?.text?.trim()
+        val isNullable = declaredType?.endsWith("?") == true
+
+        if (isStringExpr || declaredType == "String" || declaredType == "CharSequence") {
+            replacements.add("\"\"" to "Replaced return string with empty string")
+            replacements.add("\"mutated\"" to "Replaced return string with altered string")
+        } else if (text == "true" || text == "false" || declaredType == "Boolean") {
+            if (text == "true") {
+                replacements.add("false" to "Replaced return value with false")
+            } else if (text == "false") {
+                replacements.add("true" to "Replaced return value with true")
+            } else {
+                replacements.add("false" to "Replaced return value with false")
+                replacements.add("true" to "Replaced return value with true")
+            }
+        } else if (text.startsWith("listOf(") || text.startsWith("mutableListOf(") || declaredType?.startsWith("List") == true) {
+            replacements.add("emptyList()" to "Replaced list return with emptyList()")
+        } else if (text.startsWith("setOf(") || text.startsWith("mutableSetOf(") || declaredType?.startsWith("Set") == true) {
+            replacements.add("emptySet()" to "Replaced set return with emptySet()")
+        } else if (text.startsWith("mapOf(") || text.startsWith("mutableMapOf(") || declaredType?.startsWith("Map") == true) {
+            replacements.add("emptyMap()" to "Replaced map return with emptyMap()")
+        } else {
+            // General or unknown type
+            val isNumeric = declaredType in setOf("Int", "Long", "Short", "Byte", "Double", "Float", "Number")
+            if (isNumeric || declaredType == null) {
+                replacements.add("0" to "Replaced return value with 0")
+            }
+            if (declaredType == null) {
+                replacements.add("false" to "Replaced return value with false")
+            }
+        }
+
+        if (isNullable && text != "null") {
             replacements.add("null" to "Replaced nullable return value with null")
         }
 

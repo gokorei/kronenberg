@@ -118,6 +118,12 @@ class AstMutatorsSpec {
             val edits = findMutations("fun multiply(a: Int, b: Int): Int = a * b", mutator)
             edits.firstOrNull()?.replacement shouldBe "/"
         }
+
+        @Test
+        fun `suppresses arithmetic mutation on string concatenation`() {
+            val edits = findMutations("fun greet(name: String): String = \"Hello \" + name", mutator)
+            edits shouldBe emptyList()
+        }
     }
 
     @Nested
@@ -209,6 +215,21 @@ class AstMutatorsSpec {
         fun `mutates nullable object return to null`() {
             val edits = findMutations("fun findUser(): String? { return \"user\" }", mutator)
             edits.any { it.replacement == "null" } shouldBe true
+        }
+
+        @Test
+        fun `suppresses boolean and zero return mutants when function return type is non-boolean object`() {
+            val edits = findMutations("fun getUser(): String { val x = \"foo\"; return x }", mutator)
+            edits.any { it.replacement == "false" } shouldBe false
+            edits.any { it.replacement == "0" } shouldBe false
+            edits.any { it.replacement == "\"\"" } shouldBe true
+        }
+
+        @Test
+        fun `suppresses string return mutants when function return type is Int`() {
+            val edits = findMutations("fun calculate(): Int { val x = 42; return x }", mutator)
+            edits.any { it.replacement == "\"\"" } shouldBe false
+            edits.any { it.replacement == "0" } shouldBe true
         }
     }
 
