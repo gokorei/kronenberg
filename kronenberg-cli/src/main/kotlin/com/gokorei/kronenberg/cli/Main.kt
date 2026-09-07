@@ -204,6 +204,16 @@ public class AuditCommand :
         help = "Export SARIF v2.1.0 code scanning results for GitHub PR review",
     ).path(canBeDir = false)
 
+    private val sonarqube: Path? by option(
+        "--sonarqube",
+        help = "Export SonarQube Generic Test Data XML report",
+    ).path(canBeDir = false)
+
+    private val codeclimate: Path? by option(
+        "--codeclimate",
+        help = "Export Code Climate issue JSON report for surviving mutants",
+    ).path(canBeDir = false)
+
     private val githubAnnotations: Boolean by option(
         "--github-annotations",
         help = "Emit GitHub Actions workflow annotations for surviving mutants",
@@ -275,6 +285,14 @@ public class AuditCommand :
 
         sarif?.let { sarifPath ->
             SarifReportExporter.export(report, sarifPath, source?.toString() ?: "Snippet.kt")
+        }
+
+        sonarqube?.let { sonarPath ->
+            SonarQubeReportExporter.export(report, sonarPath, source?.toString() ?: "Snippet.kt")
+        }
+
+        codeclimate?.let { codeClimatePath ->
+            CodeClimateReportExporter.export(report, codeClimatePath, source?.toString() ?: "Snippet.kt")
         }
 
         if (githubAnnotations) {
