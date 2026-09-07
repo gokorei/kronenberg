@@ -17,3 +17,4 @@ rootProject.name = "kronenberg"
 include(":kronenberg-core")
 include(":kronenberg-runner")
 include(":kronenberg-cli")
+include(":kronenberg-gradle-plugin")
