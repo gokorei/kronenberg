@@ -7,6 +7,7 @@ import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
+import com.github.ajalt.clikt.parameters.options.versionOption
 import com.github.ajalt.clikt.parameters.types.double
 import com.github.ajalt.clikt.parameters.types.int
 import com.github.ajalt.clikt.parameters.types.long
@@ -110,6 +111,14 @@ public class KronenbergCli :
     CliktCommand(
         name = "kronenberg",
     ) {
+    init {
+        versionOption(
+            version = Version.CURRENT,
+            names = setOf("--version", "-v"),
+            message = { "kronenberg version $it" },
+        )
+    }
+
     override fun run() {
         // Root dispatcher
     }

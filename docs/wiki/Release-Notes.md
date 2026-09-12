@@ -1,13 +1,12 @@
-# Changelog
+# Release Notes
 
-All notable changes to this project will be documented in this file.
+Overview of all notable changes to Kronenberg by version.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+---
 
-## [Unreleased]
+## Next
 
-### Added
+### New Features
 - Automated AST mutator Markdown documentation generator (`MutatorDocGenerator`, Gradle task `generateMutatorDocs`).
 - Code-backed wiki documentation suite (`Home.md`, `Architecture-And-Sandboxing.md`, `CLI-And-Gradle-Plugin-Guide.md`, `Mutators-Reference.md`, `Release-Notes.md`).
 - Automated Keep a Changelog generator (`ChangelogGenerator`, Gradle task `generateChangelog`) directly parsing release notes.
@@ -18,9 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub Actions CodeQL security scanning workflow (`.github/workflows/codeql.yml`).
 - Automated GitHub Wiki synchronization workflow (`.github/workflows/wiki-sync.yml`).
 
-## [0.1.0] - 2026-09-12
+### Bug Fixes
 
-### Added
+### Improvements
+
+---
+
+## v0.1.0 — 2026-09-12
+
+### New Features
 - In-process K2 PSI AST mutation testing engine for Kotlin with sub-50ms execution cycles.
 - 27 built-in AST mutation operators across 19 categories covering relational boundaries, arithmetic, boolean inversions, void method calls, return values, literals, collection operators, null safety, ranges, bitwise, smart casts, string templates, coroutines, scope functions, preconditions, functional Result handling, and data classes.
 - In-process isolated `URLClassLoader` execution sandbox using Java 21 Virtual Threads and thread-safe stdout/stderr capture.
@@ -29,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Surviving mutant test proposer and skeleton synthesizer (`--propose-tests`).
 - Git diff-aware incremental auditing (`--diff`, `--staged`) and fast pre-commit hook mode (`--pre-commit`).
 
-### Changed
+### Improvements
 - Deterministic mutant result caching SPI via `DefaultMutationResultCache`.
 - Dynamic baseline timeout calibration and pre-flight baseline validation (`MutantStatus.BASELINE_ERROR`).
 - Synthetic test harness with member-method discovery (`@Test`) and per-test kill attribution diagnostics (`Killed by <testFn>()`).
@@ -38,10 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Type-aware mutator sampling and discard reduction.
 - Multi-module Dokka API documentation pipeline.
 
-### Fixed
+### Bug Fixes
 - Fixed RangeOperatorMutator `..` syntax whitespace handling using Kotlin 1.9+ `rangeUntil` (`..<`).
 - Fixed DestructuringMutator parenthesis token offset slicing safety when whitespace is present.
 - Reclassified PreconditionMutator to standard category to ensure defensive assertions run by default.
-
-[Unreleased]: https://github.com/gokorei/kronenberg/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/gokorei/kronenberg/releases/tag/v0.1.0

@@ -1,0 +1,144 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:ChangelogGenerator.kt$DefaultChangelogGenerator$trimmed.startsWith("## v") || trimmed.startsWith("## [") || (trimmed.startsWith("## ") &amp;&amp; trimmed.contains("—"))</ID>
+    <ID>ComplexCondition:LanguageConstructMutators.kt$LiteralMutationMutator$doubleVal != null &amp;&amp; !text.contains("f") &amp;&amp; !text.contains("F") &amp;&amp; !text.contains("L")</ID>
+    <ID>ComplexCondition:SnippetAstSafetyChecker.kt$SnippetAstSafetyChecker.&lt;no name provided&gt;$(receiver == "Files" || receiver == "java.nio.file.Files") &amp;&amp; ( selector.startsWith("delete(") || selector.startsWith("deleteIfExists(") )</ID>
+    <ID>ComplexCondition:SnippetAstSafetyChecker.kt$SnippetAstSafetyChecker.&lt;no name provided&gt;$calleeName in exitProcessAliases || calleeName in directExitAliases || calleeName in processBuilderAliases || calleeName == "deleteRecursively"</ID>
+    <ID>ComplexCondition:SnippetAstSafetyChecker.kt$SnippetAstSafetyChecker.&lt;no name provided&gt;$receiver.contains("Runtime") &amp;&amp; ( selector.startsWith("halt(") || selector.startsWith("exit(") || selector.startsWith("exec(") )</ID>
+    <ID>CyclomaticComplexMethod:AstMutantGenerator.kt$AstMutantGenerator$public fun generateMutants( sourceCode: String, config: MutationConfig = MutationConfig(), filePath: String? = null, ): List&lt;AstMutant&gt;</ID>
+    <ID>CyclomaticComplexMethod:ChangelogGenerator.kt$DefaultChangelogGenerator$private fun parseReleaseNotes(text: String): List&lt;ReleaseEntry&gt;</ID>
+    <ID>CyclomaticComplexMethod:CollectionMutators.kt$CollectionOperatorMutator$override fun mutateTyped( element: KtCallExpression, context: MutationContext, ): List&lt;AstEdit&gt;</ID>
+    <ID>CyclomaticComplexMethod:ControlFlowMutators.kt$ReturnValueMutator$override fun mutateTyped( element: KtReturnExpression, context: MutationContext, ): List&lt;AstEdit&gt;</ID>
+    <ID>CyclomaticComplexMethod:Main.kt$AuditCommand$override fun run()</ID>
+    <ID>CyclomaticComplexMethod:Main.kt$AuditCommand$private fun auditFiles( pipeline: DefaultMutationExecutionPipeline, srcFiles: List&lt;Path&gt;, tstDir: Path?, baseConfig: MutationConfig, staged: Boolean = false, diffRef: String? = null, baseDir: Path? = null, ): MutationReport</ID>
+    <ID>CyclomaticComplexMethod:MutatorDocGenerator.kt$DefaultMutatorDocGenerator$private fun categoryDisplayName(category: MutatorCategory): String</ID>
+    <ID>CyclomaticComplexMethod:MutatorDocGenerator.kt$DefaultMutatorDocGenerator$private fun categorySummaryExample(category: MutatorCategory): String</ID>
+    <ID>CyclomaticComplexMethod:TestHarnessSynthesizer.kt$TestHarnessSynthesizer$public fun parseTestCode( testCode: String, sourceCode: String, ): ParsedTestCode</ID>
+    <ID>LongMethod:AstMutantGenerator.kt$AstMutantGenerator$public fun generateMutants( sourceCode: String, config: MutationConfig = MutationConfig(), filePath: String? = null, ): List&lt;AstMutant&gt;</ID>
+    <ID>LongMethod:ChangelogGenerator.kt$DefaultChangelogGenerator$private fun parseReleaseNotes(text: String): List&lt;ReleaseEntry&gt;</ID>
+    <ID>LongMethod:Exporters.kt$HtmlReportExporter$public fun export( report: MutationReport, targetFile: Path, title: String = "Kronenberg Mutation Audit Report", )</ID>
+    <ID>LongMethod:Exporters.kt$SarifReportExporter$public fun export( report: MutationReport, targetFile: Path, sourceFilePath: String = "src/main/kotlin/Snippet.kt", )</ID>
+    <ID>LongMethod:FastSnippetRunner.kt$DefaultFastSnippetRunner$override fun run( classesDir: Path, mainClass: String, timeoutMs: Long, extraClasspath: List&lt;String&gt;, ): RunnerOutcome</ID>
+    <ID>LongMethod:KronenbergAuditTask.kt$KronenbergAuditTask$@TaskAction public fun audit()</ID>
+    <ID>LongMethod:KronenbergAuditTask.kt$KronenbergAuditTask$private fun exportHtmlReport( report: MutationReport, targetFile: Path, )</ID>
+    <ID>LongMethod:Main.kt$AuditCommand$override fun run()</ID>
+    <ID>LongMethod:Main.kt$AuditCommand$private fun auditFiles( pipeline: DefaultMutationExecutionPipeline, srcFiles: List&lt;Path&gt;, tstDir: Path?, baseConfig: MutationConfig, staged: Boolean = false, diffRef: String? = null, baseDir: Path? = null, ): MutationReport</ID>
+    <ID>LongMethod:MutationExecutionPipeline.kt$DefaultMutationExecutionPipeline$override suspend fun execute( sourceCode: String, testCode: String, config: MutationConfig, sourceFilePath: String?, ): MutationReport</ID>
+    <ID>LongMethod:SurvivingMutantTestProposer.kt$SurvivingMutantTestProposer$public fun proposeTest( mutant: AstMutant, sourceCode: String, style: TestStyle = TestStyle.KOTEST, ): ProposedTest</ID>
+    <ID>LongParameterList:Main.kt$AuditCommand$( pipeline: DefaultMutationExecutionPipeline, srcDir: Path, tstDir: Path?, config: MutationConfig, staged: Boolean = false, diffRef: String? = null, )</ID>
+    <ID>LongParameterList:Main.kt$AuditCommand$( pipeline: DefaultMutationExecutionPipeline, srcFiles: List&lt;Path&gt;, tstDir: Path?, baseConfig: MutationConfig, staged: Boolean = false, diffRef: String? = null, baseDir: Path? = null, )</ID>
+    <ID>LoopWithTooManyJumpStatements:ChangelogGenerator.kt$DefaultChangelogGenerator$for</ID>
+    <ID>MagicNumber:AstMutantGenerator.kt$AstMutantGenerator$10</ID>
+    <ID>MagicNumber:AstMutantGenerator.kt$AstMutantGenerator$20</ID>
+    <ID>MagicNumber:AstMutantGenerator.kt$AstMutantGenerator$6</ID>
+    <ID>MagicNumber:ControlFlowMutators.kt$VoidMethodCallMutator$30</ID>
+    <ID>MagicNumber:Exporters.kt$CodeClimateReportExporter$50000</ID>
+    <ID>MagicNumber:Exporters.kt$HtmlReportExporter$80.0</ID>
+    <ID>MagicNumber:FastSnippetRunner.kt$DefaultFastSnippetRunner$1_000_000</ID>
+    <ID>MagicNumber:KronenbergAuditTask.kt$KronenbergAuditTask$100.0</ID>
+    <ID>MagicNumber:KronenbergAuditTask.kt$KronenbergAuditTask$1000.0</ID>
+    <ID>MagicNumber:KronenbergAuditTask.kt$KronenbergAuditTask$2000L</ID>
+    <ID>MagicNumber:KronenbergAuditTask.kt$KronenbergAuditTask$8</ID>
+    <ID>MagicNumber:KronenbergAuditTask.kt$KronenbergAuditTask$80.0</ID>
+    <ID>MagicNumber:KronenbergExtension.kt$KronenbergExtension$2000L</ID>
+    <ID>MagicNumber:KronenbergExtension.kt$KronenbergExtension$80.0</ID>
+    <ID>MagicNumber:Main.kt$AuditCommand$100.0</ID>
+    <ID>MagicNumber:Main.kt$AuditCommand$2000L</ID>
+    <ID>MagicNumber:Main.kt$AuditCommand$500L</ID>
+    <ID>MagicNumber:Main.kt$AuditCommand$80.0</ID>
+    <ID>MagicNumber:Main.kt$JUnitXmlReportExporter$1000.0</ID>
+    <ID>MagicNumber:Main.kt$JUnitXmlReportExporter$8</ID>
+    <ID>MagicNumber:MutationExecutionPipeline.kt$DefaultMutationExecutionPipeline$100.0</ID>
+    <ID>MagicNumber:MutationExecutionPipeline.kt$DefaultMutationExecutionPipeline$10L</ID>
+    <ID>MagicNumber:MutationExecutionPipeline.kt$DefaultMutationExecutionPipeline$10_000L</ID>
+    <ID>MagicNumber:MutationExecutionPipeline.kt$DefaultMutationExecutionPipeline$50L</ID>
+    <ID>MagicNumber:SnippetCompiler.kt$DefaultSnippetCompiler$21</ID>
+    <ID>MagicNumber:SnippetCompiler.kt$DefaultSnippetCompiler$8</ID>
+    <ID>MaxLineLength:AstMutantGeneratorSpec.kt$AstMutantGeneratorSpec$val gtMutant = mutants.firstOrNull { it.mutatorName == "RelationalBoundaryMutator" &amp;&amp; it.replacementText == "&gt;=" }</ID>
+    <ID>MaxLineLength:AstMutatorsSpec.kt$AstMutatorsSpec.CompoundAssignmentMutatorTests$findMutations("fun accumulate(vararg nums: Int): Int { var sum = 0; for (n in nums) sum += n; return sum }", mutator)</ID>
+    <ID>MaxLineLength:AstMutatorsSpec.kt$AstMutatorsSpec.TypedAstMutatorTests.&lt;no name provided&gt;$object</ID>
+    <ID>MaxLineLength:ChangelogGenerator.kt$DefaultChangelogGenerator$if</ID>
+    <ID>MaxLineLength:ChangelogGeneratorSpec.kt$ChangelogGeneratorSpec$val changelog = generator.generateFromReleaseNotes(sampleReleaseNotes, repoUrl = "https://github.com/gokorei/kronenberg")</ID>
+    <ID>MaxLineLength:CollectionMutators.kt$CollectionOperatorMutator$"Inverts collection methods (filter &lt;-&gt; filterNot, any &lt;-&gt; all, map &lt;-&gt; mapNotNull, sorted &lt;-&gt; sortedDescending)"</ID>
+    <ID>MaxLineLength:CollectionMutators.kt$CollectionOperatorMutator$* Inverts higher-order collection methods (filter &lt;-&gt; filterNot, any &lt;-&gt; all, take &lt;-&gt; drop, first &lt;-&gt; last, map &lt;-&gt; mapNotNull, sorted &lt;-&gt; sortedDescending, minOrNull &lt;-&gt; maxOrNull).</ID>
+    <ID>MaxLineLength:ControlFlowMutators.kt$BooleanInversionMutator$if</ID>
+    <ID>MaxLineLength:ControlFlowMutators.kt$ReturnValueMutator$override val description: String = "Mutates return values (return true -&gt; false, return x -&gt; 0, return str -&gt; \"\", emptyList, null)"</ID>
+    <ID>MaxLineLength:ControlFlowMutators.kt$ReturnValueMutator$val isStringExpr = returned is KtStringTemplateExpression || (returned is KtConstantExpression &amp;&amp; text.startsWith("\""))</ID>
+    <ID>MaxLineLength:ControlFlowMutators.kt$ReturnValueMutator$}</ID>
+    <ID>MaxLineLength:CoroutineConcurrencyMutator.kt$CoroutineConcurrencyMutator$* Mutates coroutine concurrency primitives (Dispatchers, SupervisorJob/Job, supervisorScope/coroutineScope, async/launch).</ID>
+    <ID>MaxLineLength:DataClassMutators.kt$DestructuringMutator$val rest = if (entries.size &gt; 2) entries.drop(2).joinToString(prefix = ", ", separator = ", ") { it.text } else ""</ID>
+    <ID>MaxLineLength:Exporters.kt$CodeClimateReportExporter$"Mutant ID: ${m.id}\nMutator: ${m.mutatorName}\nOriginal:\n${m.originalText}\nReplacement:\n${m.replacementText}"</ID>
+    <ID>MaxLineLength:Exporters.kt$CodeClimateReportExporter$"Surviving mutation (${m.mutatorName}): replaced '${m.originalText}' with '${m.replacementText}'. "</ID>
+    <ID>MaxLineLength:Exporters.kt$HtmlReportExporter$" &lt;div class=\"card\"&gt;&lt;h3&gt;Killed&lt;/h3&gt;&lt;div class=\"value\" style=\"color:#34d399\"&gt;${report.killedCount}&lt;/div&gt;&lt;/div&gt;"</ID>
+    <ID>MaxLineLength:Exporters.kt$HtmlReportExporter$" &lt;div class=\"card\"&gt;&lt;h3&gt;Survived&lt;/h3&gt;&lt;div class=\"value\" style=\"color:#f87171\"&gt;${report.survivedCount}&lt;/div&gt;&lt;/div&gt;"</ID>
+    <ID>MaxLineLength:Exporters.kt$HtmlReportExporter$" &lt;div class=\"card\"&gt;&lt;h3&gt;Timed Out&lt;/h3&gt;&lt;div class=\"value\" style=\"color:#fbbf24\"&gt;${report.timeoutCount}&lt;/div&gt;&lt;/div&gt;"</ID>
+    <ID>MaxLineLength:Exporters.kt$HtmlReportExporter$" &lt;tr&gt;&lt;th&gt;Status&lt;/th&gt;&lt;th&gt;Mutator&lt;/th&gt;&lt;th&gt;Location&lt;/th&gt;&lt;th&gt;Original&lt;/th&gt;&lt;th&gt;Replacement&lt;/th&gt;&lt;th&gt;Details&lt;/th&gt;&lt;/tr&gt;"</ID>
+    <ID>MaxLineLength:Exporters.kt$HtmlReportExporter$appendLine(" &lt;div class=\"card\"&gt;&lt;h3&gt;Total Mutants&lt;/h3&gt;&lt;div class=\"value\"&gt;${report.totalMutants}&lt;/div&gt;&lt;/div&gt;")</ID>
+    <ID>MaxLineLength:Exporters.kt$HtmlReportExporter$appendLine(" &lt;span style=\"font-size:24px;font-weight:bold;color:$scoreColor\"&gt;${report.mutationScore}% Score&lt;/span&gt;")</ID>
+    <ID>MaxLineLength:Exporters.kt$HtmlReportExporter$val locationText = if (m.filePath != null) "${m.filePath}:${m.line}:${m.column}" else "L${m.line}:C${m.column}"</ID>
+    <ID>MaxLineLength:Exporters.kt$SarifReportExporter$val msg = "Surviving Mutant: Replaced '${m.originalText}' with '${m.replacementText}' (line ${m.line})"</ID>
+    <ID>MaxLineLength:FastSnippetRunner.kt$DefaultFastSnippetRunner$if (entryMethod.parameterCount == 1) arrayOf&lt;Any&gt;(emptyArray&lt;String&gt;()) else emptyArray()</ID>
+    <ID>MaxLineLength:KronenbergAuditTask.kt$KronenbergAuditTask$appendLine(" .badge { display: inline-block; padding: 4px 8px; border-radius: 6px; font-weight: 600; }")</ID>
+    <ID>MaxLineLength:KronenbergAuditTask.kt$KronenbergAuditTask$appendLine(" &lt;tr&gt;&lt;th&gt;Status&lt;/th&gt;&lt;th&gt;Location&lt;/th&gt;&lt;th&gt;Mutator&lt;/th&gt;&lt;th&gt;Original&lt;/th&gt;&lt;th&gt;Replacement&lt;/th&gt;&lt;/tr&gt;")</ID>
+    <ID>MaxLineLength:KronenbergAuditTask.kt$KronenbergAuditTask$appendLine(" body { font-family: sans-serif; margin: 0; padding: 24px; background: #0f172a; color: #f8fafc; }")</ID>
+    <ID>MaxLineLength:KronenbergAuditTask.kt$KronenbergAuditTask$logger.lifecycle("🧟 Kronenberg: Auditing ${srcList.size} Kotlin source file(s) against ${tstList.size} test file(s)...")</ID>
+    <ID>MaxLineLength:KronenbergCliSpec.kt$KronenbergCliSpec$"audit --source-dir $srcDir --test-dir $testDir --json --html-report $htmlFile --sarif $sarifFile --threshold 0.0"</ID>
+    <ID>MaxLineLength:KronenbergCliSpec.kt$KronenbergCliSpec$sarifContent shouldContain "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json"</ID>
+    <ID>MaxLineLength:KronenbergCliSpec.kt$KronenbergCliSpec$val result = cli.test("audit --source $srcFile --test $testFile --codeclimate $codeClimateFile --threshold 0.0")</ID>
+    <ID>MaxLineLength:LanguageConstructMutators.kt$RangeOperatorMutator$context.edit(opRef, replacement, "Mutated range operator '$sign' to '$replacement'", originalText = element.text)</ID>
+    <ID>MaxLineLength:LanguageConstructMutators.kt$SmartCastMutator$override fun canMutate(element: PsiElement): Boolean</ID>
+    <ID>MaxLineLength:LanguageConstructMutators.kt$StringTemplateMutator$override fun canMutateTyped(element: KtStringTemplateExpression): Boolean</ID>
+    <ID>MaxLineLength:Main.kt$AuditCommand$val statusSymbol = if (report.mutationScore &gt;= threshold) "\u001B[32m✔ PASS\u001B[0m" else "\u001B[31m✘ FAIL\u001B[0m"</ID>
+    <ID>MaxLineLength:Main.kt$JUnitXmlReportExporter$"&lt;testsuite name=\"$testSuiteName\" tests=\"$totalTests\" failures=\"$failures\" errors=\"$errors\" time=\"$totalTimeSeconds\"&gt;"</ID>
+    <ID>MaxLineLength:Main.kt$JUnitXmlReportExporter$"Mutant ID: ${mutant.id}\nMutator: ${mutant.mutatorName}\nLocation: line ${mutant.line}, column ${mutant.column}\nOriginal:\n${mutant.originalText}\nMutated:\n${mutant.replacementText}"</ID>
+    <ID>MaxLineLength:Main.kt$JUnitXmlReportExporter$val msg = escapeXml("Mutant survived: replaced '${mutant.originalText}' with '${mutant.replacementText}'")</ID>
+    <ID>MaxLineLength:MutationExecutionPipeline.kt$DefaultMutationExecutionPipeline$baselineError = "Code contains forbidden host-terminating calls (e.g. System.exit, exitProcess, Runtime.halt)"</ID>
+    <ID>MaxLineLength:MutationExecutionPipeline.kt$DefaultMutationExecutionPipeline$val compiledMutant = compiler.compile(combinedMutantCode, extraClasspath = config.extraClasspath)</ID>
+    <ID>MaxLineLength:MutatorDocGenerator.kt$DefaultMutatorDocGenerator$MutatorCategory.ARITHMETIC_OPERATOR -&gt; "`+` $\\leftrightarrow$ `-`, `*` $\\leftrightarrow$ `/`, `%` $\\leftrightarrow$ `*`"</ID>
+    <ID>MaxLineLength:MutatorDocGenerator.kt$DefaultMutatorDocGenerator$MutatorCategory.BITWISE_OPERATOR -&gt; "`a and b` $\\leftrightarrow$ `a or b`, `a xor b` $\\leftrightarrow$ `a and b`"</ID>
+    <ID>MaxLineLength:MutatorDocGenerator.kt$DefaultMutatorDocGenerator$MutatorCategory.COLLECTION_OPERATOR -&gt; "`.map` $\\leftrightarrow$ `.mapNotNull`, `.first` $\\leftrightarrow$ `.last`"</ID>
+    <ID>MaxLineLength:MutatorDocGenerator.kt$DefaultMutatorDocGenerator$MutatorCategory.RESULT_ERROR_HANDLING -&gt; "`getOrElse` $\\to$ `getOrThrow`, `onSuccess` $\\leftrightarrow$ `onFailure`"</ID>
+    <ID>MaxLineLength:MutatorDocGenerator.kt$DefaultMutatorDocGenerator$MutatorCategory.SCOPE_FUNCTION -&gt; "`apply` $\\leftrightarrow$ `also`, `let` $\\leftrightarrow$ `run`, `takeIf` $\\leftrightarrow$ `takeUnless`"</ID>
+    <ID>MaxLineLength:MutatorDocGenerator.kt$DefaultMutatorDocGenerator$appendLine("Every mutator is implemented via pure K2 PSI AST visitors (`KtTreeVisitorVoid`), avoiding regular expressions or bytecode transformations.")</ID>
+    <ID>MaxLineLength:MutatorDocGenerator.kt$DefaultMutatorDocGenerator$appendLine("This document is the code-backed catalog of all **${mutators.size} AST mutation operators** implemented in Kronenberg.")</ID>
+    <ID>MaxLineLength:MutatorRegistry.kt$MutatorRegistry$public fun mutatorsForCategory(category: MutatorCategory): List&lt;AstMutator&gt;</ID>
+    <ID>MaxLineLength:MutatorRegistrySpec.kt$MutatorRegistrySpec$val combined = registry.mutatorsForCategories(setOf(MutatorCategory.COROUTINE, MutatorCategory.RESULT_ERROR_HANDLING))</ID>
+    <ID>MaxLineLength:OperatorMutators.kt$ArithmeticOperatorMutator$val leftIsString = left is KtStringTemplateExpression || (left is KtConstantExpression &amp;&amp; left.text.startsWith("\""))</ID>
+    <ID>MaxLineLength:OperatorMutators.kt$ArithmeticOperatorMutator$val rightIsString = right is KtStringTemplateExpression || (right is KtConstantExpression &amp;&amp; right.text.startsWith("\""))</ID>
+    <ID>MaxLineLength:OperatorMutators.kt$BitwiseOperatorMutator$return listOf(context.edit(opRef, rep, "Mutated bitwise operator '$sign' to '$rep'", originalText = element.text))</ID>
+    <ID>MaxLineLength:PreconditionMutator.kt$PreconditionMutator$override val description: String = "Mutates defensive precondition assertions (require, check, requireNotNull, checkNotNull)"</ID>
+    <ID>MaxLineLength:SurvivingMutantTestProposer.kt$SurvivingMutantTestProposer$" // Survived: ${mutant.mutatorName} replaced '${mutant.originalText}' with '${mutant.replacementText}'"</ID>
+    <ID>MaxLineLength:SurvivingMutantTestProposer.kt$SurvivingMutantTestProposer$appendLine(" $fnName(/* TODO: condition-specific input */) shouldBe /* expected */")</ID>
+    <ID>MaxLineLength:SurvivingMutantTestProposer.kt$SurvivingMutantTestProposer$appendLine(" $fnName(/* TODO: parameters */) shouldBe /* expected non-mutated return */")</ID>
+    <ID>MaxLineLength:TestHarnessSynthesizer.kt$TestHarnessSynthesizer$" try { $invocation } catch (t: Throwable) { throw AssertionError(\"Killed by $displayName: \" + t.message, t) }"</ID>
+    <ID>MaxLineLength:TestHarnessSynthesizer.kt$TestHarnessSynthesizer$val enclosingFn = if (mutant != null) CallGraphReachability.findEnclosingFunctionName(code, mutant.line) else null</ID>
+    <ID>MaxLineLength:TestHarnessSynthesizer.kt$TestHarnessSynthesizer$val sourceHasMain = sourceFile?.declarations?.filterIsInstance&lt;KtNamedFunction&gt;()?.any { it.name == "main" } == true</ID>
+    <ID>NestedBlockDepth:AstMutantGenerator.kt$AstMutantGenerator$public fun generateMutants( sourceCode: String, config: MutationConfig = MutationConfig(), filePath: String? = null, ): List&lt;AstMutant&gt;</ID>
+    <ID>ReturnCount:CollectionMutators.kt$CoroutineFlowMutator$override fun mutateTyped( element: KtCallExpression, context: MutationContext, ): List&lt;AstEdit&gt;</ID>
+    <ID>ReturnCount:ControlFlowMutators.kt$BooleanInversionMutator$override fun canMutate(element: PsiElement): Boolean</ID>
+    <ID>ReturnCount:CoroutineConcurrencyMutator.kt$CoroutineConcurrencyMutator$override fun canMutate(element: PsiElement): Boolean</ID>
+    <ID>ReturnCount:CoroutineConcurrencyMutator.kt$CoroutineConcurrencyMutator$override fun mutate( element: PsiElement, context: MutationContext, ): List&lt;AstEdit&gt;</ID>
+    <ID>ReturnCount:DataClassMutators.kt$DataClassCopyMutator$override fun canMutateTyped(element: KtCallExpression): Boolean</ID>
+    <ID>ReturnCount:DataClassMutators.kt$DataClassCopyMutator$override fun mutateTyped( element: KtCallExpression, context: MutationContext, ): List&lt;AstEdit&gt;</ID>
+    <ID>ReturnCount:FastSnippetRunner.kt$DefaultFastSnippetRunner.&lt;no name provided&gt;$override fun loadClass( name: String, resolve: Boolean, ): Class&lt;*&gt;</ID>
+    <ID>ReturnCount:LanguageConstructMutators.kt$LiteralMutationMutator$override fun mutateTyped( element: KtConstantExpression, context: MutationContext, ): List&lt;AstEdit&gt;</ID>
+    <ID>ReturnCount:LanguageConstructMutators.kt$SmartCastMutator$override fun mutate( element: PsiElement, context: MutationContext, ): List&lt;AstEdit&gt;</ID>
+    <ID>ReturnCount:MutationExecutionPipeline.kt$DefaultMutationExecutionPipeline$override suspend fun execute( sourceCode: String, testCode: String, config: MutationConfig, sourceFilePath: String?, ): MutationReport</ID>
+    <ID>ReturnCount:OperatorMutators.kt$ArithmeticOperatorMutator$override fun canMutateTyped(element: KtBinaryExpression): Boolean</ID>
+    <ID>ReturnCount:OperatorMutators.kt$UnaryOperatorMutator$override fun canMutate(element: PsiElement): Boolean</ID>
+    <ID>ReturnCount:OperatorMutators.kt$UnaryOperatorMutator$override fun mutate( element: PsiElement, context: MutationContext, ): List&lt;AstEdit&gt;</ID>
+    <ID>ReturnCount:PreconditionMutator.kt$PreconditionMutator$override fun canMutateTyped(element: KtCallExpression): Boolean</ID>
+    <ID>ReturnCount:PreconditionMutator.kt$PreconditionMutator$override fun mutateTyped( element: KtCallExpression, context: MutationContext, ): List&lt;AstEdit&gt;</ID>
+    <ID>ReturnCount:ResultMutator.kt$ResultMutator$override fun mutateTyped( element: KtCallExpression, context: MutationContext, ): List&lt;AstEdit&gt;</ID>
+    <ID>ReturnCount:ScopeMutators.kt$ScopeFunctionMutator$override fun mutateTyped( element: KtCallExpression, context: MutationContext, ): List&lt;AstEdit&gt;</ID>
+    <ID>SpreadOperator:FastSnippetRunner.kt$DefaultFastSnippetRunner$(null, *invokeArgs)</ID>
+    <ID>SwallowedException:FastSnippetRunner.kt$DefaultFastSnippetRunner$e: ClassNotFoundException</ID>
+    <ID>SwallowedException:FastSnippetRunner.kt$DefaultFastSnippetRunner$e: TimeoutException</ID>
+    <ID>TooGenericExceptionCaught:FastSnippetRunner.kt$DefaultFastSnippetRunner$e: Throwable</ID>
+    <ID>TooGenericExceptionCaught:SnippetCompiler.kt$DefaultSnippetCompiler$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:SnippetCompiler.kt$DefaultSnippetCompiler$e: Throwable</ID>
+    <ID>UnusedPrivateProperty:FastSnippetRunnerSpec.kt$FastSnippetRunnerSpec$i</ID>
+  </CurrentIssues>
+</SmellBaseline>

@@ -326,6 +326,63 @@ public final class com/gokorei/kronenberg/ast/VoidMethodCallMutator : com/gokore
 	public synthetic fun mutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;Lcom/gokorei/kronenberg/ast/MutationContext;)Ljava/util/List;
 }
 
+public abstract interface class com/gokorei/kronenberg/doc/ChangelogGenerator {
+	public abstract fun generateFromReleaseNotes (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+	public static synthetic fun generateFromReleaseNotes$default (Lcom/gokorei/kronenberg/doc/ChangelogGenerator;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ljava/lang/String;
+}
+
+public final class com/gokorei/kronenberg/doc/ChangelogGenerator$DefaultImpls {
+	public static synthetic fun generateFromReleaseNotes$default (Lcom/gokorei/kronenberg/doc/ChangelogGenerator;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ljava/lang/String;
+}
+
+public final class com/gokorei/kronenberg/doc/ChangelogGeneratorKt {
+	public static final fun main ([Ljava/lang/String;)V
+}
+
+public final class com/gokorei/kronenberg/doc/DefaultChangelogGenerator : com/gokorei/kronenberg/doc/ChangelogGenerator {
+	public fun <init> ()V
+	public fun generateFromReleaseNotes (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+}
+
+public final class com/gokorei/kronenberg/doc/DefaultMutatorDocGenerator : com/gokorei/kronenberg/doc/MutatorDocGenerator {
+	public fun <init> ()V
+	public fun <init> (Lcom/gokorei/kronenberg/ast/MutatorRegistry;)V
+	public synthetic fun <init> (Lcom/gokorei/kronenberg/ast/MutatorRegistry;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun generateMarkdownReference ()Ljava/lang/String;
+	public fun generateSummaryTable ()Ljava/lang/String;
+}
+
+public abstract interface class com/gokorei/kronenberg/doc/MutatorDocGenerator {
+	public abstract fun generateMarkdownReference ()Ljava/lang/String;
+	public abstract fun generateSummaryTable ()Ljava/lang/String;
+}
+
+public final class com/gokorei/kronenberg/doc/MutatorDocGeneratorKt {
+	public static final fun main ([Ljava/lang/String;)V
+}
+
+public final class com/gokorei/kronenberg/doc/ReleaseEntry {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/util/List;
+	public final fun component4 ()Ljava/util/List;
+	public final fun component5 ()Ljava/util/List;
+	public final fun component6 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;)Lcom/gokorei/kronenberg/doc/ReleaseEntry;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/doc/ReleaseEntry;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;ILjava/lang/Object;)Lcom/gokorei/kronenberg/doc/ReleaseEntry;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAdded ()Ljava/util/List;
+	public final fun getChanged ()Ljava/util/List;
+	public final fun getDate ()Ljava/lang/String;
+	public final fun getFixed ()Ljava/util/List;
+	public final fun getSecurity ()Ljava/util/List;
+	public final fun getVersion ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/gokorei/kronenberg/model/AstEdit {
 	public static final field Companion Lcom/gokorei/kronenberg/model/AstEdit$Companion;
 	public fun <init> (IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;IILjava/lang/String;)V
