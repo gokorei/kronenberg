@@ -6,6 +6,7 @@ plugins {
 
 application {
     mainClass.set("com.gokorei.kronenberg.cli.MainKt")
+    applicationName = "kronenberg"
 }
 
 dependencies {
