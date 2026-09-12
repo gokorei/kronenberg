@@ -14,7 +14,7 @@ We release patches for security vulnerabilities on the following versions:
 If you discover a security vulnerability within Kronenberg, please **do not open a public issue**. Instead, please report security issues responsibly.
 
 ### How to Report
-1. Email details of the vulnerability to `[Private Security Advisory](https://github.com/gokorei/kronenberg/security/advisories/new)` (or create a private GitHub Security Advisory).
+1. Report security vulnerabilities confidentially by creating a [Private Security Advisory](https://github.com/gokorei/kronenberg/security/advisories/new).
 2. Include reproduction steps, sample code, and potential impact.
 3. You will receive an acknowledgment within 48 hours.
 4. We will coordinate a patched release and appropriate disclosure timeline.
