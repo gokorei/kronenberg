@@ -1,10 +1,17 @@
 plugins {
     alias(libs.plugins.kotlin.jvm) apply false
     alias(libs.plugins.kotlin.serialization) apply false
-    alias(libs.plugins.dokka) apply false
+    alias(libs.plugins.dokka)
     alias(libs.plugins.binary.compatibility.validator)
     alias(libs.plugins.spotless)
     `maven-publish`
+}
+
+dependencies {
+    dokka(project(":kronenberg-core"))
+    dokka(project(":kronenberg-runner"))
+    dokka(project(":kronenberg-cli"))
+    dokka(project(":kronenberg-gradle-plugin"))
 }
 
 apiValidation {
