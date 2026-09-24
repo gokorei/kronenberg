@@ -140,14 +140,14 @@ public class DefaultMutationExecutionPipeline(
                         async(Dispatchers.Default) {
                             val cacheKey =
                                 if (config.enableCache) {
-                                    cache.computeKey(mutant.mutatedSource, testCode, mutant.id)
+                                    cache.computeKey(mutant.mutatedSource, trimmedTest, config, calibratedTimeoutMs)
                                 } else {
                                     null
                                 }
 
                             if (cacheKey != null) {
                                 val cachedResult = cache.get(cacheKey)
-                                if (cachedResult != null) return@async cachedResult
+                                if (cachedResult != null) return@async cachedResult.copy(mutant = mutant)
                             }
 
                             val combinedMutantCode =

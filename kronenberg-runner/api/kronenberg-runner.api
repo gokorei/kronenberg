@@ -1,3 +1,45 @@
+public abstract interface class com/gokorei/kronenberg/runner/CachePersistenceResult {
+}
+
+public final class com/gokorei/kronenberg/runner/CachePersistenceResult$Failed : com/gokorei/kronenberg/runner/CachePersistenceResult {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lcom/gokorei/kronenberg/runner/CachePersistenceResult$Failed;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/runner/CachePersistenceResult$Failed;Ljava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/CachePersistenceResult$Failed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMessage ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/gokorei/kronenberg/runner/CachePersistenceResult$Loaded : com/gokorei/kronenberg/runner/CachePersistenceResult {
+	public static final field INSTANCE Lcom/gokorei/kronenberg/runner/CachePersistenceResult$Loaded;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/gokorei/kronenberg/runner/CachePersistenceResult$MemoryOnly : com/gokorei/kronenberg/runner/CachePersistenceResult {
+	public static final field INSTANCE Lcom/gokorei/kronenberg/runner/CachePersistenceResult$MemoryOnly;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/gokorei/kronenberg/runner/CachePersistenceResult$NotConfigured : com/gokorei/kronenberg/runner/CachePersistenceResult {
+	public static final field INSTANCE Lcom/gokorei/kronenberg/runner/CachePersistenceResult$NotConfigured;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/gokorei/kronenberg/runner/CachePersistenceResult$Persisted : com/gokorei/kronenberg/runner/CachePersistenceResult {
+	public static final field INSTANCE Lcom/gokorei/kronenberg/runner/CachePersistenceResult$Persisted;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/gokorei/kronenberg/runner/CallGraphReachability {
 	public static final field INSTANCE Lcom/gokorei/kronenberg/runner/CallGraphReachability;
 	public final fun computeLineAndColumn (Ljava/lang/String;I)Lkotlin/Pair;
@@ -88,12 +130,21 @@ public final class com/gokorei/kronenberg/runner/DefaultMutationExecutionPipelin
 }
 
 public final class com/gokorei/kronenberg/runner/DefaultMutationResultCache : com/gokorei/kronenberg/runner/MutationResultCache {
+	public static final field CACHE_FILE_NAME Ljava/lang/String;
+	public static final field Companion Lcom/gokorei/kronenberg/runner/DefaultMutationResultCache$Companion;
+	public static final field MAX_ENTRIES I
+	public static final field MAX_FILE_SIZE_BYTES J
+	public static final field SCHEMA_VERSION I
 	public fun <init> ()V
 	public fun <init> (Ljava/nio/file/Path;)V
 	public synthetic fun <init> (Ljava/nio/file/Path;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public fun computeKey (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+	public fun computeKey (Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutationConfig;J)Ljava/lang/String;
 	public fun get (Ljava/lang/String;)Lcom/gokorei/kronenberg/model/MutantResult;
-	public fun put (Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutantResult;)V
+	public final fun getLoadResult ()Lcom/gokorei/kronenberg/runner/CachePersistenceResult;
+	public fun put (Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutantResult;)Lcom/gokorei/kronenberg/runner/CachePersistenceResult;
+}
+
+public final class com/gokorei/kronenberg/runner/DefaultMutationResultCache$Companion {
 }
 
 public final class com/gokorei/kronenberg/runner/DefaultSnippetCompiler : com/gokorei/kronenberg/runner/SnippetCompiler {
@@ -127,9 +178,9 @@ public final class com/gokorei/kronenberg/runner/MutationExecutionPipeline$Defau
 }
 
 public abstract interface class com/gokorei/kronenberg/runner/MutationResultCache {
-	public abstract fun computeKey (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+	public abstract fun computeKey (Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutationConfig;J)Ljava/lang/String;
 	public abstract fun get (Ljava/lang/String;)Lcom/gokorei/kronenberg/model/MutantResult;
-	public abstract fun put (Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutantResult;)V
+	public abstract fun put (Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutantResult;)Lcom/gokorei/kronenberg/runner/CachePersistenceResult;
 }
 
 public final class com/gokorei/kronenberg/runner/ParsedTestCode {
