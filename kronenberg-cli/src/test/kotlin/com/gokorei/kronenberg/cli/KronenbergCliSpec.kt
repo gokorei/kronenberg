@@ -3,10 +3,13 @@ package com.gokorei.kronenberg.cli
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.testing.test
 import io.kotest.matchers.ints.shouldBeGreaterThan
+import io.kotest.matchers.longs.shouldBeLessThan
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import org.junit.jupiter.api.Test
+import java.nio.file.Path
+import java.time.Duration
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.createTempFile
 import kotlin.io.path.readText
@@ -271,11 +274,20 @@ class KronenbergCliSpec {
     fun `audit command with --pre-commit runs fast audit on provided source and test`() {
         val srcFile = createTempFile("PreCommitSample", ".kt")
         val testFile = createTempFile("PreCommitSampleTest", ".kt")
+        val runner =
+            object : GitProcessRunner {
+                override fun run(
+                    command: List<String>,
+                    workingDirectory: Path,
+                    timeout: Duration,
+                    outputLimitBytes: Int,
+                ): GitProcessResult = GitProcessResult.Success("@@ -0,0 +1 @@\n+fun add(a: Int, b: Int) = a + b\n", "", 0)
+            }
         try {
             srcFile.writeText("fun add(a: Int, b: Int) = a + b")
             testFile.writeText("fun main() { check(add(1, 2) == 3) }")
 
-            val cli = KronenbergCli().subcommands(AuditCommand())
+            val cli = KronenbergCli().subcommands(AuditCommand(gitProcessRunner = runner))
             val result = cli.test("audit --pre-commit --source $srcFile --test $testFile --threshold 50.0")
 
             result.statusCode shouldBe 0
@@ -341,6 +353,190 @@ class KronenbergCliSpec {
             result.statusCode shouldBe 0
             result.output shouldContain "PROPOSED TEST SKELETONS TO KILL SURVIVED MUTANTS"
             result.output shouldContain "evaluate"
+        } finally {
+            srcFile.toFile().delete()
+            testFile.toFile().delete()
+        }
+    }
+
+    @Test
+    fun `git process runner returns stdout and stderr concurrently`() {
+        val result =
+            DefaultGitProcessRunner.run(
+                command =
+                    listOf(
+                        "sh",
+                        "-c",
+                        "i=0; while [ \"\$i\" -lt 4096 ]; do printf 0123456789; printf abcdefghij >&2; i=\$((i + 1)); done",
+                    ),
+                workingDirectory = Path.of("."),
+                timeout = Duration.ofSeconds(2),
+                outputLimitBytes = 100_000,
+            )
+
+        val success = result.shouldBeInstanceOf<GitProcessResult.Success>()
+        success.stdout.length shouldBe 40_960
+        success.stderr.length shouldBe 40_960
+        success.exitCode shouldBe 0
+    }
+
+    @Test
+    fun `git process runner distinguishes startup failure`() {
+        val result =
+            DefaultGitProcessRunner.run(
+                command = listOf("kronenberg-missing-git-executable"),
+                workingDirectory = Path.of("."),
+                timeout = Duration.ofSeconds(2),
+                outputLimitBytes = 64,
+            )
+
+        result.shouldBeInstanceOf<GitProcessResult.Failure>().kind shouldBe GitFailureKind.STARTUP_FAILED
+    }
+
+    @Test
+    fun `git process runner validates non-zero exits`() {
+        val result =
+            DefaultGitProcessRunner.run(
+                command = listOf("sh", "-c", "printf failure >&2; exit 7"),
+                workingDirectory = Path.of("."),
+                timeout = Duration.ofSeconds(2),
+                outputLimitBytes = 64,
+            )
+
+        val failure = result.shouldBeInstanceOf<GitProcessResult.Failure>()
+        failure.kind shouldBe GitFailureKind.NON_ZERO_EXIT
+        failure.exitCode shouldBe 7
+        failure.stderr shouldBe "failure"
+    }
+
+    @Test
+    fun `git process runner bounds output`() {
+        val result =
+            DefaultGitProcessRunner.run(
+                command =
+                    listOf(
+                        "sh",
+                        "-c",
+                        "i=0; while [ \"\$i\" -lt 4096 ]; do printf 0123456789; i=\$((i + 1)); done",
+                    ),
+                workingDirectory = Path.of("."),
+                timeout = Duration.ofSeconds(2),
+                outputLimitBytes = 32,
+            )
+
+        val failure = result.shouldBeInstanceOf<GitProcessResult.Failure>()
+        failure.kind shouldBe GitFailureKind.OUTPUT_LIMIT_EXCEEDED
+        ((failure.stdout.length + failure.stderr.length) <= 32) shouldBe true
+    }
+
+    @Test
+    fun `git process runner enforces timeout across the full process lifecycle`() {
+        val startedAt = System.nanoTime()
+        val result =
+            DefaultGitProcessRunner.run(
+                command = listOf("sh", "-c", "printf started; while :; do :; done"),
+                workingDirectory = Path.of("."),
+                timeout = Duration.ofMillis(100),
+                outputLimitBytes = 32,
+            )
+        val elapsedMillis = Duration.ofNanos(System.nanoTime() - startedAt).toMillis()
+
+        result.shouldBeInstanceOf<GitProcessResult.Failure>().kind shouldBe GitFailureKind.TIMED_OUT
+        elapsedMillis shouldBeLessThan 2_000L
+    }
+
+    @Test
+    fun `git diff parser distinguishes malformed hunk output`() {
+        val result = GitOutputParser.hunkLines("@@ malformed\n")
+
+        result.shouldBeInstanceOf<GitOperationResult.Failure>().kind shouldBe GitFailureKind.MALFORMED_OUTPUT
+    }
+
+    @Test
+    fun `git diff parser uses end of options and protects the ref boundary`() {
+        val sourceFile = Path.of("Sample.kt").toAbsolutePath()
+        val calls = mutableListOf<List<String>>()
+        val runner =
+            object : GitProcessRunner {
+                override fun run(
+                    command: List<String>,
+                    workingDirectory: Path,
+                    timeout: Duration,
+                    outputLimitBytes: Int,
+                ): GitProcessResult {
+                    calls += command
+                    return GitProcessResult.Success("", "", 0)
+                }
+            }
+
+        GitDiffParser.diffResult(sourceFile, "HEAD~1", options = GitProcessOptions(runner = runner)) shouldBe
+            GitOperationResult.Success(emptyList())
+        calls.single() shouldBe
+            listOf(
+                "git",
+                "diff",
+                "-U0",
+                "--end-of-options",
+                "HEAD~1",
+                "--",
+                sourceFile.toString(),
+            )
+
+        calls.clear()
+        val rejected = GitDiffParser.diffResult(sourceFile, "--output=/tmp/leak", options = GitProcessOptions(runner = runner))
+
+        rejected.shouldBeInstanceOf<GitOperationResult.Failure>().kind shouldBe GitFailureKind.INVALID_REFERENCE
+        calls shouldBe emptyList()
+    }
+
+    @Test
+    fun `pre-commit audit fails closed when git fails`() {
+        val runner =
+            object : GitProcessRunner {
+                override fun run(
+                    command: List<String>,
+                    workingDirectory: Path,
+                    timeout: Duration,
+                    outputLimitBytes: Int,
+                ): GitProcessResult =
+                    GitProcessResult.Failure(
+                        kind = GitFailureKind.NON_ZERO_EXIT,
+                        message = "Git command failed",
+                        exitCode = 128,
+                        stderr = "not a repository",
+                    )
+            }
+        val cli = KronenbergCli().subcommands(AuditCommand(gitProcessRunner = runner))
+
+        val result = cli.test("audit --pre-commit")
+
+        result.statusCode shouldBe 1
+        result.output shouldContain "Git command failed with exit code 128"
+    }
+
+    @Test
+    fun `incremental audit fails closed when git fails`() {
+        val srcFile = createTempFile("GitFailureSample", ".kt")
+        val testFile = createTempFile("GitFailureSampleTest", ".kt")
+        val runner =
+            object : GitProcessRunner {
+                override fun run(
+                    command: List<String>,
+                    workingDirectory: Path,
+                    timeout: Duration,
+                    outputLimitBytes: Int,
+                ): GitProcessResult =
+                    GitProcessResult.Failure(
+                        kind = GitFailureKind.TIMED_OUT,
+                        message = "Git command timed out",
+                    )
+            }
+        try {
+            val cli = KronenbergCli().subcommands(AuditCommand(gitProcessRunner = runner))
+            val result = cli.test("audit --source $srcFile --test $testFile --diff HEAD")
+
+            result.statusCode shouldBe 1
+            result.output shouldContain "Git command timed out"
         } finally {
             srcFile.toFile().delete()
             testFile.toFile().delete()
