@@ -7,7 +7,7 @@ dependencies {
     api(project(":kronenberg-core"))
     api(libs.kotlinx.coroutines.core)
     api(libs.kotlinx.serialization.json)
-    implementation(libs.kotlin.compiler.embeddable)
+    api(libs.kotlin.compiler.embeddable)
 
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.kotest.assertions.core)

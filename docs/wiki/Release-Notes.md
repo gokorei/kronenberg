@@ -18,6 +18,7 @@ Overview of all notable changes to Kronenberg by version.
 - Automated GitHub Wiki synchronization workflow (`.github/workflows/wiki-sync.yml`).
 
 ### Bug Fixes
+- Published `kronenberg-core` and `kronenberg-runner` now expose their intentional Kotlin compiler PSI API dependency transitively, so standalone consumers compile without declaring compiler artifacts.
 
 ### Improvements
 

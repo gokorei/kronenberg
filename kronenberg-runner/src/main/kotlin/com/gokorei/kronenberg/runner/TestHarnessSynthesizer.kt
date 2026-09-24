@@ -165,6 +165,9 @@ public object TestHarnessSynthesizer {
 
     /**
      * Strips package and import statements from source text to enable clean snippet concatenation.
+     *
+     * [file] is a public compiler PSI input. The matching `kotlin-compiler-embeddable`
+     * dependency is exposed by the `kronenberg-runner` API.
      */
     public fun stripPackageAndImports(
         source: String,

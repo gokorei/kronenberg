@@ -33,7 +33,7 @@ kover {
 }
 
 apiValidation {
-    ignoredProjects.addAll(listOf("kronenberg-cli", "kronenberg-gradle-plugin"))
+    ignoredProjects.addAll(listOf("consumer-fixture", "kronenberg-cli", "kronenberg-gradle-plugin"))
     nonPublicMarkers.addAll(listOf("com.gokorei.kronenberg.InternalKronenbergApi"))
 }
 
