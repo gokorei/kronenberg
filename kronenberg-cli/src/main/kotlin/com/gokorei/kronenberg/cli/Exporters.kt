@@ -92,7 +92,7 @@ public object HtmlReportExporter {
         targetFile: Path,
         title: String = "Kronenberg Mutation Audit Report",
     ) {
-        val scoreColor = if (report.mutationScore >= 80.0) "#10b981" else "#ef4444"
+        val scoreColor = if (report.isPassed) "#10b981" else "#ef4444"
         val html =
             buildString {
                 appendLine("<!DOCTYPE html>")
@@ -170,6 +170,25 @@ public object HtmlReportExporter {
                 }
                 appendLine("      </tbody>")
                 appendLine("    </table>")
+                if (report.fileDiagnostics.isNotEmpty()) {
+                    appendLine("    <h2>File Audit Diagnostics</h2>")
+                    appendLine("    <table>")
+                    appendLine("      <thead>")
+                    appendLine("        <tr><th>Source</th><th>Test</th><th>Status</th><th>Diagnostic</th></tr>")
+                    appendLine("      </thead>")
+                    appendLine("      <tbody>")
+                    for (diagnostic in report.fileDiagnostics) {
+                        val badgeClass = if (diagnostic.status.name == "AUDITED") "badge-killed" else "badge-error"
+                        appendLine("        <tr>")
+                        appendLine("          <td>${escapeHtml(diagnostic.sourceFile)}</td>")
+                        appendLine("          <td>${escapeHtml(diagnostic.testFile.orEmpty())}</td>")
+                        appendLine("          <td><span class=\"badge $badgeClass\">${diagnostic.status.name}</span></td>")
+                        appendLine("          <td>${escapeHtml(diagnostic.diagnostic.orEmpty())}</td>")
+                        appendLine("        </tr>")
+                    }
+                    appendLine("      </tbody>")
+                    appendLine("    </table>")
+                }
                 appendLine("  </div>")
                 appendLine("</body>")
                 appendLine("</html>")

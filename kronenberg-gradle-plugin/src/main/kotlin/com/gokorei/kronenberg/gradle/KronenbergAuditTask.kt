@@ -1,9 +1,13 @@
 package com.gokorei.kronenberg.gradle
 
+import com.gokorei.kronenberg.model.AuditFileDiagnostic
+import com.gokorei.kronenberg.model.AuditFileOutcome
+import com.gokorei.kronenberg.model.AuditFileStatus
 import com.gokorei.kronenberg.model.MutantResult
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationConfig
 import com.gokorei.kronenberg.model.MutationReport
+import com.gokorei.kronenberg.model.MutationReportEvaluator
 import com.gokorei.kronenberg.runner.DefaultMutationExecutionPipeline
 import kotlinx.coroutines.runBlocking
 import org.gradle.api.DefaultTask
@@ -21,6 +25,7 @@ import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
+import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.inject.Inject
@@ -83,8 +88,7 @@ public abstract class KronenbergAuditTask
             logger.lifecycle("🧟 Kronenberg: Auditing ${srcList.size} Kotlin source file(s) against ${tstList.size} test file(s)...")
 
             if (srcList.isEmpty()) {
-                logger.lifecycle("No Kotlin source files found to audit.")
-                return
+                throw GradleException("No Kotlin source files found to audit")
             }
 
             val config =
@@ -99,63 +103,11 @@ public abstract class KronenbergAuditTask
                 )
 
             val pipeline = DefaultMutationExecutionPipeline()
-            val allResults = mutableListOf<MutantResult>()
-            var totalMutants = 0
-            var killedCount = 0
-            var survivedCount = 0
-            var timeoutCount = 0
-            var compileErrorCount = 0
+            val outcomes = mutableListOf<AuditFileOutcome>()
 
-            for (srcFile in srcList) {
-                val baseName = srcFile.nameWithoutExtension
-                val matchingTestFile =
-                    tstList.firstOrNull {
-                        val tstName = it.nameWithoutExtension
-                        tstName == "${baseName}Test" || tstName == "${baseName}Spec" || tstName == baseName
-                    }
+            outcomes += srcList.map { auditSourceFile(pipeline, it, tstList, config) }
 
-                val testCode = matchingTestFile?.readText() ?: ""
-                if (testCode.isBlank()) {
-                    logger.info("Skipping ${srcFile.name}: No matching test suite found.")
-                    continue
-                }
-
-                val fileReport =
-                    runBlocking {
-                        pipeline.execute(
-                            sourceCode = srcFile.readText(),
-                            testCode = testCode,
-                            config = config,
-                            sourceFilePath = srcFile.name,
-                        )
-                    }
-
-                totalMutants += fileReport.totalMutants
-                killedCount += fileReport.killedCount
-                survivedCount += fileReport.survivedCount
-                timeoutCount += fileReport.timeoutCount
-                compileErrorCount += fileReport.compileErrorCount
-                allResults.addAll(fileReport.results)
-            }
-
-            val totalEffective = killedCount + survivedCount + timeoutCount
-            val score =
-                if (totalEffective > 0) {
-                    ((killedCount + timeoutCount).toDouble() / totalEffective.toDouble()) * 100.0
-                } else {
-                    100.0
-                }
-
-            val finalReport =
-                MutationReport(
-                    totalMutants = totalMutants,
-                    killedCount = killedCount,
-                    survivedCount = survivedCount,
-                    timeoutCount = timeoutCount,
-                    compileErrorCount = compileErrorCount,
-                    mutationScore = (score * 10.0).toInt() / 10.0,
-                    results = allResults,
-                )
+            val finalReport = MutationReportEvaluator.aggregate(outcomes)
 
             val outDir = reportsDir.get().asFile.toPath()
             Files.createDirectories(outDir)
@@ -166,28 +118,105 @@ public abstract class KronenbergAuditTask
             logger.lifecycle("=======================================================")
             logger.lifecycle("           KRONENBERG MUTATION AUDIT                   ")
             logger.lifecycle("=======================================================")
-            logger.lifecycle("  Total Mutants : $totalMutants")
-            logger.lifecycle("  Killed        : $killedCount")
-            logger.lifecycle("  Survived      : $survivedCount")
-            logger.lifecycle("  Timed Out     : $timeoutCount")
-            logger.lifecycle("  Compile Errors: $compileErrorCount")
+            logger.lifecycle("  Total Mutants : ${finalReport.totalMutants}")
+            logger.lifecycle("  Killed        : ${finalReport.killedCount}")
+            logger.lifecycle("  Survived      : ${finalReport.survivedCount}")
+            logger.lifecycle("  Timed Out     : ${finalReport.timeoutCount}")
+            logger.lifecycle("  Compile Errors: ${finalReport.compileErrorCount}")
             logger.lifecycle("  Mutation Score: ${finalReport.mutationScore}% (Threshold: ${minScore.get()}%)")
+            finalReport.fileDiagnostics.forEach { diagnostic ->
+                val testLabel = diagnostic.testFile?.let { " -> $it" } ?: ""
+                val message = diagnostic.diagnostic?.let { ": $it" } ?: ""
+                logger.lifecycle("  File Audit    : ${diagnostic.sourceFile}$testLabel [${diagnostic.status.name}]$message")
+            }
             logger.lifecycle("  Reports       : $outDir")
             logger.lifecycle("=======================================================")
 
-            if (finalReport.mutationScore < minScore.get()) {
+            if (!MutationReportEvaluator.passes(finalReport, minScore.get())) {
+                val reason = finalReport.baselineError ?: "Mutation audit did not satisfy the fail-closed quality policy"
                 throw GradleException(
-                    "Mutation score ${finalReport.mutationScore}% is below threshold ${minScore.get()}%. " +
+                    "$reason. Mutation score ${finalReport.mutationScore}% did not pass threshold ${minScore.get()}%. " +
                         "See reports at ${outDir.resolve("mutation-report.html")}",
                 )
             }
+        }
+
+        private fun auditSourceFile(
+            pipeline: DefaultMutationExecutionPipeline,
+            sourceFile: File,
+            testFiles: List<File>,
+            config: MutationConfig,
+        ): AuditFileOutcome {
+            val baseName = sourceFile.nameWithoutExtension
+            val matchingTestFiles =
+                testFiles
+                    .filter {
+                        val testName = it.nameWithoutExtension
+                        testName == "${baseName}Test" || testName == "${baseName}Spec" || testName == baseName
+                    }.sortedBy { it.name }
+
+            return when (matchingTestFiles.size) {
+                0 -> {
+                    AuditFileOutcome.skipped(
+                        sourceFile = sourceFile.name,
+                        status = AuditFileStatus.MISSING_TEST,
+                        diagnostic = "No matching test file found",
+                    )
+                }
+
+                1 -> {
+                    auditMatchedFile(pipeline, sourceFile, matchingTestFiles.single(), config)
+                }
+
+                else -> {
+                    val testFileNames = matchingTestFiles.map { it.name }
+                    AuditFileOutcome.skipped(
+                        sourceFile = sourceFile.name,
+                        testFile = testFileNames.joinToString(", "),
+                        status = AuditFileStatus.AMBIGUOUS_TEST,
+                        diagnostic = "Multiple matching test files found: ${testFileNames.joinToString(", ")}",
+                    )
+                }
+            }
+        }
+
+        private fun auditMatchedFile(
+            pipeline: DefaultMutationExecutionPipeline,
+            sourceFile: File,
+            testFile: File,
+            config: MutationConfig,
+        ): AuditFileOutcome {
+            val testCode = testFile.readText()
+            if (testCode.isBlank()) {
+                return AuditFileOutcome.skipped(
+                    sourceFile = sourceFile.name,
+                    testFile = testFile.name,
+                    status = AuditFileStatus.MISSING_TEST,
+                    diagnostic = "Matching test file is empty: ${testFile.name}",
+                )
+            }
+
+            val report =
+                runBlocking {
+                    pipeline.execute(
+                        sourceCode = sourceFile.readText(),
+                        testCode = testCode,
+                        config = config,
+                        sourceFilePath = sourceFile.name,
+                    )
+                }
+            return AuditFileOutcome.audited(
+                sourceFile = sourceFile.name,
+                testFile = testFile.name,
+                report = report,
+            )
         }
 
         private fun exportHtmlReport(
             report: MutationReport,
             targetFile: Path,
         ) {
-            val scoreColor = if (report.mutationScore >= minScore.get()) "#10b981" else "#ef4444"
+            val scoreColor = if (MutationReportEvaluator.passes(report, minScore.get())) "#10b981" else "#ef4444"
             val html =
                 buildString {
                     appendLine("<!DOCTYPE html>")
@@ -247,6 +276,25 @@ public abstract class KronenbergAuditTask
                     }
                     appendLine("      </tbody>")
                     appendLine("    </table>")
+                    if (report.fileDiagnostics.isNotEmpty()) {
+                        appendLine("    <h2>File Audit Diagnostics</h2>")
+                        appendLine("    <table>")
+                        appendLine("      <thead>")
+                        appendLine("        <tr><th>Source</th><th>Test</th><th>Status</th><th>Diagnostic</th></tr>")
+                        appendLine("      </thead>")
+                        appendLine("      <tbody>")
+                        for (diagnostic in report.fileDiagnostics) {
+                            val badgeClass = if (diagnostic.status == AuditFileStatus.AUDITED) "badge-killed" else "badge-error"
+                            appendLine("        <tr>")
+                            appendLine("          <td>${escapeHtml(diagnostic.sourceFile)}</td>")
+                            appendLine("          <td>${escapeHtml(diagnostic.testFile.orEmpty())}</td>")
+                            appendLine("          <td><span class=\"badge $badgeClass\">${diagnostic.status.name}</span></td>")
+                            appendLine("          <td>${escapeHtml(diagnostic.diagnostic.orEmpty())}</td>")
+                            appendLine("        </tr>")
+                        }
+                        appendLine("      </tbody>")
+                        appendLine("    </table>")
+                    }
                     appendLine("  </div>")
                     appendLine("</body>")
                     appendLine("</html>")
@@ -259,9 +307,10 @@ public abstract class KronenbergAuditTask
             report: MutationReport,
             targetFile: Path,
         ) {
-            val totalTests = report.totalMutants
+            val fileErrors = report.fileDiagnostics.filter { it.status != AuditFileStatus.AUDITED }
+            val totalTests = report.totalMutants + fileErrors.size
             val failures = report.survivedCount + report.timeoutCount
-            val errors = report.compileErrorCount
+            val errors = report.compileErrorCount + fileErrors.size
             val totalTimeSeconds = report.results.sumOf { it.executionTimeMs } / 1000.0
 
             val sb = StringBuilder()
@@ -271,52 +320,78 @@ public abstract class KronenbergAuditTask
                     "tests=\"$totalTests\" failures=\"$failures\" errors=\"$errors\" time=\"$totalTimeSeconds\">",
             )
 
-            for (result in report.results) {
-                val mutant = result.mutant
-                val durationSec = result.executionTimeMs / 1000.0
-                val className = "com.gokorei.kronenberg.mutant.${mutant.category.name.lowercase()}"
-                val testName = "${mutant.mutatorName}_line${mutant.line}_col${mutant.column}_${mutant.id.take(8)}"
-
-                sb.appendLine("    <testcase classname=\"$className\" name=\"$testName\" time=\"$durationSec\">")
-                when (result.status) {
-                    MutantStatus.SURVIVED -> {
-                        val orig = mutant.originalText
-                        val repl = mutant.replacementText
-                        val msg = escapeXml("Mutant survived: replaced '$orig' with '$repl'")
-                        val body =
-                            escapeXml(
-                                "Mutant ID: ${mutant.id}\nMutator: ${mutant.mutatorName}\n" +
-                                    "Location: line ${mutant.line}, column ${mutant.column}\n" +
-                                    "Original:\n$orig\nMutated:\n$repl",
-                            )
-                        sb.appendLine("        <failure message=\"$msg\" type=\"MutationSurvived\">$body</failure>")
-                    }
-
-                    MutantStatus.TIMED_OUT -> {
-                        val msg = escapeXml(result.failureMessage ?: "Mutant execution timed out")
-                        sb.appendLine("        <failure message=\"$msg\" type=\"Timeout\">$msg</failure>")
-                    }
-
-                    MutantStatus.COMPILE_ERROR -> {
-                        val msg = escapeXml(result.failureMessage ?: "Mutant failed to compile")
-                        sb.appendLine("        <error message=\"$msg\" type=\"CompileError\">$msg</error>")
-                    }
-
-                    MutantStatus.BASELINE_ERROR -> {
-                        val msg = escapeXml(result.failureMessage ?: "Baseline execution failed before mutation")
-                        sb.appendLine("        <error message=\"$msg\" type=\"BaselineError\">$msg</error>")
-                    }
-
-                    MutantStatus.KILLED -> {
-                        // Passing test case
-                    }
-                }
-                sb.appendLine("    </testcase>")
-            }
+            report.results.forEach { appendMutantTestCase(sb, it) }
+            fileErrors.forEach { appendFileDiagnosticTestCase(sb, it) }
             sb.appendLine("</testsuite>")
 
             targetFile.parent?.let { Files.createDirectories(it) }
             Files.writeString(targetFile, sb.toString())
+        }
+
+        private fun appendMutantTestCase(
+            sb: StringBuilder,
+            result: MutantResult,
+        ) {
+            val mutant = result.mutant
+            val durationSec = result.executionTimeMs / 1000.0
+            val className = "com.gokorei.kronenberg.mutant.${mutant.category.name.lowercase()}"
+            val testName = "${mutant.mutatorName}_line${mutant.line}_col${mutant.column}_${mutant.id.take(8)}"
+
+            sb.appendLine("    <testcase classname=\"$className\" name=\"$testName\" time=\"$durationSec\">")
+            when (result.status) {
+                MutantStatus.SURVIVED -> {
+                    val original = mutant.originalText
+                    val replacement = mutant.replacementText
+                    val msg = escapeXml("Mutant survived: replaced '$original' with '$replacement'")
+                    val body =
+                        escapeXml(
+                            "Mutant ID: ${mutant.id}\nMutator: ${mutant.mutatorName}\n" +
+                                "Location: line ${mutant.line}, column ${mutant.column}\n" +
+                                "Original:\n$original\nMutated:\n$replacement",
+                        )
+                    sb.appendLine("        <failure message=\"$msg\" type=\"MutationSurvived\">$body</failure>")
+                }
+
+                MutantStatus.TIMED_OUT -> {
+                    val msg = escapeXml(result.failureMessage ?: "Mutant execution timed out")
+                    sb.appendLine("        <failure message=\"$msg\" type=\"Timeout\">$msg</failure>")
+                }
+
+                MutantStatus.COMPILE_ERROR -> {
+                    val msg = escapeXml(result.failureMessage ?: "Mutant failed to compile")
+                    sb.appendLine("        <error message=\"$msg\" type=\"CompileError\">$msg</error>")
+                }
+
+                MutantStatus.BASELINE_ERROR -> {
+                    val msg = escapeXml(result.failureMessage ?: "Baseline execution failed before mutation")
+                    sb.appendLine("        <error message=\"$msg\" type=\"BaselineError\">$msg</error>")
+                }
+
+                MutantStatus.KILLED -> {}
+            }
+            sb.appendLine("    </testcase>")
+        }
+
+        private fun appendFileDiagnosticTestCase(
+            sb: StringBuilder,
+            diagnostic: AuditFileDiagnostic,
+        ) {
+            val type =
+                when (diagnostic.status) {
+                    AuditFileStatus.BASELINE_ERROR -> "BaselineError"
+                    AuditFileStatus.NO_CHANGED_LINES -> "NoChangedLines"
+                    AuditFileStatus.MISSING_TEST -> "MissingTest"
+                    AuditFileStatus.AMBIGUOUS_TEST -> "AmbiguousTest"
+                    AuditFileStatus.AUDITED -> return
+                }
+            val message = escapeXml("${diagnostic.sourceFile}: ${diagnostic.diagnostic ?: diagnostic.status.name}")
+            val sourceFile = escapeXml(diagnostic.sourceFile)
+            sb.appendLine(
+                "    <testcase classname=\"com.gokorei.kronenberg.file\" " +
+                    "name=\"${sourceFile}_${diagnostic.status.name}\">",
+            )
+            sb.appendLine("        <error message=\"$message\" type=\"$type\">$message</error>")
+            sb.appendLine("    </testcase>")
         }
 
         private fun escapeHtml(str: String): String =

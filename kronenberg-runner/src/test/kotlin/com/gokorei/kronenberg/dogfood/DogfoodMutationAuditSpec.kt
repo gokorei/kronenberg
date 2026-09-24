@@ -100,7 +100,7 @@ class DogfoodMutationAuditSpec {
                 report.totalMutants shouldBeGreaterThan 0
                 report.killedCount shouldBeGreaterThan 0
                 report.survivedCount shouldBe 0
-                report.isPassed shouldBe true
+                report.isPassed shouldBe false
             }
         }
     }

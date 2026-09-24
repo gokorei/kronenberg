@@ -2,6 +2,46 @@ package com.gokorei.kronenberg.model
 
 import kotlinx.serialization.Serializable
 
+@Serializable
+public enum class AuditFileStatus {
+    AUDITED,
+    NO_CHANGED_LINES,
+    MISSING_TEST,
+    AMBIGUOUS_TEST,
+    BASELINE_ERROR,
+}
+
+@Serializable
+public data class AuditFileDiagnostic(
+    val sourceFile: String,
+    val testFile: String? = null,
+    val status: AuditFileStatus,
+    val diagnostic: String? = null,
+)
+
+public data class AuditFileOutcome(
+    val sourceFile: String,
+    val testFile: String?,
+    val status: AuditFileStatus,
+    val report: MutationReport?,
+    val diagnostic: String?,
+) {
+    public companion object {
+        public fun audited(
+            sourceFile: String,
+            testFile: String? = null,
+            report: MutationReport,
+        ): AuditFileOutcome = AuditFileOutcome(sourceFile, testFile, AuditFileStatus.AUDITED, report, null)
+
+        public fun skipped(
+            sourceFile: String,
+            testFile: String? = null,
+            status: AuditFileStatus,
+            diagnostic: String,
+        ): AuditFileOutcome = AuditFileOutcome(sourceFile, testFile, status, null, diagnostic)
+    }
+}
+
 /**
  * Status outcome of an evaluated mutant.
  */
@@ -104,8 +144,10 @@ public data class MutationReport(
     val mutationScore: Double,
     val results: List<MutantResult> = emptyList(),
     val baselineError: String? = null,
+    val sourceFilePath: String? = null,
+    val fileDiagnostics: List<AuditFileDiagnostic> = emptyList(),
 ) {
-    public val isPassed: Boolean get() = survivedCount == 0 && baselineError == null
+    public val isPassed: Boolean get() = MutationReportEvaluator.evaluate(this).isPassed
 }
 
 /**
