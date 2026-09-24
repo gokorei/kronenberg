@@ -2,7 +2,11 @@ package com.gokorei.kronenberg.runner
 
 import com.gokorei.kronenberg.model.MutantStatus
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
+import java.io.ByteArrayOutputStream
+import java.io.PrintStream
+import java.util.concurrent.CountDownLatch
 import kotlin.io.path.createTempDirectory
 
 class FastSnippetRunnerSpec {
@@ -50,6 +54,120 @@ class FastSnippetRunnerSpec {
                 }
             }
         } finally {
+            compiler.cleanup(compiled)
+        }
+    }
+
+    @Test
+    fun `captures stdout and stderr independently`() {
+        val code =
+            """
+            fun main() {
+                System.out.print("stdout")
+                System.err.print("stderr")
+            }
+            """.trimIndent()
+
+        val outcome = runCompiled(code)
+
+        outcome.status shouldBe MutantStatus.SURVIVED
+        outcome.stdout shouldBe "stdout"
+        outcome.stderr shouldBe "stderr"
+        outcome.stdoutTruncated shouldBe false
+        outcome.stderrTruncated shouldBe false
+    }
+
+    @Test
+    fun `bounds large output and reports truncation explicitly`() {
+        val code =
+            """
+            fun main() {
+                System.out.print("x".repeat(262144))
+                System.err.print("e".repeat(262144))
+            }
+            """.trimIndent()
+
+        val outcome = runCompiled(code, maxOutputBytesPerStream = 64)
+
+        outcome.status shouldBe MutantStatus.SURVIVED
+        outcome.stdout shouldContain "x"
+        outcome.stderr shouldContain "e"
+        outcome.stdout.length shouldBe 64
+        outcome.stderr.length shouldBe 64
+        outcome.stdoutTruncated shouldBe true
+        outcome.stderrTruncated shouldBe true
+        outcome.stdoutDiscardedBytes shouldBe (262144 - 64).toLong()
+        outcome.stderrDiscardedBytes shouldBe (262144 - 64).toLong()
+    }
+
+    @Test
+    fun `bounds infinite output until timeout without retaining unbounded buffers`() {
+        val code =
+            """
+            fun main() {
+                while (!Thread.currentThread().isInterrupted) {
+                    System.out.print("x")
+                    System.err.print("e")
+                }
+            }
+            """.trimIndent()
+
+        val outcome = runCompiled(code, timeoutMs = 100L, maxOutputBytesPerStream = 64)
+
+        outcome.status shouldBe MutantStatus.TIMED_OUT
+        outcome.stdout.length shouldBe 64
+        outcome.stderr.length shouldBe 64
+        outcome.stdoutTruncated shouldBe true
+        outcome.stderrTruncated shouldBe true
+        (outcome.stdoutDiscardedBytes > 0L) shouldBe true
+        (outcome.stderrDiscardedBytes > 0L) shouldBe true
+    }
+
+    @Test
+    fun `detaches inherited child writes after capture completes`() {
+        val stdout = ByteArrayOutputStream()
+        val stderr = ByteArrayOutputStream()
+        val childStarted = CountDownLatch(1)
+        val releaseChild = CountDownLatch(1)
+        val child =
+            Thread {
+                childStarted.countDown()
+                releaseChild.await()
+                System.out.print("late stdout")
+                System.err.print("late stderr")
+            }
+
+        ThreadLocalPrintStream.install()
+        ThreadLocalPrintStream.withCapture(
+            PrintStream(stdout, true, Charsets.UTF_8.name()),
+            PrintStream(stderr, true, Charsets.UTF_8.name()),
+        ) {
+            child.start()
+            childStarted.await()
+        }
+
+        releaseChild.countDown()
+        child.join(1_000L)
+        child.isAlive shouldBe false
+        stdout.size() shouldBe 0
+        stderr.size() shouldBe 0
+    }
+
+    private fun runCompiled(
+        code: String,
+        timeoutMs: Long = 1_000L,
+        maxOutputBytesPerStream: Int = 64 * 1024,
+    ): RunnerOutcome {
+        val compiled = compiler.compile(code)
+        val boundedRunner = DefaultFastSnippetRunner(maxOutputBytesPerStream = maxOutputBytesPerStream)
+        return try {
+            if (compiled is CompileResult.Compiled) {
+                boundedRunner.run(compiled.outDir, timeoutMs = timeoutMs)
+            } else {
+                error("Snippet compilation failed: ${(compiled as CompileResult.Failed).message}")
+            }
+        } finally {
+            boundedRunner.close()
             compiler.cleanup(compiled)
         }
     }

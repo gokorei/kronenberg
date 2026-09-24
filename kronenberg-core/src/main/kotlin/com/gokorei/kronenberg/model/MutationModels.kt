@@ -89,6 +89,12 @@ public data class MutantResult(
     val status: MutantStatus,
     val executionTimeMs: Long,
     val failureMessage: String? = null,
+    val stdout: String = "",
+    val stderr: String = "",
+    val stdoutTruncated: Boolean = false,
+    val stderrTruncated: Boolean = false,
+    val stdoutDiscardedBytes: Long = 0L,
+    val stderrDiscardedBytes: Long = 0L,
 )
 
 /**

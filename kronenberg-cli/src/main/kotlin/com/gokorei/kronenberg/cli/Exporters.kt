@@ -165,7 +165,13 @@ public object HtmlReportExporter {
                     appendLine("          <td>${escapeHtml(locationText)}</td>")
                     appendLine("          <td><code>${escapeHtml(m.originalText)}</code></td>")
                     appendLine("          <td><code>${escapeHtml(m.replacementText)}</code></td>")
-                    appendLine("          <td>${escapeHtml(res.failureMessage.orEmpty())}</td>")
+                    val outputDiagnostic =
+                        buildList {
+                            if (res.stdoutTruncated) add("stdout truncated: ${res.stdoutDiscardedBytes} bytes discarded")
+                            if (res.stderrTruncated) add("stderr truncated: ${res.stderrDiscardedBytes} bytes discarded")
+                        }.joinToString("; ")
+                    val details = listOf(res.failureMessage.orEmpty(), outputDiagnostic).filter { it.isNotBlank() }.joinToString(" | ")
+                    appendLine("          <td>${escapeHtml(details)}</td>")
                     appendLine("        </tr>")
                 }
                 appendLine("      </tbody>")

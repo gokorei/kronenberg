@@ -171,6 +171,10 @@ public abstract class KronenbergAuditTask
             logger.lifecycle("  Survived      : $survivedCount")
             logger.lifecycle("  Timed Out     : $timeoutCount")
             logger.lifecycle("  Compile Errors: $compileErrorCount")
+            val truncatedOutputCount = allResults.count { it.stdoutTruncated || it.stderrTruncated }
+            if (truncatedOutputCount > 0) {
+                logger.lifecycle("  Output Truncated: $truncatedOutputCount result(s)")
+            }
             logger.lifecycle("  Mutation Score: ${finalReport.mutationScore}% (Threshold: ${minScore.get()}%)")
             logger.lifecycle("  Reports       : $outDir")
             logger.lifecycle("=======================================================")
@@ -225,7 +229,10 @@ public abstract class KronenbergAuditTask
                     appendLine("    </div>")
                     appendLine("    <table>")
                     appendLine("      <thead>")
-                    appendLine("        <tr><th>Status</th><th>Location</th><th>Mutator</th><th>Original</th><th>Replacement</th></tr>")
+                    appendLine(
+                        "        <tr><th>Status</th><th>Location</th><th>Mutator</th>" +
+                            "<th>Original</th><th>Replacement</th><th>Details</th></tr>",
+                    )
                     appendLine("      </thead>")
                     appendLine("      <tbody>")
                     for (res in report.results) {
@@ -243,6 +250,12 @@ public abstract class KronenbergAuditTask
                         appendLine("          <td>${res.mutant.mutatorName}</td>")
                         appendLine("          <td><code>${escapeHtml(res.mutant.originalText)}</code></td>")
                         appendLine("          <td><code>${escapeHtml(res.mutant.replacementText)}</code></td>")
+                        val outputDiagnostic =
+                            buildList {
+                                if (res.stdoutTruncated) add("stdout truncated: ${res.stdoutDiscardedBytes} bytes discarded")
+                                if (res.stderrTruncated) add("stderr truncated: ${res.stderrDiscardedBytes} bytes discarded")
+                            }.joinToString("; ")
+                        appendLine("          <td>${escapeHtml(outputDiagnostic)}</td>")
                         appendLine("        </tr>")
                     }
                     appendLine("      </tbody>")
@@ -277,7 +290,14 @@ public abstract class KronenbergAuditTask
                 val className = "com.gokorei.kronenberg.mutant.${mutant.category.name.lowercase()}"
                 val testName = "${mutant.mutatorName}_line${mutant.line}_col${mutant.column}_${mutant.id.take(8)}"
 
-                sb.appendLine("    <testcase classname=\"$className\" name=\"$testName\" time=\"$durationSec\">")
+                val outputAttributes =
+                    buildString {
+                        append(" stdout-truncated=\"${result.stdoutTruncated}\"")
+                        append(" stderr-truncated=\"${result.stderrTruncated}\"")
+                        append(" stdout-discarded-bytes=\"${result.stdoutDiscardedBytes}\"")
+                        append(" stderr-discarded-bytes=\"${result.stderrDiscardedBytes}\"")
+                    }
+                sb.appendLine("    <testcase classname=\"$className\" name=\"$testName\" time=\"$durationSec\"$outputAttributes>")
                 when (result.status) {
                     MutantStatus.SURVIVED -> {
                         val orig = mutant.originalText
