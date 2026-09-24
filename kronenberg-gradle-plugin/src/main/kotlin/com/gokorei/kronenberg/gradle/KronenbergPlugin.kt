@@ -5,6 +5,8 @@ import org.gradle.api.Project
 import org.gradle.api.plugins.JavaPluginExtension
 import org.gradle.api.tasks.SourceSet
 
+internal const val DEFAULT_TIMEOUT_MULTIPLIER: Double = 3.0
+
 /**
  * First-party Gradle plugin providing in-process K2 AST mutation testing (`kronenbergCheck`).
  */
@@ -16,6 +18,7 @@ public class KronenbergPlugin : Plugin<Project> {
             project.tasks.register("kronenbergCheck", KronenbergAuditTask::class.java) { task ->
                 task.minScore.convention(extension.minScore)
                 task.baselineTimeoutMs.convention(extension.baselineTimeoutMs)
+                task.timeoutMultiplier.convention(extension.timeoutMultiplier)
                 task.includeExtreme.convention(extension.includeExtreme)
                 task.higherOrderMutants.convention(extension.higherOrderMutants)
                 if (extension.maxMutants.isPresent) {

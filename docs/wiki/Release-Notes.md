@@ -18,8 +18,11 @@ Overview of all notable changes to Kronenberg by version.
 - Automated GitHub Wiki synchronization workflow (`.github/workflows/wiki-sync.yml`).
 
 ### Bug Fixes
+- Invalid thresholds, timeouts, timeout multipliers, mutant limits, classpaths, source/test inputs, and oversized reports now return structured configuration errors before any mutant is classified.
 
 ### Improvements
+- Canonicalized and deduplicated classpath entries now propagate through library, CLI, and Gradle adapters.
+- Added documented source, test, file-set, classpath, and report count/size limits.
 
 ---
 

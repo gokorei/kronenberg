@@ -27,6 +27,9 @@ public open class KronenbergExtension
         public val baselineTimeoutMs: Property<Long> =
             objects.property(Long::class.java).convention(2000L)
 
+        public val timeoutMultiplier: Property<Double> =
+            objects.property(Double::class.java).convention(DEFAULT_TIMEOUT_MULTIPLIER)
+
         /**
          * Whether to enable extreme / structural mutation operators.
          * Defaults to false.

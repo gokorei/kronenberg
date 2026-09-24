@@ -56,6 +56,30 @@ kronenberg audit --source-dir src/main/kotlin --test-dir src/test/kotlin --codec
 kronenberg audit --source src/main/kotlin/Service.kt --test src/test/kotlin/ServiceTest.kt --propose-tests
 ```
 
+### Configuration Validation
+Kronenberg validates configuration before parsing, compiling, or executing code. Invalid values are returned as structured `ConfigurationError` values containing `field`, `code`, `message`, `actual`, and `limit`. CLI JSON output includes these errors in `configurationErrors`; terminal and Gradle output use the same codes and fields. No mutant result is generated when validation fails.
+
+| Input | Supported limit |
+| --- | --- |
+| `minScore` | Finite, from `0.0` through `100.0` |
+| `baselineTimeoutMs` | From `1` through `300000` milliseconds |
+| `timeoutMultiplier` | Finite, from `1.0` through `100.0` |
+| `maxMutants` | Optional, from `1` through `10000` |
+| Source code | At most `1000000` characters or `2000000` file bytes |
+| Test code | At most `1000000` characters or `2000000` file bytes |
+| Source files | At most `2000` per audit |
+| Test files | At most `2000` per audit |
+| Classpath | At most `256` entries; each entry is at most `4096` characters |
+| Report results | At most `10000` results |
+| Report result text | At most `10000000` characters |
+
+Classpath entries must resolve to existing files or directories. Kronenberg converts them to real absolute paths, normalizes them, removes duplicates, and passes the canonical list to in-process compilation and execution.
+
+The CLI exposes the multiplier as `--timeout-multiplier`:
+```bash
+kronenberg audit --source src/main/kotlin/Calculator.kt --test src/test/kotlin/CalculatorTest.kt --timeout-multiplier 3.0
+```
+
 ---
 
 ## 🐘 Gradle Plugin (`com.gokorei.kronenberg`)
@@ -68,10 +92,12 @@ plugins {
 }
 
 kronenberg {
-    minScore.set(80.0)             // Minimum mutation score threshold (%)
-    baselineTimeoutMs.set(2000L)   // Baseline timeout in milliseconds
-    includeExtreme.set(false)      // Enable structural/extreme mutators
-    enableCache.set(true)          // Cache unchanged mutant results
+    minScore.set(80.0)
+    baselineTimeoutMs.set(2000L)
+    timeoutMultiplier.set(3.0)
+    maxMutants.set(10000)
+    includeExtreme.set(false)
+    enableCache.set(true)
 }
 ```
 

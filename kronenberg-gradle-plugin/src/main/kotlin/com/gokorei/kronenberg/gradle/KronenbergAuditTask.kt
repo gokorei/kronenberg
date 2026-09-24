@@ -1,8 +1,11 @@
 package com.gokorei.kronenberg.gradle
 
+import com.gokorei.kronenberg.model.ConfigurationError
 import com.gokorei.kronenberg.model.MutantResult
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationConfig
+import com.gokorei.kronenberg.model.MutationConfigValidation
+import com.gokorei.kronenberg.model.MutationConfigValidator
 import com.gokorei.kronenberg.model.MutationReport
 import com.gokorei.kronenberg.runner.DefaultMutationExecutionPipeline
 import kotlinx.coroutines.runBlocking
@@ -21,6 +24,7 @@ import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
+import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.inject.Inject
@@ -54,6 +58,10 @@ public abstract class KronenbergAuditTask
         public val baselineTimeoutMs: Property<Long> = objects.property(Long::class.java).convention(2000L)
 
         @get:Input
+        public val timeoutMultiplier: Property<Double> =
+            objects.property(Double::class.java).convention(DEFAULT_TIMEOUT_MULTIPLIER)
+
+        @get:Input
         public val includeExtreme: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
 
         @get:Input
@@ -76,9 +84,11 @@ public abstract class KronenbergAuditTask
 
         @TaskAction
         public fun audit() {
-            val srcList = sourceFiles.files.filter { it.extension == "kt" }
-            val tstList = testFiles.files.filter { it.extension == "kt" }
-            val extraClasspathList = classpath.files.map { it.absolutePath }
+            val srcList = sourceFiles.files.filter { it.extension == "kt" }.take(MutationConfigValidator.MAX_SOURCE_FILES + 1)
+            val tstList = testFiles.files.filter { it.extension == "kt" }.take(MutationConfigValidator.MAX_TEST_FILES + 1)
+            val extraClasspathList = classpath.files.take(MutationConfigValidator.MAX_CLASSPATH_ENTRIES + 1).map { it.absolutePath }
+
+            val config = validatedConfiguration(srcList, tstList, extraClasspathList)
 
             logger.lifecycle("🧟 Kronenberg: Auditing ${srcList.size} Kotlin source file(s) against ${tstList.size} test file(s)...")
 
@@ -86,17 +96,6 @@ public abstract class KronenbergAuditTask
                 logger.lifecycle("No Kotlin source files found to audit.")
                 return
             }
-
-            val config =
-                MutationConfig(
-                    minScore = minScore.get(),
-                    includeExtreme = includeExtreme.get(),
-                    higherOrderMutants = higherOrderMutants.get(),
-                    baselineTimeoutMs = baselineTimeoutMs.get(),
-                    maxMutants = if (maxMutants.isPresent) maxMutants.get() else null,
-                    enableCache = enableCache.get(),
-                    extraClasspath = extraClasspathList,
-                )
 
             val pipeline = DefaultMutationExecutionPipeline()
             val allResults = mutableListOf<MutantResult>()
@@ -130,6 +129,7 @@ public abstract class KronenbergAuditTask
                         )
                     }
 
+                throwIfConfigurationErrors(fileReport.configurationErrors)
                 totalMutants += fileReport.totalMutants
                 killedCount += fileReport.killedCount
                 survivedCount += fileReport.survivedCount
@@ -156,6 +156,7 @@ public abstract class KronenbergAuditTask
                     mutationScore = (score * 10.0).toInt() / 10.0,
                     results = allResults,
                 )
+            throwIfConfigurationErrors(MutationConfigValidator.validateReport(finalReport))
 
             val outDir = reportsDir.get().asFile.toPath()
             Files.createDirectories(outDir)
@@ -182,6 +183,49 @@ public abstract class KronenbergAuditTask
                 )
             }
         }
+
+        private fun validatedConfiguration(
+            sourceFiles: List<File>,
+            testFiles: List<File>,
+            classpathEntries: List<String>,
+        ): MutationConfig {
+            val requestedConfig =
+                MutationConfig(
+                    minScore = minScore.get(),
+                    includeExtreme = includeExtreme.get(),
+                    higherOrderMutants = higherOrderMutants.get(),
+                    baselineTimeoutMs = baselineTimeoutMs.get(),
+                    timeoutMultiplier = timeoutMultiplier.get(),
+                    maxMutants = if (maxMutants.isPresent) maxMutants.get() else null,
+                    enableCache = enableCache.get(),
+                    extraClasspath = classpathEntries,
+                )
+            val validation = MutationConfigValidator.validate(requestedConfig)
+            val configErrors = if (validation is MutationConfigValidation.Invalid) validation.errors else emptyList()
+            val inputErrors =
+                MutationConfigValidator.validateFileSets(
+                    sourceFiles.map { it.toPath() },
+                    testFiles.map { it.toPath() },
+                )
+            throwIfConfigurationErrors(configErrors + inputErrors)
+            return (validation as MutationConfigValidation.Valid).config
+        }
+
+        private fun throwIfConfigurationErrors(errors: List<ConfigurationError>) {
+            if (errors.isNotEmpty()) {
+                throw GradleException(formatConfigurationErrors(errors))
+            }
+        }
+
+        private fun formatConfigurationErrors(errors: List<ConfigurationError>): String =
+            buildString {
+                appendLine("Kronenberg configuration validation failed:")
+                errors.forEach { error ->
+                    val actual = error.actual?.let { " (actual: $it)" }.orEmpty()
+                    val limit = error.limit?.let { ", limit: $it" }.orEmpty()
+                    appendLine("Configuration error [${error.code}] ${error.field}: ${error.message}$actual$limit")
+                }
+            }.trimEnd()
 
         private fun exportHtmlReport(
             report: MutationReport,
