@@ -177,7 +177,7 @@ class KronenbergCliSpec {
                     "audit --source-dir $srcDir --test-dir $testDir --json --html-report $htmlFile --sarif $sarifFile --threshold 0.0",
                 )
 
-            result.statusCode shouldBe 0
+            result.statusCode shouldBe 1
             val report =
                 kotlinx.serialization.json.Json
                     .decodeFromString<com.gokorei.kronenberg.model.MutationReport>(result.output)
@@ -278,7 +278,7 @@ class KronenbergCliSpec {
             val cli = KronenbergCli().subcommands(AuditCommand())
             val result = cli.test("audit --pre-commit --source $srcFile --test $testFile --threshold 50.0")
 
-            result.statusCode shouldBe 0
+            result.statusCode shouldBe 1
             result.output shouldContain "KRONENBERG MUTATION AUDIT"
         } finally {
             srcFile.toFile().delete()
@@ -306,7 +306,7 @@ class KronenbergCliSpec {
             val cli = KronenbergCli().subcommands(AuditCommand())
             val result = cli.test("audit --source $srcFile --test $testFile --codeclimate $codeClimateFile --threshold 0.0")
 
-            result.statusCode shouldBe 0
+            result.statusCode shouldBe 1
             val content = codeClimateFile.readText()
             content shouldContain "\"type\": \"issue\""
             content shouldContain "\"check_name\": \"KronenbergMutationCheck\""
@@ -338,7 +338,7 @@ class KronenbergCliSpec {
             val cli = KronenbergCli().subcommands(AuditCommand())
             val result = cli.test("audit --source $srcFile --test $testFile --propose-tests --threshold 0.0")
 
-            result.statusCode shouldBe 0
+            result.statusCode shouldBe 1
             result.output shouldContain "PROPOSED TEST SKELETONS TO KILL SURVIVED MUTANTS"
             result.output shouldContain "evaluate"
         } finally {

@@ -144,6 +144,6 @@ class KronenbergPluginSpec {
 
         val result = runner.buildAndFail()
         result.task(":kronenbergCheck")?.outcome shouldBe TaskOutcome.FAILED
-        result.output shouldContain "below threshold 100.0%"
+        result.output shouldContain "did not pass threshold 100.0%"
     }
 }

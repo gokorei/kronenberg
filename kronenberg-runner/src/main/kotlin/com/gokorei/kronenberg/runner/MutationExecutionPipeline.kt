@@ -6,6 +6,7 @@ import com.gokorei.kronenberg.model.MutantResult
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationConfig
 import com.gokorei.kronenberg.model.MutationReport
+import com.gokorei.kronenberg.model.MutationReportEvaluator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -48,13 +49,7 @@ public class DefaultMutationExecutionPipeline(
 
         // 0. Safety pre-flight check
         if (SnippetAstSafetyChecker.containsHostTerminatingCalls(baselineCombined)) {
-            return MutationReport(
-                totalMutants = 0,
-                killedCount = 0,
-                survivedCount = 0,
-                timeoutCount = 0,
-                compileErrorCount = 0,
-                mutationScore = 0.0,
+            return MutationReportEvaluator.fromResults(
                 results = emptyList(),
                 baselineError = "Code contains forbidden host-terminating calls (e.g. System.exit, exitProcess, Runtime.halt)",
             )
@@ -64,13 +59,7 @@ public class DefaultMutationExecutionPipeline(
         val baselineCompile = compiler.compile(baselineCombined, extraClasspath = config.extraClasspath)
         if (baselineCompile !is CompileResult.Compiled) {
             val failMsg = (baselineCompile as? CompileResult.Failed)?.message ?: "Baseline compilation failed"
-            return MutationReport(
-                totalMutants = 0,
-                killedCount = 0,
-                survivedCount = 0,
-                timeoutCount = 0,
-                compileErrorCount = 0,
-                mutationScore = 0.0,
+            return MutationReportEvaluator.fromResults(
                 results = emptyList(),
                 baselineError = "Baseline compilation failed: $failMsg",
             )
@@ -88,26 +77,14 @@ public class DefaultMutationExecutionPipeline(
             }
 
         if (baselineOutcome.status == MutantStatus.KILLED) {
-            return MutationReport(
-                totalMutants = 0,
-                killedCount = 0,
-                survivedCount = 0,
-                timeoutCount = 0,
-                compileErrorCount = 0,
-                mutationScore = 0.0,
+            return MutationReportEvaluator.fromResults(
                 results = emptyList(),
                 baselineError = "Baseline test failed before mutation: ${baselineOutcome.failureMessage}",
             )
         }
 
         if (baselineOutcome.status == MutantStatus.TIMED_OUT) {
-            return MutationReport(
-                totalMutants = 0,
-                killedCount = 0,
-                survivedCount = 0,
-                timeoutCount = 0,
-                compileErrorCount = 0,
-                mutationScore = 0.0,
+            return MutationReportEvaluator.fromResults(
                 results = emptyList(),
                 baselineError = "Baseline test execution timed out after ${config.baselineTimeoutMs}ms",
             )
@@ -121,15 +98,7 @@ public class DefaultMutationExecutionPipeline(
         // 2. Generate AST mutants
         val mutants = generator.generateMutants(trimmedSource, config, filePath = sourceFilePath)
         if (mutants.isEmpty()) {
-            return MutationReport(
-                totalMutants = 0,
-                killedCount = 0,
-                survivedCount = 0,
-                timeoutCount = 0,
-                compileErrorCount = 0,
-                mutationScore = 100.0,
-                results = emptyList(),
-            )
+            return MutationReportEvaluator.fromResults(results = emptyList())
         }
 
         // 3. Execute mutants in parallel via coroutines
@@ -203,27 +172,9 @@ public class DefaultMutationExecutionPipeline(
                     }.awaitAll()
             }
 
-        val killedCount = results.count { it.status == MutantStatus.KILLED }
-        val survivedCount = results.count { it.status == MutantStatus.SURVIVED }
-        val timeoutCount = results.count { it.status == MutantStatus.TIMED_OUT }
-        val compileErrorCount = results.count { it.status == MutantStatus.COMPILE_ERROR }
-
-        val totalEffective = killedCount + survivedCount + timeoutCount
-        val score =
-            if (totalEffective > 0) {
-                ((killedCount + timeoutCount).toDouble() / totalEffective.toDouble()) * 100.0
-            } else {
-                100.0
-            }
-
-        return MutationReport(
-            totalMutants = mutants.size,
-            killedCount = killedCount,
-            survivedCount = survivedCount,
-            timeoutCount = timeoutCount,
-            compileErrorCount = compileErrorCount,
-            mutationScore = (score * 10.0).toInt() / 10.0,
+        return MutationReportEvaluator.fromResults(
             results = results,
+            totalMutants = mutants.size,
         )
     }
 

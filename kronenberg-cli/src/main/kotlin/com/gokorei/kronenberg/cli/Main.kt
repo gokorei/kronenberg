@@ -12,10 +12,10 @@ import com.github.ajalt.clikt.parameters.types.double
 import com.github.ajalt.clikt.parameters.types.int
 import com.github.ajalt.clikt.parameters.types.long
 import com.github.ajalt.clikt.parameters.types.path
-import com.gokorei.kronenberg.model.MutantResult
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationConfig
 import com.gokorei.kronenberg.model.MutationReport
+import com.gokorei.kronenberg.model.MutationReportEvaluator
 import com.gokorei.kronenberg.runner.DefaultMutationExecutionPipeline
 import com.gokorei.kronenberg.runner.SurvivingMutantTestProposer
 import com.gokorei.kronenberg.runner.TestStyle
@@ -303,7 +303,7 @@ public class AuditCommand :
             renderTerminalReport(report)
         }
 
-        if (report.mutationScore < threshold) {
+        if (!MutationReportEvaluator.passes(report, threshold)) {
             throw ProgramResult(1)
         }
     }
@@ -349,12 +349,8 @@ public class AuditCommand :
         diffRef: String? = null,
         baseDir: Path? = null,
     ): MutationReport {
-        val allResults = mutableListOf<MutantResult>()
-        var totalMutants = 0
-        var killedCount = 0
-        var survivedCount = 0
-        var timeoutCount = 0
-        var compileErrorCount = 0
+        val reports = mutableListOf<MutationReport>()
+        var skippedSourceCount = 0
 
         for (srcFile in srcFiles) {
             val fileChangedLines =
@@ -363,70 +359,64 @@ public class AuditCommand :
                 } else {
                     baseConfig.targetLines
                 }
+            val hasNoChangedLines = (staged || diffRef != null) && fileChangedLines?.isEmpty() == true
 
-            // If staged/diff is requested and no lines changed in this file, skip auditing it
-            if ((staged || diffRef != null) && fileChangedLines?.isEmpty() == true) {
-                continue
-            }
-
-            val fileConfig = baseConfig.copy(targetLines = fileChangedLines)
-            val baseName = srcFile.nameWithoutExtension
-            val matchingTestFile =
-                if (tstDir != null && Files.isDirectory(tstDir)) {
-                    Files
-                        .walk(tstDir)
-                        .filter {
-                            it.isRegularFile() &&
-                                (
-                                    it.nameWithoutExtension == "${baseName}Test" ||
-                                        it.nameWithoutExtension == "${baseName}Spec" ||
-                                        it.nameWithoutExtension == baseName
-                                )
-                        }.findFirst()
-                        .orElse(null)
-                } else {
-                    // Try adjacent or src/test path inference if no explicit tstDir provided
-                    findAdjacentTestFile(srcFile)
-                }
-
-            val testCode = matchingTestFile?.readText() ?: ""
-            if (testCode.isNotBlank()) {
-                val relPath = baseDir?.relativize(srcFile)?.toString() ?: srcFile.fileName.toString()
-                val fileReport =
-                    runBlocking {
-                        pipeline.execute(
-                            sourceCode = srcFile.readText(),
-                            testCode = testCode,
-                            config = fileConfig,
-                            sourceFilePath = relPath,
-                        )
+            if (hasNoChangedLines) {
+                skippedSourceCount++
+            } else {
+                val fileConfig = baseConfig.copy(targetLines = fileChangedLines)
+                val baseName = srcFile.nameWithoutExtension
+                val matchingTestFile =
+                    if (tstDir != null && Files.isDirectory(tstDir)) {
+                        Files
+                            .walk(tstDir)
+                            .filter {
+                                it.isRegularFile() &&
+                                    (
+                                        it.nameWithoutExtension == "${baseName}Test" ||
+                                            it.nameWithoutExtension == "${baseName}Spec" ||
+                                            it.nameWithoutExtension == baseName
+                                    )
+                            }.findFirst()
+                            .orElse(null)
+                    } else {
+                        findAdjacentTestFile(srcFile)
                     }
-                totalMutants += fileReport.totalMutants
-                killedCount += fileReport.killedCount
-                survivedCount += fileReport.survivedCount
-                timeoutCount += fileReport.timeoutCount
-                compileErrorCount += fileReport.compileErrorCount
-                allResults.addAll(fileReport.results)
+
+                val testCode = matchingTestFile?.readText() ?: ""
+                if (testCode.isBlank()) {
+                    skippedSourceCount++
+                } else {
+                    val relPath = baseDir?.relativize(srcFile)?.toString() ?: srcFile.fileName.toString()
+                    reports +=
+                        runBlocking {
+                            pipeline.execute(
+                                sourceCode = srcFile.readText(),
+                                testCode = testCode,
+                                config = fileConfig,
+                                sourceFilePath = relPath,
+                            )
+                        }
+                }
             }
         }
 
-        val totalEffective = killedCount + survivedCount + timeoutCount
-        val score =
-            if (totalEffective > 0) {
-                ((killedCount + timeoutCount).toDouble() / totalEffective.toDouble()) * 100.0
-            } else {
-                100.0
-            }
+        val aggregate = MutationReportEvaluator.aggregate(reports)
+        val incompleteAuditError =
+            when {
+                reports.isEmpty() -> {
+                    "No source/test pairs were available to audit"
+                }
 
-        return MutationReport(
-            totalMutants = totalMutants,
-            killedCount = killedCount,
-            survivedCount = survivedCount,
-            timeoutCount = timeoutCount,
-            compileErrorCount = compileErrorCount,
-            mutationScore = (score * 10.0).toInt() / 10.0,
-            results = allResults,
-        )
+                skippedSourceCount > 0 -> {
+                    "$skippedSourceCount source file(s) were not audited because no matching test or changed lines were found"
+                }
+
+                else -> {
+                    null
+                }
+            }
+        return incompleteAuditError?.let { aggregate.copy(baselineError = aggregate.baselineError ?: it) } ?: aggregate
     }
 
     private fun findAdjacentTestFile(srcFile: Path): Path? {
@@ -441,7 +431,12 @@ public class AuditCommand :
     }
 
     private fun renderTerminalReport(report: MutationReport) {
-        val statusSymbol = if (report.mutationScore >= threshold) "\u001B[32m✔ PASS\u001B[0m" else "\u001B[31m✘ FAIL\u001B[0m"
+        val statusSymbol =
+            if (MutationReportEvaluator.passes(report, threshold)) {
+                "\u001B[32m✔ PASS\u001B[0m"
+            } else {
+                "\u001B[31m✘ FAIL\u001B[0m"
+            }
         echo("\n=======================================================")
         echo("           KRONENBERG MUTATION AUDIT                   ")
         echo("=======================================================")

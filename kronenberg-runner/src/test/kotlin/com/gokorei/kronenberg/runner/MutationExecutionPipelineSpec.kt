@@ -60,6 +60,20 @@ class MutationExecutionPipelineSpec {
     }
 
     @Test
+    fun `fails closed when no mutants are generated`() {
+        val source = "fun noMutationOpportunity() {}"
+        val test = "fun main() { noMutationOpportunity() }"
+
+        runBlocking {
+            val report = pipeline.execute(source, test, MutationConfig())
+
+            report.totalMutants shouldBe 0
+            report.mutationScore shouldBe 0.0
+            report.isPassed shouldBe false
+        }
+    }
+
+    @Test
     fun `auto-synthesizes main dispatcher with per-test kill attribution diagnostics`() {
         val source =
             """

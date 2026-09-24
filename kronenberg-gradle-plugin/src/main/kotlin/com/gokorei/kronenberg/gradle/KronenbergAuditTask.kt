@@ -1,9 +1,9 @@
 package com.gokorei.kronenberg.gradle
 
-import com.gokorei.kronenberg.model.MutantResult
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationConfig
 import com.gokorei.kronenberg.model.MutationReport
+import com.gokorei.kronenberg.model.MutationReportEvaluator
 import com.gokorei.kronenberg.runner.DefaultMutationExecutionPipeline
 import kotlinx.coroutines.runBlocking
 import org.gradle.api.DefaultTask
@@ -83,8 +83,7 @@ public abstract class KronenbergAuditTask
             logger.lifecycle("🧟 Kronenberg: Auditing ${srcList.size} Kotlin source file(s) against ${tstList.size} test file(s)...")
 
             if (srcList.isEmpty()) {
-                logger.lifecycle("No Kotlin source files found to audit.")
-                return
+                throw GradleException("No Kotlin source files found to audit")
             }
 
             val config =
@@ -99,12 +98,8 @@ public abstract class KronenbergAuditTask
                 )
 
             val pipeline = DefaultMutationExecutionPipeline()
-            val allResults = mutableListOf<MutantResult>()
-            var totalMutants = 0
-            var killedCount = 0
-            var survivedCount = 0
-            var timeoutCount = 0
-            var compileErrorCount = 0
+            val reports = mutableListOf<MutationReport>()
+            var skippedSourceCount = 0
 
             for (srcFile in srcList) {
                 val baseName = srcFile.nameWithoutExtension
@@ -117,10 +112,11 @@ public abstract class KronenbergAuditTask
                 val testCode = matchingTestFile?.readText() ?: ""
                 if (testCode.isBlank()) {
                     logger.info("Skipping ${srcFile.name}: No matching test suite found.")
+                    skippedSourceCount++
                     continue
                 }
 
-                val fileReport =
+                reports +=
                     runBlocking {
                         pipeline.execute(
                             sourceCode = srcFile.readText(),
@@ -129,33 +125,9 @@ public abstract class KronenbergAuditTask
                             sourceFilePath = srcFile.name,
                         )
                     }
-
-                totalMutants += fileReport.totalMutants
-                killedCount += fileReport.killedCount
-                survivedCount += fileReport.survivedCount
-                timeoutCount += fileReport.timeoutCount
-                compileErrorCount += fileReport.compileErrorCount
-                allResults.addAll(fileReport.results)
             }
 
-            val totalEffective = killedCount + survivedCount + timeoutCount
-            val score =
-                if (totalEffective > 0) {
-                    ((killedCount + timeoutCount).toDouble() / totalEffective.toDouble()) * 100.0
-                } else {
-                    100.0
-                }
-
-            val finalReport =
-                MutationReport(
-                    totalMutants = totalMutants,
-                    killedCount = killedCount,
-                    survivedCount = survivedCount,
-                    timeoutCount = timeoutCount,
-                    compileErrorCount = compileErrorCount,
-                    mutationScore = (score * 10.0).toInt() / 10.0,
-                    results = allResults,
-                )
+            val finalReport = aggregateReports(reports, skippedSourceCount)
 
             val outDir = reportsDir.get().asFile.toPath()
             Files.createDirectories(outDir)
@@ -166,28 +138,51 @@ public abstract class KronenbergAuditTask
             logger.lifecycle("=======================================================")
             logger.lifecycle("           KRONENBERG MUTATION AUDIT                   ")
             logger.lifecycle("=======================================================")
-            logger.lifecycle("  Total Mutants : $totalMutants")
-            logger.lifecycle("  Killed        : $killedCount")
-            logger.lifecycle("  Survived      : $survivedCount")
-            logger.lifecycle("  Timed Out     : $timeoutCount")
-            logger.lifecycle("  Compile Errors: $compileErrorCount")
+            logger.lifecycle("  Total Mutants : ${finalReport.totalMutants}")
+            logger.lifecycle("  Killed        : ${finalReport.killedCount}")
+            logger.lifecycle("  Survived      : ${finalReport.survivedCount}")
+            logger.lifecycle("  Timed Out     : ${finalReport.timeoutCount}")
+            logger.lifecycle("  Compile Errors: ${finalReport.compileErrorCount}")
             logger.lifecycle("  Mutation Score: ${finalReport.mutationScore}% (Threshold: ${minScore.get()}%)")
             logger.lifecycle("  Reports       : $outDir")
             logger.lifecycle("=======================================================")
 
-            if (finalReport.mutationScore < minScore.get()) {
+            if (!MutationReportEvaluator.passes(finalReport, minScore.get())) {
+                val reason = finalReport.baselineError ?: "Mutation audit did not satisfy the fail-closed quality policy"
                 throw GradleException(
-                    "Mutation score ${finalReport.mutationScore}% is below threshold ${minScore.get()}%. " +
+                    "$reason. Mutation score ${finalReport.mutationScore}% did not pass threshold ${minScore.get()}%. " +
                         "See reports at ${outDir.resolve("mutation-report.html")}",
                 )
             }
+        }
+
+        private fun aggregateReports(
+            reports: List<MutationReport>,
+            skippedSourceCount: Int,
+        ): MutationReport {
+            val aggregate = MutationReportEvaluator.aggregate(reports)
+            val incompleteAuditError =
+                when {
+                    reports.isEmpty() -> {
+                        "No source/test pairs were available to audit"
+                    }
+
+                    skippedSourceCount > 0 -> {
+                        "$skippedSourceCount source file(s) were not audited because no matching test was found"
+                    }
+
+                    else -> {
+                        null
+                    }
+                }
+            return incompleteAuditError?.let { aggregate.copy(baselineError = aggregate.baselineError ?: it) } ?: aggregate
         }
 
         private fun exportHtmlReport(
             report: MutationReport,
             targetFile: Path,
         ) {
-            val scoreColor = if (report.mutationScore >= minScore.get()) "#10b981" else "#ef4444"
+            val scoreColor = if (MutationReportEvaluator.passes(report, minScore.get())) "#10b981" else "#ef4444"
             val html =
                 buildString {
                     appendLine("<!DOCTYPE html>")

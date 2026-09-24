@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub Actions CodeQL security scanning workflow (`.github/workflows/codeql.yml`).
 - Automated GitHub Wiki synchronization workflow (`.github/workflows/wiki-sync.yml`).
 
+### Fixed
+- Mutation audits now fail closed when no mutants are generated, when results are incomplete, or when compile errors, timeouts, baseline failures, or surviving mutants are present; scoring and gate evaluation are centralized in core.
+
 ## [0.1.0] - 2026-09-12
 
 ### Added

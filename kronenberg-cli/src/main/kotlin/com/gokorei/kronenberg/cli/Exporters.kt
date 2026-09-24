@@ -92,7 +92,7 @@ public object HtmlReportExporter {
         targetFile: Path,
         title: String = "Kronenberg Mutation Audit Report",
     ) {
-        val scoreColor = if (report.mutationScore >= 80.0) "#10b981" else "#ef4444"
+        val scoreColor = if (report.isPassed) "#10b981" else "#ef4444"
         val html =
             buildString {
                 appendLine("<!DOCTYPE html>")
