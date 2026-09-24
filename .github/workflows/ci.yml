@@ -34,10 +34,10 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build & Run Tests
-        run: ./gradlew check test --no-daemon
+        run: ./gradlew check test --no-daemon --warning-mode all
 
       - name: Verify CLI Application Help
-        run: ./gradlew :kronenberg-cli:run --args="--help" --no-daemon
+        run: ./gradlew :kronenberg-cli:run --args="--help" --no-daemon --warning-mode all
 
       - name: Upload Test Results
         if: always()

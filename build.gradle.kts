@@ -1,3 +1,25 @@
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.TaskAction
+
+abstract class GenerateVersionResourceTask : DefaultTask() {
+    @get:Input
+    abstract val versionText: Property<String>
+
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val outputDirectoryFile = outputDirectory.get().asFile
+        outputDirectoryFile.mkdirs()
+        outputDirectoryFile.resolve("kronenberg-version.txt").writeText(versionText.get())
+    }
+}
+
 plugins {
     alias(libs.plugins.kotlin.jvm) apply false
     alias(libs.plugins.kotlin.serialization) apply false
@@ -134,17 +156,12 @@ subprojects {
     }
 }
 
-val generateVersionResource = tasks.register("generateVersionResource") {
+val projectVersion = project.version.toString()
+val generateVersionResource = tasks.register<GenerateVersionResourceTask>("generateVersionResource") {
     group = "build"
     description = "Generates a version descriptor resource from project.version."
-    inputs.property("version", provider { project.version.toString() })
-    val outDir = layout.buildDirectory.dir("generated/version")
-    outputs.dir(outDir)
-    doLast {
-        val dir = outDir.get().asFile
-        dir.mkdirs()
-        File(dir, "kronenberg-version.txt").writeText(project.version.toString())
-    }
+    versionText.set(projectVersion)
+    outputDirectory.set(layout.buildDirectory.dir("generated/version"))
 }
 
 val generateMutatorDocs = tasks.register("generateMutatorDocs") {
@@ -159,11 +176,16 @@ val generateChangelog = tasks.register("generateChangelog") {
     dependsOn(":kronenberg-core:generateChangelog")
 }
 
+val targetVersion = providers.gradleProperty("to").orElse(providers.gradleProperty("newVersion"))
+val buildGradleFile = layout.projectDirectory.file("build.gradle.kts")
+val releaseNotesFile = layout.projectDirectory.file("docs/wiki/Release-Notes.md")
 val bumpVersion = tasks.register("bumpVersion") {
     group = "publishing"
     description = "Bumps the project version across build.gradle.kts, Release-Notes.md, and CHANGELOG.md. Usage: ./gradlew bumpVersion -Pto=1.0.0"
+    inputs.property("targetVersion", targetVersion)
+    outputs.upToDateWhen { false }
     doLast {
-        val newVersion = (project.findProperty("to") ?: project.findProperty("newVersion"))?.toString()
+        val newVersion = targetVersion.orNull
             ?: throw GradleException("Please supply target version via -Pto=X.Y.Z (e.g. ./gradlew bumpVersion -Pto=1.0.0)")
 
         if (!newVersion.matches(Regex("""^\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?$"""))) {
@@ -171,10 +193,7 @@ val bumpVersion = tasks.register("bumpVersion") {
         }
 
         val today = java.time.LocalDate.now().toString()
-        val buildGradle = file("build.gradle.kts")
-        val releaseNotes = file("docs/wiki/Release-Notes.md")
-
-        val buildText = buildGradle.readText()
+        val buildText = buildGradleFile.asFile.readText()
         if (!buildText.contains(Regex("""version\s*=\s*"[^"]+""""))) {
             throw GradleException("Could not find version declaration in build.gradle.kts")
         }
@@ -184,8 +203,8 @@ val bumpVersion = tasks.register("bumpVersion") {
         )
 
         var updatedNotesText: String? = null
-        if (releaseNotes.exists()) {
-            val notesText = releaseNotes.readText()
+        if (releaseNotesFile.asFile.exists()) {
+            val notesText = releaseNotesFile.asFile.readText()
             if (!notesText.contains("## Next")) {
                 throw GradleException("docs/wiki/Release-Notes.md does not contain a '## Next' heading to promote.")
             }
@@ -203,11 +222,11 @@ val bumpVersion = tasks.register("bumpVersion") {
             updatedNotesText = notesText.replaceFirst(Regex("""## Next"""), nextSkeleton)
         }
 
-        buildGradle.writeText(updatedBuildText)
+        buildGradleFile.asFile.writeText(updatedBuildText)
         logger.lifecycle("Updated build.gradle.kts version -> $newVersion")
 
         if (updatedNotesText != null) {
-            releaseNotes.writeText(updatedNotesText)
+            releaseNotesFile.asFile.writeText(updatedNotesText)
             logger.lifecycle("Promoted ## Next to ## v$newVersion — $today in docs/wiki/Release-Notes.md")
         }
     }

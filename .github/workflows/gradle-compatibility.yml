@@ -1,0 +1,44 @@
+name: Gradle Compatibility
+
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ matrix.channel }}
+  cancel-in-progress: true
+
+jobs:
+  compatibility:
+    name: Gradle ${{ matrix.channel }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [current, release-candidate]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      - name: Set up Java 21 LTS
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: ${{ matrix.channel }}
+
+      - name: Show Gradle Version
+        run: gradle --version
+
+      - name: Build and Test
+        run: gradle help check test --no-daemon --warning-mode all --configuration-cache

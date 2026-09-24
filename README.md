@@ -170,6 +170,10 @@ println("Mutation Score: ${report.mutationScore}% (${report.killedCount}/${repor
 - JDK 21+ (Java 21 LTS toolchain configured)
 - Git
 
+### Gradle Compatibility
+
+Kronenberg supports Gradle 9.7.1 through 9.8.x. The wrapper pins Gradle 9.7.1, and the build opts into the dependency-resolution and project-lookup behavior that becomes the default in Gradle 10. Gradle 10 is not yet published, so 10.x is validated as forward compatibility rather than claimed as a supported runtime until a final release is available. A scheduled compatibility workflow runs against the official current and release-candidate channels with all warnings enabled and the configuration cache enabled.
+
 ```bash
 git clone https://github.com/gokorei/kronenberg.git
 cd kronenberg
