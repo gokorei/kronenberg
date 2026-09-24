@@ -91,6 +91,38 @@ public data class MutantResult(
     val failureMessage: String? = null,
 )
 
+@Serializable
+public enum class ConfigurationErrorCode {
+    THRESHOLD_NOT_FINITE,
+    THRESHOLD_OUT_OF_RANGE,
+    TIMEOUT_OUT_OF_RANGE,
+    TIMEOUT_MULTIPLIER_NOT_FINITE,
+    TIMEOUT_MULTIPLIER_OUT_OF_RANGE,
+    MAX_MUTANTS_OUT_OF_RANGE,
+    SOURCE_TOO_LARGE,
+    TEST_TOO_LARGE,
+    CLASSPATH_TOO_MANY,
+    CLASSPATH_ENTRY_TOO_LARGE,
+    CLASSPATH_ENTRY_INVALID,
+    SOURCE_FILES_TOO_MANY,
+    TEST_FILES_TOO_MANY,
+    SOURCE_FILE_TOO_LARGE,
+    TEST_FILE_TOO_LARGE,
+    SOURCE_FILE_INVALID,
+    TEST_FILE_INVALID,
+    REPORT_TOO_MANY_RESULTS,
+    REPORT_TOO_LARGE,
+}
+
+@Serializable
+public data class ConfigurationError(
+    val field: String,
+    val code: ConfigurationErrorCode,
+    val message: String,
+    val actual: String? = null,
+    val limit: Long? = null,
+)
+
 /**
  * Aggregated mutation audit report across all evaluated mutants.
  */
@@ -104,8 +136,23 @@ public data class MutationReport(
     val mutationScore: Double,
     val results: List<MutantResult> = emptyList(),
     val baselineError: String? = null,
+    val configurationErrors: List<ConfigurationError> = emptyList(),
 ) {
-    public val isPassed: Boolean get() = survivedCount == 0 && baselineError == null
+    public val isPassed: Boolean get() = survivedCount == 0 && baselineError == null && configurationErrors.isEmpty()
+
+    public companion object {
+        public fun invalidConfiguration(errors: List<ConfigurationError>): MutationReport =
+            MutationReport(
+                totalMutants = 0,
+                killedCount = 0,
+                survivedCount = 0,
+                timeoutCount = 0,
+                compileErrorCount = 0,
+                mutationScore = 0.0,
+                results = emptyList(),
+                configurationErrors = errors,
+            )
+    }
 }
 
 /**

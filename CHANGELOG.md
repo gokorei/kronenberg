@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub Actions CodeQL security scanning workflow (`.github/workflows/codeql.yml`).
 - Automated GitHub Wiki synchronization workflow (`.github/workflows/wiki-sync.yml`).
 
+### Changed
+- Canonicalized and deduplicated classpath entries now propagate through library, CLI, and Gradle adapters.
+- Added documented source, test, file-set, classpath, and report count/size limits.
+
+### Fixed
+- Invalid thresholds, timeouts, timeout multipliers, mutant limits, classpaths, source/test inputs, and oversized reports now return structured configuration errors before any mutant is classified.
+
 ## [0.1.0] - 2026-09-12
 
 ### Added

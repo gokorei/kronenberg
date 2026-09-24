@@ -5,6 +5,8 @@ import com.gokorei.kronenberg.model.AstMutant
 import com.gokorei.kronenberg.model.MutantResult
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationConfig
+import com.gokorei.kronenberg.model.MutationConfigValidation
+import com.gokorei.kronenberg.model.MutationConfigValidator
 import com.gokorei.kronenberg.model.MutationReport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -41,42 +43,82 @@ public class DefaultMutationExecutionPipeline(
         config: MutationConfig,
         sourceFilePath: String?,
     ): MutationReport {
+        val configValidation =
+            MutationConfigValidator.validateExecution(
+                config,
+                sourceCode,
+                testCode,
+            )
+        return when (configValidation) {
+            is MutationConfigValidation.Invalid -> {
+                MutationReport.invalidConfiguration(configValidation.errors)
+            }
+
+            is MutationConfigValidation.Valid -> {
+                executeValidated(
+                    sourceCode = sourceCode,
+                    testCode = testCode,
+                    config = configValidation.config,
+                    sourceFilePath = sourceFilePath,
+                )
+            }
+        }
+    }
+
+    private suspend fun executeValidated(
+        sourceCode: String,
+        testCode: String,
+        config: MutationConfig,
+        sourceFilePath: String?,
+    ): MutationReport {
+        val baseline = prepareBaseline(sourceCode, testCode, config)
+        return when (baseline) {
+            is BaselinePreparation.Failed -> {
+                baseline.report
+            }
+
+            is BaselinePreparation.Ready -> {
+                evaluateMutants(
+                    trimmedSource = baseline.trimmedSource,
+                    sourceFilePath = sourceFilePath,
+                    context = MutantEvaluationContext(testCode, config, baseline.parsedTest, baseline.calibratedTimeoutMs),
+                )
+            }
+        }
+    }
+
+    private fun prepareBaseline(
+        sourceCode: String,
+        testCode: String,
+        config: MutationConfig,
+    ): BaselinePreparation {
         val trimmedSource = sourceCode.trim()
-        val trimmedTest = testCode.trim()
-        val parsedTest = TestHarnessSynthesizer.parseTestCode(trimmedTest, trimmedSource)
+        val parsedTest = TestHarnessSynthesizer.parseTestCode(testCode.trim(), trimmedSource)
         val baselineCombined = TestHarnessSynthesizer.mergeSourceWithParsedTest(trimmedSource, parsedTest, null)
+        val preparation =
+            if (SnippetAstSafetyChecker.containsHostTerminatingCalls(baselineCombined)) {
+                BaselinePreparation.Failed(
+                    baselineFailure("Code contains forbidden host-terminating calls (e.g. System.exit, exitProcess, Runtime.halt)"),
+                )
+            } else {
+                val baselineCompile = compiler.compile(baselineCombined, extraClasspath = config.extraClasspath)
+                if (baselineCompile !is CompileResult.Compiled) {
+                    val message = (baselineCompile as? CompileResult.Failed)?.message ?: "Baseline compilation failed"
+                    BaselinePreparation.Failed(baselineFailure("Baseline compilation failed: $message"))
+                } else {
+                    prepareBaselineOutcome(baselineCompile, trimmedSource, parsedTest, config)
+                }
+            }
+        return preparation
+    }
 
-        // 0. Safety pre-flight check
-        if (SnippetAstSafetyChecker.containsHostTerminatingCalls(baselineCombined)) {
-            return MutationReport(
-                totalMutants = 0,
-                killedCount = 0,
-                survivedCount = 0,
-                timeoutCount = 0,
-                compileErrorCount = 0,
-                mutationScore = 0.0,
-                results = emptyList(),
-                baselineError = "Code contains forbidden host-terminating calls (e.g. System.exit, exitProcess, Runtime.halt)",
-            )
-        }
-
-        // 1. Verify baseline code and tests
-        val baselineCompile = compiler.compile(baselineCombined, extraClasspath = config.extraClasspath)
-        if (baselineCompile !is CompileResult.Compiled) {
-            val failMsg = (baselineCompile as? CompileResult.Failed)?.message ?: "Baseline compilation failed"
-            return MutationReport(
-                totalMutants = 0,
-                killedCount = 0,
-                survivedCount = 0,
-                timeoutCount = 0,
-                compileErrorCount = 0,
-                mutationScore = 0.0,
-                results = emptyList(),
-                baselineError = "Baseline compilation failed: $failMsg",
-            )
-        }
-
-        val baselineOutcome =
+    private fun prepareBaselineOutcome(
+        baselineCompile: CompileResult.Compiled,
+        trimmedSource: String,
+        parsedTest: ParsedTestCode,
+        config: MutationConfig,
+    ): BaselinePreparation {
+        val outcome =
             try {
                 runner.run(
                     baselineCompile.outDir,
@@ -86,40 +128,50 @@ public class DefaultMutationExecutionPipeline(
             } finally {
                 compiler.cleanup(baselineCompile)
             }
+        return when (outcome.status) {
+            MutantStatus.KILLED -> {
+                BaselinePreparation.Failed(
+                    baselineFailure("Baseline test failed before mutation: ${outcome.failureMessage}"),
+                )
+            }
 
-        if (baselineOutcome.status == MutantStatus.KILLED) {
-            return MutationReport(
-                totalMutants = 0,
-                killedCount = 0,
-                survivedCount = 0,
-                timeoutCount = 0,
-                compileErrorCount = 0,
-                mutationScore = 0.0,
-                results = emptyList(),
-                baselineError = "Baseline test failed before mutation: ${baselineOutcome.failureMessage}",
-            )
+            MutantStatus.TIMED_OUT -> {
+                BaselinePreparation.Failed(
+                    baselineFailure("Baseline test execution timed out after ${config.baselineTimeoutMs}ms"),
+                )
+            }
+
+            else -> {
+                BaselinePreparation.Ready(
+                    trimmedSource = trimmedSource,
+                    parsedTest = parsedTest,
+                    calibratedTimeoutMs =
+                        (maxOf(outcome.executionTimeMs, 10L) * config.timeoutMultiplier)
+                            .toLong()
+                            .coerceIn(50L, 10_000L),
+                )
+            }
         }
+    }
 
-        if (baselineOutcome.status == MutantStatus.TIMED_OUT) {
-            return MutationReport(
-                totalMutants = 0,
-                killedCount = 0,
-                survivedCount = 0,
-                timeoutCount = 0,
-                compileErrorCount = 0,
-                mutationScore = 0.0,
-                results = emptyList(),
-                baselineError = "Baseline test execution timed out after ${config.baselineTimeoutMs}ms",
-            )
-        }
+    private fun baselineFailure(message: String): MutationReport =
+        MutationReport(
+            totalMutants = 0,
+            killedCount = 0,
+            survivedCount = 0,
+            timeoutCount = 0,
+            compileErrorCount = 0,
+            mutationScore = 0.0,
+            results = emptyList(),
+            baselineError = message,
+        )
 
-        val calibratedTimeoutMs =
-            (maxOf(baselineOutcome.executionTimeMs, 10L) * config.timeoutMultiplier)
-                .toLong()
-                .coerceIn(50L, 10_000L)
-
-        // 2. Generate AST mutants
-        val mutants = generator.generateMutants(trimmedSource, config, filePath = sourceFilePath)
+    private suspend fun evaluateMutants(
+        trimmedSource: String,
+        sourceFilePath: String?,
+        context: MutantEvaluationContext,
+    ): MutationReport {
+        val mutants = generator.generateMutants(trimmedSource, context.config, filePath = sourceFilePath)
         if (mutants.isEmpty()) {
             return MutationReport(
                 totalMutants = 0,
@@ -131,83 +183,90 @@ public class DefaultMutationExecutionPipeline(
                 results = emptyList(),
             )
         }
-
-        // 3. Execute mutants in parallel via coroutines
-        val results: List<MutantResult> =
+        val results =
             coroutineScope {
                 mutants
                     .map { mutant ->
                         async(Dispatchers.Default) {
-                            val cacheKey =
-                                if (config.enableCache) {
-                                    cache.computeKey(mutant.mutatedSource, testCode, mutant.id)
-                                } else {
-                                    null
-                                }
-
-                            if (cacheKey != null) {
-                                val cachedResult = cache.get(cacheKey)
-                                if (cachedResult != null) return@async cachedResult
-                            }
-
-                            val combinedMutantCode =
-                                TestHarnessSynthesizer.mergeSourceWithParsedTest(
-                                    mutant.mutatedSource,
-                                    parsedTest,
-                                    mutant,
-                                )
-
-                            val evalResult =
-                                if (SnippetAstSafetyChecker.containsHostTerminatingCalls(combinedMutantCode)) {
-                                    MutantResult(
-                                        mutant = mutant,
-                                        status = MutantStatus.KILLED,
-                                        executionTimeMs = 0L,
-                                        failureMessage = "Blocked dangerous mutant containing host-terminating call",
-                                    )
-                                } else {
-                                    val compiledMutant = compiler.compile(combinedMutantCode, extraClasspath = config.extraClasspath)
-
-                                    if (compiledMutant !is CompileResult.Compiled) {
-                                        MutantResult(
-                                            mutant = mutant,
-                                            status = MutantStatus.COMPILE_ERROR,
-                                            executionTimeMs = 0L,
-                                            failureMessage = (compiledMutant as? CompileResult.Failed)?.message,
-                                        )
-                                    } else {
-                                        try {
-                                            val outcome =
-                                                runner.run(
-                                                    compiledMutant.outDir,
-                                                    timeoutMs = calibratedTimeoutMs,
-                                                    extraClasspath = config.extraClasspath,
-                                                )
-                                            MutantResult(
-                                                mutant = mutant,
-                                                status = outcome.status,
-                                                executionTimeMs = outcome.executionTimeMs,
-                                                failureMessage = outcome.failureMessage,
-                                            )
-                                        } finally {
-                                            compiler.cleanup(compiledMutant)
-                                        }
-                                    }
-                                }
-
-                            if (cacheKey != null) {
-                                cache.put(cacheKey, evalResult)
-                            }
-                            evalResult
+                            evaluateMutant(mutant, context)
                         }
                     }.awaitAll()
             }
+        return buildMutationReport(mutants.size, results)
+    }
 
+    private suspend fun evaluateMutant(
+        mutant: AstMutant,
+        context: MutantEvaluationContext,
+    ): MutantResult {
+        val cacheKey =
+            if (context.config.enableCache) {
+                cache.computeKey(mutant.mutatedSource, context.testCode, mutant.id)
+            } else {
+                null
+            }
+        if (cacheKey != null) {
+            val cachedResult = cache.get(cacheKey)
+            if (cachedResult != null) return cachedResult
+        }
+
+        val combinedCode = TestHarnessSynthesizer.mergeSourceWithParsedTest(mutant.mutatedSource, context.parsedTest, mutant)
+        val result =
+            if (SnippetAstSafetyChecker.containsHostTerminatingCalls(combinedCode)) {
+                MutantResult(
+                    mutant = mutant,
+                    status = MutantStatus.KILLED,
+                    executionTimeMs = 0L,
+                    failureMessage = "Blocked dangerous mutant containing host-terminating call",
+                )
+            } else {
+                compileAndRunMutant(mutant, combinedCode, context.config, context.calibratedTimeoutMs)
+            }
+        if (cacheKey != null) cache.put(cacheKey, result)
+        return result
+    }
+
+    private fun compileAndRunMutant(
+        mutant: AstMutant,
+        combinedCode: String,
+        config: MutationConfig,
+        calibratedTimeoutMs: Long,
+    ): MutantResult {
+        val compiled = compiler.compile(combinedCode, extraClasspath = config.extraClasspath)
+        if (compiled !is CompileResult.Compiled) {
+            return MutantResult(
+                mutant = mutant,
+                status = MutantStatus.COMPILE_ERROR,
+                executionTimeMs = 0L,
+                failureMessage = (compiled as? CompileResult.Failed)?.message,
+            )
+        }
+        return try {
+            val outcome =
+                runner.run(
+                    compiled.outDir,
+                    timeoutMs = calibratedTimeoutMs,
+                    extraClasspath = config.extraClasspath,
+                )
+            MutantResult(
+                mutant = mutant,
+                status = outcome.status,
+                executionTimeMs = outcome.executionTimeMs,
+                failureMessage = outcome.failureMessage,
+            )
+        } finally {
+            compiler.cleanup(compiled)
+        }
+    }
+
+    private fun buildMutationReport(
+        totalMutants: Int,
+        results: List<MutantResult>,
+    ): MutationReport {
         val killedCount = results.count { it.status == MutantStatus.KILLED }
         val survivedCount = results.count { it.status == MutantStatus.SURVIVED }
         val timeoutCount = results.count { it.status == MutantStatus.TIMED_OUT }
         val compileErrorCount = results.count { it.status == MutantStatus.COMPILE_ERROR }
-
         val totalEffective = killedCount + survivedCount + timeoutCount
         val score =
             if (totalEffective > 0) {
@@ -215,16 +274,37 @@ public class DefaultMutationExecutionPipeline(
             } else {
                 100.0
             }
+        val report =
+            MutationReport(
+                totalMutants = totalMutants,
+                killedCount = killedCount,
+                survivedCount = survivedCount,
+                timeoutCount = timeoutCount,
+                compileErrorCount = compileErrorCount,
+                mutationScore = (score * 10.0).toInt() / 10.0,
+                results = results,
+            )
+        val errors = MutationConfigValidator.validateReport(report)
+        return if (errors.isEmpty()) report else MutationReport.invalidConfiguration(errors)
+    }
 
-        return MutationReport(
-            totalMutants = mutants.size,
-            killedCount = killedCount,
-            survivedCount = survivedCount,
-            timeoutCount = timeoutCount,
-            compileErrorCount = compileErrorCount,
-            mutationScore = (score * 10.0).toInt() / 10.0,
-            results = results,
-        )
+    private data class MutantEvaluationContext(
+        val testCode: String,
+        val config: MutationConfig,
+        val parsedTest: ParsedTestCode,
+        val calibratedTimeoutMs: Long,
+    )
+
+    private sealed interface BaselinePreparation {
+        data class Ready(
+            val trimmedSource: String,
+            val parsedTest: ParsedTestCode,
+            val calibratedTimeoutMs: Long,
+        ) : BaselinePreparation
+
+        data class Failed(
+            val report: MutationReport,
+        ) : BaselinePreparation
     }
 
     override fun close() {

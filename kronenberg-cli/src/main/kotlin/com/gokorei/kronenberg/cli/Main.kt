@@ -12,9 +12,12 @@ import com.github.ajalt.clikt.parameters.types.double
 import com.github.ajalt.clikt.parameters.types.int
 import com.github.ajalt.clikt.parameters.types.long
 import com.github.ajalt.clikt.parameters.types.path
+import com.gokorei.kronenberg.model.ConfigurationError
 import com.gokorei.kronenberg.model.MutantResult
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationConfig
+import com.gokorei.kronenberg.model.MutationConfigValidation
+import com.gokorei.kronenberg.model.MutationConfigValidator
 import com.gokorei.kronenberg.model.MutationReport
 import com.gokorei.kronenberg.runner.DefaultMutationExecutionPipeline
 import com.gokorei.kronenberg.runner.SurvivingMutantTestProposer
@@ -27,6 +30,9 @@ import java.nio.file.Path
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.nameWithoutExtension
 import kotlin.io.path.readText
+
+private const val DEFAULT_BASELINE_TIMEOUT_MS: Long = 2000L
+private const val DEFAULT_TIMEOUT_MULTIPLIER: Double = 3.0
 
 private val jsonSerializer =
     Json {
@@ -168,7 +174,12 @@ public class AuditCommand :
     private val timeout: Long by option(
         "--timeout",
         help = "Baseline execution timeout in milliseconds (default 2000ms)",
-    ).long().default(2000L)
+    ).long().default(DEFAULT_BASELINE_TIMEOUT_MS)
+
+    private val timeoutMultiplier: Double by option(
+        "--timeout-multiplier",
+        help = "Per-mutant timeout multiplier (1.0 - 100.0, default 3.0)",
+    ).double().default(DEFAULT_TIMEOUT_MULTIPLIER)
 
     private val maxMutants: Int? by option(
         "--max-mutants",
@@ -233,7 +244,7 @@ public class AuditCommand :
 
     override fun run() {
         val effectiveStaged = staged || preCommit
-        val effectiveTimeout = if (preCommit && timeout == 2000L) 500L else timeout
+        val effectiveTimeout = if (preCommit && timeout == DEFAULT_BASELINE_TIMEOUT_MS) 500L else timeout
         val effectiveHom = if (preCommit) false else hom
 
         val pipeline = DefaultMutationExecutionPipeline()
@@ -251,35 +262,51 @@ public class AuditCommand :
                 ?.filter { it.isNotEmpty() }
                 ?: emptyList()
 
-        val config =
+        val requestedConfig =
             MutationConfig(
                 minScore = threshold,
                 includeExtreme = extreme,
                 higherOrderMutants = effectiveHom,
                 baselineTimeoutMs = effectiveTimeout,
+                timeoutMultiplier = timeoutMultiplier,
                 maxMutants = maxMutants,
                 targetLines = changedLines,
                 enableCache = cache,
                 extraClasspath = extraClasspathList,
             )
+        val configValidation = MutationConfigValidator.validate(requestedConfig)
 
         val report: MutationReport =
-            if (sourceDir != null) {
-                auditDirectory(pipeline, sourceDir!!, testDir, config, effectiveStaged, diff)
-            } else if (source != null && test != null) {
-                auditSingleFile(pipeline, source!!, test!!, config)
-            } else if (preCommit) {
-                val stagedFiles = GitDiffParser.extractStagedKotlinFiles()
-                if (stagedFiles.isEmpty()) {
-                    echo("\u001B[32m✔ Git pre-commit: No staged Kotlin files to audit.\u001B[0m")
-                    return
-                }
-                echo("Git pre-commit: Found ${stagedFiles.size} staged Kotlin file(s).")
-                auditFiles(pipeline, stagedFiles, testDir, config)
+            if (configValidation is MutationConfigValidation.Invalid) {
+                MutationReport.invalidConfiguration(configValidation.errors)
             } else {
-                echo("\u001B[31mError: Must provide either (--source and --test) or (--source-dir).\u001B[0m")
-                throw ProgramResult(1)
+                val config = (configValidation as MutationConfigValidation.Valid).config
+                if (sourceDir != null) {
+                    auditDirectory(pipeline, sourceDir!!, testDir, config, effectiveStaged, diff)
+                } else if (source != null && test != null) {
+                    auditSingleFile(pipeline, source!!, test!!, config)
+                } else if (preCommit) {
+                    val stagedFiles = GitDiffParser.extractStagedKotlinFiles()
+                    if (stagedFiles.isEmpty()) {
+                        echo("\u001B[32m✔ Git pre-commit: No staged Kotlin files to audit.\u001B[0m")
+                        return
+                    }
+                    echo("Git pre-commit: Found ${stagedFiles.size} staged Kotlin file(s).")
+                    auditFiles(pipeline, stagedFiles, testDir, config)
+                } else {
+                    echo("\u001B[31mError: Must provide either (--source and --test) or (--source-dir).\u001B[0m")
+                    throw ProgramResult(1)
+                }
             }
+
+        if (report.configurationErrors.isNotEmpty()) {
+            if (json) {
+                echo(jsonSerializer.encodeToString(report))
+            } else {
+                renderConfigurationErrors(report.configurationErrors)
+            }
+            throw ProgramResult(1)
+        }
 
         junitXml?.let { xmlPath ->
             JUnitXmlReportExporter.export(report, xmlPath)
@@ -315,12 +342,17 @@ public class AuditCommand :
         config: MutationConfig,
     ): MutationReport =
         runBlocking {
-            pipeline.execute(
-                sourceCode = src.readText(),
-                testCode = tst.readText(),
-                config = config,
-                sourceFilePath = src.fileName.toString(),
-            )
+            val fileErrors = MutationConfigValidator.validateFileSets(listOf(src), listOf(tst))
+            if (fileErrors.isNotEmpty()) {
+                MutationReport.invalidConfiguration(fileErrors)
+            } else {
+                pipeline.execute(
+                    sourceCode = src.readText(),
+                    testCode = tst.readText(),
+                    config = config,
+                    sourceFilePath = src.fileName.toString(),
+                )
+            }
         }
 
     private fun auditDirectory(
@@ -335,6 +367,7 @@ public class AuditCommand :
             Files
                 .walk(srcDir)
                 .filter { it.isRegularFile() && it.toString().endsWith(".kt") }
+                .limit(MutationConfigValidator.MAX_SOURCE_FILES.toLong() + 1L)
                 .toList()
 
         return auditFiles(pipeline, srcFiles, tstDir ?: srcDir, config, staged, diffRef, baseDir = srcDir)
@@ -349,7 +382,25 @@ public class AuditCommand :
         diffRef: String? = null,
         baseDir: Path? = null,
     ): MutationReport {
+        val testDirectory = tstDir?.takeIf { Files.isDirectory(it) }
+        val testFileList =
+            if (testDirectory != null) {
+                Files
+                    .walk(testDirectory)
+                    .filter { it.isRegularFile() && it.toString().endsWith(".kt") }
+                    .limit(MutationConfigValidator.MAX_TEST_FILES.toLong() + 1L)
+                    .toList()
+            } else {
+                srcFiles.mapNotNull { findAdjacentTestFile(it) }.distinct()
+            }
+        val inputErrors = MutationConfigValidator.validateFileSets(srcFiles, testFileList)
+        if (inputErrors.isNotEmpty()) {
+            return MutationReport.invalidConfiguration(inputErrors)
+        }
+        val testsByBaseName = testFileList.groupBy { it.nameWithoutExtension }
+
         val allResults = mutableListOf<MutantResult>()
+        val configurationErrors = mutableListOf<ConfigurationError>()
         var totalMutants = 0
         var killedCount = 0
         var survivedCount = 0
@@ -372,22 +423,10 @@ public class AuditCommand :
             val fileConfig = baseConfig.copy(targetLines = fileChangedLines)
             val baseName = srcFile.nameWithoutExtension
             val matchingTestFile =
-                if (tstDir != null && Files.isDirectory(tstDir)) {
-                    Files
-                        .walk(tstDir)
-                        .filter {
-                            it.isRegularFile() &&
-                                (
-                                    it.nameWithoutExtension == "${baseName}Test" ||
-                                        it.nameWithoutExtension == "${baseName}Spec" ||
-                                        it.nameWithoutExtension == baseName
-                                )
-                        }.findFirst()
-                        .orElse(null)
-                } else {
-                    // Try adjacent or src/test path inference if no explicit tstDir provided
-                    findAdjacentTestFile(srcFile)
-                }
+                testsByBaseName["${baseName}Test"]?.firstOrNull()?.takeIf { testDirectory != null }
+                    ?: testsByBaseName["${baseName}Spec"]?.firstOrNull()?.takeIf { testDirectory != null }
+                    ?: testsByBaseName[baseName]?.firstOrNull()?.takeIf { testDirectory != null }
+                    ?: findAdjacentTestFile(srcFile)
 
             val testCode = matchingTestFile?.readText() ?: ""
             if (testCode.isNotBlank()) {
@@ -401,32 +440,43 @@ public class AuditCommand :
                             sourceFilePath = relPath,
                         )
                     }
-                totalMutants += fileReport.totalMutants
-                killedCount += fileReport.killedCount
-                survivedCount += fileReport.survivedCount
-                timeoutCount += fileReport.timeoutCount
-                compileErrorCount += fileReport.compileErrorCount
-                allResults.addAll(fileReport.results)
+                if (fileReport.configurationErrors.isNotEmpty()) {
+                    configurationErrors.addAll(fileReport.configurationErrors)
+                } else {
+                    totalMutants += fileReport.totalMutants
+                    killedCount += fileReport.killedCount
+                    survivedCount += fileReport.survivedCount
+                    timeoutCount += fileReport.timeoutCount
+                    compileErrorCount += fileReport.compileErrorCount
+                    allResults.addAll(fileReport.results)
+                }
             }
         }
-
-        val totalEffective = killedCount + survivedCount + timeoutCount
-        val score =
-            if (totalEffective > 0) {
-                ((killedCount + timeoutCount).toDouble() / totalEffective.toDouble()) * 100.0
+        val report =
+            if (configurationErrors.isNotEmpty()) {
+                MutationReport.invalidConfiguration(configurationErrors)
             } else {
-                100.0
+                val totalEffective = killedCount + survivedCount + timeoutCount
+                val score =
+                    if (totalEffective > 0) {
+                        ((killedCount + timeoutCount).toDouble() / totalEffective.toDouble()) * 100.0
+                    } else {
+                        100.0
+                    }
+                val mutationReport =
+                    MutationReport(
+                        totalMutants = totalMutants,
+                        killedCount = killedCount,
+                        survivedCount = survivedCount,
+                        timeoutCount = timeoutCount,
+                        compileErrorCount = compileErrorCount,
+                        mutationScore = (score * 10.0).toInt() / 10.0,
+                        results = allResults,
+                    )
+                val reportErrors = MutationConfigValidator.validateReport(mutationReport)
+                if (reportErrors.isEmpty()) mutationReport else MutationReport.invalidConfiguration(reportErrors)
             }
-
-        return MutationReport(
-            totalMutants = totalMutants,
-            killedCount = killedCount,
-            survivedCount = survivedCount,
-            timeoutCount = timeoutCount,
-            compileErrorCount = compileErrorCount,
-            mutationScore = (score * 10.0).toInt() / 10.0,
-            results = allResults,
-        )
+        return report
     }
 
     private fun findAdjacentTestFile(srcFile: Path): Path? {
@@ -438,6 +488,15 @@ public class AuditCommand :
                 parent.resolve("${baseName}Spec.kt"),
             )
         return candidates.firstOrNull { Files.isRegularFile(it) }
+    }
+
+    private fun renderConfigurationErrors(errors: List<ConfigurationError>) {
+        echo("Configuration validation failed:")
+        errors.forEach { error ->
+            val actual = error.actual?.let { " (actual: $it)" }.orEmpty()
+            val limit = error.limit?.let { ", limit: $it" }.orEmpty()
+            echo("Configuration error [${error.code}] ${error.field}: ${error.message}$actual$limit")
+        }
     }
 
     private fun renderTerminalReport(report: MutationReport) {
