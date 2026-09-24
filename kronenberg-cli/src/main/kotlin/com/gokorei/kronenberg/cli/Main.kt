@@ -12,6 +12,8 @@ import com.github.ajalt.clikt.parameters.types.double
 import com.github.ajalt.clikt.parameters.types.int
 import com.github.ajalt.clikt.parameters.types.long
 import com.github.ajalt.clikt.parameters.types.path
+import com.gokorei.kronenberg.io.AtomicReportWriter
+import com.gokorei.kronenberg.model.CleanupDiagnostic
 import com.gokorei.kronenberg.model.MutantResult
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationConfig
@@ -96,8 +98,7 @@ public object JUnitXmlReportExporter {
         }
         sb.appendLine("</testsuite>")
 
-        targetFile.parent?.let { Files.createDirectories(it) }
-        Files.writeString(targetFile, sb.toString())
+        AtomicReportWriter.write(targetFile, sb.toString())
     }
 
     private fun escapeXml(str: String): String =
@@ -243,76 +244,77 @@ public class AuditCommand :
         val effectiveTimeout = if (preCommit && timeout == 2000L) 500L else timeout
         val effectiveHom = if (preCommit) false else hom
 
-        val pipeline = DefaultMutationExecutionPipeline()
-        val changedLines =
-            if (source != null && (diff != null || effectiveStaged)) {
-                GitDiffParser.extractChangedLines(source!!, diff, effectiveStaged)
-            } else {
-                null
+        DefaultMutationExecutionPipeline().use { pipeline ->
+            val changedLines =
+                if (source != null && (diff != null || effectiveStaged)) {
+                    GitDiffParser.extractChangedLines(source!!, diff, effectiveStaged)
+                } else {
+                    null
+                }
+
+            val extraClasspathList =
+                classpath
+                    ?.split(Regex("[:;,]"))
+                    ?.map { it.trim() }
+                    ?.filter { it.isNotEmpty() }
+                    ?: emptyList()
+
+            val config =
+                MutationConfig(
+                    minScore = threshold,
+                    includeExtreme = extreme,
+                    higherOrderMutants = effectiveHom,
+                    baselineTimeoutMs = effectiveTimeout,
+                    compileTimeoutMs = compileTimeout,
+                    maxMutants = maxMutants,
+                    targetLines = changedLines,
+                    enableCache = cache,
+                    extraClasspath = extraClasspathList,
+                )
+
+            val report: MutationReport =
+                if (sourceDir != null) {
+                    auditDirectory(pipeline, sourceDir!!, testDir, config, effectiveStaged, diff)
+                } else if (source != null && test != null) {
+                    auditSingleFile(pipeline, source!!, test!!, config)
+                } else if (preCommit) {
+                    val stagedFiles = GitDiffParser.extractStagedKotlinFiles()
+                    if (stagedFiles.isEmpty()) {
+                        echo("\u001B[32m✔ Git pre-commit: No staged Kotlin files to audit.\u001B[0m")
+                        return
+                    }
+                    echo("Git pre-commit: Found ${stagedFiles.size} staged Kotlin file(s).")
+                    auditFiles(pipeline, stagedFiles, testDir, config)
+                } else {
+                    echo("\u001B[31mError: Must provide either (--source and --test) or (--source-dir).\u001B[0m")
+                    throw ProgramResult(1)
+                }
+
+            junitXml?.let { xmlPath ->
+                JUnitXmlReportExporter.export(report, xmlPath)
             }
 
-        val extraClasspathList =
-            classpath
-                ?.split(Regex("[:;,]"))
-                ?.map { it.trim() }
-                ?.filter { it.isNotEmpty() }
-                ?: emptyList()
+            htmlReport?.let { htmlPath ->
+                HtmlReportExporter.export(report, htmlPath)
+            }
 
-        val config =
-            MutationConfig(
-                minScore = threshold,
-                includeExtreme = extreme,
-                higherOrderMutants = effectiveHom,
-                baselineTimeoutMs = effectiveTimeout,
-                compileTimeoutMs = compileTimeout,
-                maxMutants = maxMutants,
-                targetLines = changedLines,
-                enableCache = cache,
-                extraClasspath = extraClasspathList,
-            )
+            sarif?.let { sarifPath ->
+                SarifReportExporter.export(report, sarifPath, source?.toString() ?: "Snippet.kt")
+            }
 
-        val report: MutationReport =
-            if (sourceDir != null) {
-                auditDirectory(pipeline, sourceDir!!, testDir, config, effectiveStaged, diff)
-            } else if (source != null && test != null) {
-                auditSingleFile(pipeline, source!!, test!!, config)
-            } else if (preCommit) {
-                val stagedFiles = GitDiffParser.extractStagedKotlinFiles()
-                if (stagedFiles.isEmpty()) {
-                    echo("\u001B[32m✔ Git pre-commit: No staged Kotlin files to audit.\u001B[0m")
-                    return
-                }
-                echo("Git pre-commit: Found ${stagedFiles.size} staged Kotlin file(s).")
-                auditFiles(pipeline, stagedFiles, testDir, config)
+            codeclimate?.let { codeClimatePath ->
+                CodeClimateReportExporter.export(report, codeClimatePath, source?.toString() ?: "Snippet.kt")
+            }
+
+            if (json) {
+                echo(jsonSerializer.encodeToString(report))
             } else {
-                echo("\u001B[31mError: Must provide either (--source and --test) or (--source-dir).\u001B[0m")
+                renderTerminalReport(report)
+            }
+
+            if (report.mutationScore < threshold) {
                 throw ProgramResult(1)
             }
-
-        junitXml?.let { xmlPath ->
-            JUnitXmlReportExporter.export(report, xmlPath)
-        }
-
-        htmlReport?.let { htmlPath ->
-            HtmlReportExporter.export(report, htmlPath)
-        }
-
-        sarif?.let { sarifPath ->
-            SarifReportExporter.export(report, sarifPath, source?.toString() ?: "Snippet.kt")
-        }
-
-        codeclimate?.let { codeClimatePath ->
-            CodeClimateReportExporter.export(report, codeClimatePath, source?.toString() ?: "Snippet.kt")
-        }
-
-        if (json) {
-            echo(jsonSerializer.encodeToString(report))
-        } else {
-            renderTerminalReport(report)
-        }
-
-        if (report.mutationScore < threshold) {
-            throw ProgramResult(1)
         }
     }
 
@@ -342,8 +344,9 @@ public class AuditCommand :
         val srcFiles =
             Files
                 .walk(srcDir)
-                .filter { it.isRegularFile() && it.toString().endsWith(".kt") }
-                .toList()
+                .use { stream ->
+                    stream.filter { it.isRegularFile() && it.toString().endsWith(".kt") }.toList()
+                }
 
         return auditFiles(pipeline, srcFiles, tstDir ?: srcDir, config, staged, diffRef, baseDir = srcDir)
     }
@@ -358,6 +361,7 @@ public class AuditCommand :
         baseDir: Path? = null,
     ): MutationReport {
         val allResults = mutableListOf<MutantResult>()
+        val cleanupDiagnostics = mutableListOf<CleanupDiagnostic>()
         var totalMutants = 0
         var killedCount = 0
         var survivedCount = 0
@@ -383,15 +387,18 @@ public class AuditCommand :
                 if (tstDir != null && Files.isDirectory(tstDir)) {
                     Files
                         .walk(tstDir)
-                        .filter {
-                            it.isRegularFile() &&
-                                (
-                                    it.nameWithoutExtension == "${baseName}Test" ||
-                                        it.nameWithoutExtension == "${baseName}Spec" ||
-                                        it.nameWithoutExtension == baseName
-                                )
-                        }.findFirst()
-                        .orElse(null)
+                        .use { stream ->
+                            stream
+                                .filter {
+                                    it.isRegularFile() &&
+                                        (
+                                            it.nameWithoutExtension == "${baseName}Test" ||
+                                                it.nameWithoutExtension == "${baseName}Spec" ||
+                                                it.nameWithoutExtension == baseName
+                                        )
+                                }.findFirst()
+                                .orElse(null)
+                        }
                 } else {
                     // Try adjacent or src/test path inference if no explicit tstDir provided
                     findAdjacentTestFile(srcFile)
@@ -415,6 +422,7 @@ public class AuditCommand :
                 timeoutCount += fileReport.timeoutCount
                 compileErrorCount += fileReport.compileErrorCount
                 allResults.addAll(fileReport.results)
+                cleanupDiagnostics += fileReport.cleanupDiagnostics
             }
         }
 
@@ -434,6 +442,7 @@ public class AuditCommand :
             compileErrorCount = compileErrorCount,
             mutationScore = (score * 10.0).toInt() / 10.0,
             results = allResults,
+            cleanupDiagnostics = cleanupDiagnostics,
         )
     }
 
@@ -462,6 +471,12 @@ public class AuditCommand :
         echo("   - Compile Err: ${report.compileErrorCount}")
         if (report.baselineError != null) {
             echo("\n\u001B[31m🚨 BASELINE PRE-FLIGHT ERROR:\u001B[0m\n  ${report.baselineError}")
+        }
+        if (report.cleanupDiagnostics.isNotEmpty()) {
+            echo("\n Cleanup Diagnostics:")
+            report.cleanupDiagnostics.forEach { diagnostic ->
+                echo("   - ${diagnostic.resource}.${diagnostic.operation}: ${diagnostic.message}")
+            }
         }
 
         val survived = report.results.filter { it.status == MutantStatus.SURVIVED }

@@ -33,6 +33,32 @@ class KronenbergCliSpec {
     }
 
     @Test
+    fun `repeated audit invocations release resources and replace reports`() {
+        val srcFile = createTempFile("RepeatedSample", ".kt")
+        val testFile = createTempFile("RepeatedSampleTest", ".kt")
+        val htmlFile = createTempFile("repeated-report", ".html")
+        try {
+            srcFile.writeText("fun multiply(a: Int, b: Int) = a * b")
+            testFile.writeText("fun main() { check(multiply(3, 2) == 6) }")
+
+            repeat(3) {
+                val cli = KronenbergCli().subcommands(AuditCommand())
+                val result =
+                    cli.test(
+                        "audit --source $srcFile --test $testFile --html-report $htmlFile --threshold 50.0",
+                    )
+
+                result.statusCode shouldBe 0
+                htmlFile.readText() shouldContain "Kronenberg Mutation Audit"
+            }
+        } finally {
+            srcFile.toFile().delete()
+            testFile.toFile().delete()
+            htmlFile.toFile().delete()
+        }
+    }
+
+    @Test
     fun `audit command outputs json when --json flag is passed`() {
         val srcFile = createTempFile("SampleJson", ".kt")
         val testFile = createTempFile("SampleJsonTest", ".kt")

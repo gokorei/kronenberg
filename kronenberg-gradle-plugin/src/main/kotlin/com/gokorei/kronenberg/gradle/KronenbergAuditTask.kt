@@ -1,5 +1,7 @@
 package com.gokorei.kronenberg.gradle
 
+import com.gokorei.kronenberg.io.AtomicReportWriter
+import com.gokorei.kronenberg.model.CleanupDiagnostic
 import com.gokorei.kronenberg.model.MutantResult
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationConfig
@@ -104,88 +106,98 @@ public abstract class KronenbergAuditTask
                     extraClasspath = extraClasspathList,
                 )
 
-            val pipeline = DefaultMutationExecutionPipeline()
-            val allResults = mutableListOf<MutantResult>()
-            var totalMutants = 0
-            var killedCount = 0
-            var survivedCount = 0
-            var timeoutCount = 0
-            var compileErrorCount = 0
+            DefaultMutationExecutionPipeline().use { pipeline ->
+                val allResults = mutableListOf<MutantResult>()
+                val cleanupDiagnostics = mutableListOf<CleanupDiagnostic>()
+                var totalMutants = 0
+                var killedCount = 0
+                var survivedCount = 0
+                var timeoutCount = 0
+                var compileErrorCount = 0
 
-            for (srcFile in srcList) {
-                val baseName = srcFile.nameWithoutExtension
-                val matchingTestFile =
-                    tstList.firstOrNull {
-                        val tstName = it.nameWithoutExtension
-                        tstName == "${baseName}Test" || tstName == "${baseName}Spec" || tstName == baseName
+                for (srcFile in srcList) {
+                    val baseName = srcFile.nameWithoutExtension
+                    val matchingTestFile =
+                        tstList.firstOrNull {
+                            val tstName = it.nameWithoutExtension
+                            tstName == "${baseName}Test" || tstName == "${baseName}Spec" || tstName == baseName
+                        }
+
+                    val testCode = matchingTestFile?.readText() ?: ""
+                    if (testCode.isBlank()) {
+                        logger.info("Skipping ${srcFile.name}: No matching test suite found.")
+                        continue
                     }
 
-                val testCode = matchingTestFile?.readText() ?: ""
-                if (testCode.isBlank()) {
-                    logger.info("Skipping ${srcFile.name}: No matching test suite found.")
-                    continue
+                    val fileReport =
+                        runBlocking {
+                            pipeline.execute(
+                                sourceCode = srcFile.readText(),
+                                testCode = testCode,
+                                config = config,
+                                sourceFilePath = srcFile.name,
+                            )
+                        }
+
+                    totalMutants += fileReport.totalMutants
+                    killedCount += fileReport.killedCount
+                    survivedCount += fileReport.survivedCount
+                    timeoutCount += fileReport.timeoutCount
+                    compileErrorCount += fileReport.compileErrorCount
+                    allResults.addAll(fileReport.results)
+                    cleanupDiagnostics += fileReport.cleanupDiagnostics
                 }
 
-                val fileReport =
-                    runBlocking {
-                        pipeline.execute(
-                            sourceCode = srcFile.readText(),
-                            testCode = testCode,
-                            config = config,
-                            sourceFilePath = srcFile.name,
-                        )
+                val totalEffective = killedCount + survivedCount + timeoutCount
+                val score =
+                    if (totalEffective > 0) {
+                        ((killedCount + timeoutCount).toDouble() / totalEffective.toDouble()) * 100.0
+                    } else {
+                        100.0
                     }
 
-                totalMutants += fileReport.totalMutants
-                killedCount += fileReport.killedCount
-                survivedCount += fileReport.survivedCount
-                timeoutCount += fileReport.timeoutCount
-                compileErrorCount += fileReport.compileErrorCount
-                allResults.addAll(fileReport.results)
-            }
+                val finalReport =
+                    MutationReport(
+                        totalMutants = totalMutants,
+                        killedCount = killedCount,
+                        survivedCount = survivedCount,
+                        timeoutCount = timeoutCount,
+                        compileErrorCount = compileErrorCount,
+                        mutationScore = (score * 10.0).toInt() / 10.0,
+                        results = allResults,
+                        cleanupDiagnostics = cleanupDiagnostics,
+                    )
 
-            val totalEffective = killedCount + survivedCount + timeoutCount
-            val score =
-                if (totalEffective > 0) {
-                    ((killedCount + timeoutCount).toDouble() / totalEffective.toDouble()) * 100.0
-                } else {
-                    100.0
+                val outDir = reportsDir.get().asFile.toPath()
+                Files.createDirectories(outDir)
+
+                exportHtmlReport(finalReport, outDir.resolve("mutation-report.html"))
+                exportJUnitXmlReport(finalReport, outDir.resolve("mutation-results.xml"))
+
+                logger.lifecycle("=======================================================")
+                logger.lifecycle("           KRONENBERG MUTATION AUDIT                   ")
+                logger.lifecycle("=======================================================")
+                logger.lifecycle("  Total Mutants : $totalMutants")
+                logger.lifecycle("  Killed        : $killedCount")
+                logger.lifecycle("  Survived      : $survivedCount")
+                logger.lifecycle("  Timed Out     : $timeoutCount")
+                logger.lifecycle("  Compile Errors: $compileErrorCount")
+                logger.lifecycle("  Mutation Score: ${finalReport.mutationScore}% (Threshold: ${minScore.get()}%)")
+                logger.lifecycle("  Reports       : $outDir")
+                if (finalReport.cleanupDiagnostics.isNotEmpty()) {
+                    logger.lifecycle("  Cleanup Diagnostics:")
+                    finalReport.cleanupDiagnostics.forEach { diagnostic ->
+                        logger.lifecycle("   - ${diagnostic.resource}.${diagnostic.operation}: ${diagnostic.message}")
+                    }
                 }
+                logger.lifecycle("=======================================================")
 
-            val finalReport =
-                MutationReport(
-                    totalMutants = totalMutants,
-                    killedCount = killedCount,
-                    survivedCount = survivedCount,
-                    timeoutCount = timeoutCount,
-                    compileErrorCount = compileErrorCount,
-                    mutationScore = (score * 10.0).toInt() / 10.0,
-                    results = allResults,
-                )
-
-            val outDir = reportsDir.get().asFile.toPath()
-            Files.createDirectories(outDir)
-
-            exportHtmlReport(finalReport, outDir.resolve("mutation-report.html"))
-            exportJUnitXmlReport(finalReport, outDir.resolve("mutation-results.xml"))
-
-            logger.lifecycle("=======================================================")
-            logger.lifecycle("           KRONENBERG MUTATION AUDIT                   ")
-            logger.lifecycle("=======================================================")
-            logger.lifecycle("  Total Mutants : $totalMutants")
-            logger.lifecycle("  Killed        : $killedCount")
-            logger.lifecycle("  Survived      : $survivedCount")
-            logger.lifecycle("  Timed Out     : $timeoutCount")
-            logger.lifecycle("  Compile Errors: $compileErrorCount")
-            logger.lifecycle("  Mutation Score: ${finalReport.mutationScore}% (Threshold: ${minScore.get()}%)")
-            logger.lifecycle("  Reports       : $outDir")
-            logger.lifecycle("=======================================================")
-
-            if (finalReport.mutationScore < minScore.get()) {
-                throw GradleException(
-                    "Mutation score ${finalReport.mutationScore}% is below threshold ${minScore.get()}%. " +
-                        "See reports at ${outDir.resolve("mutation-report.html")}",
-                )
+                if (finalReport.mutationScore < minScore.get()) {
+                    throw GradleException(
+                        "Mutation score ${finalReport.mutationScore}% is below threshold ${minScore.get()}%. " +
+                            "See reports at ${outDir.resolve("mutation-report.html")}",
+                    )
+                }
             }
         }
 
@@ -257,8 +269,7 @@ public abstract class KronenbergAuditTask
                     appendLine("</body>")
                     appendLine("</html>")
                 }
-            targetFile.parent?.let { Files.createDirectories(it) }
-            Files.writeString(targetFile, html)
+            AtomicReportWriter.write(targetFile, html)
         }
 
         private fun exportJUnitXmlReport(
@@ -321,8 +332,7 @@ public abstract class KronenbergAuditTask
             }
             sb.appendLine("</testsuite>")
 
-            targetFile.parent?.let { Files.createDirectories(it) }
-            Files.writeString(targetFile, sb.toString())
+            AtomicReportWriter.write(targetFile, sb.toString())
         }
 
         private fun escapeHtml(str: String): String =

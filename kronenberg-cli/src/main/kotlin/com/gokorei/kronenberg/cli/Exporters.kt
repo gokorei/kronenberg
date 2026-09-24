@@ -1,5 +1,6 @@
 package com.gokorei.kronenberg.cli
 
+import com.gokorei.kronenberg.io.AtomicReportWriter
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationReport
 import kotlinx.serialization.json.Json
@@ -11,7 +12,6 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import java.io.File
-import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 
@@ -41,8 +41,10 @@ public object GitDiffParser {
                     .start()
             }.getOrNull() ?: return emptyList()
 
-        val output = process.inputStream.bufferedReader().readText()
-        process.waitFor(2, TimeUnit.SECONDS)
+        val output = process.inputStream.bufferedReader().use { it.readText() }
+        if (!process.waitFor(2, TimeUnit.SECONDS)) {
+            process.destroyForcibly()
+        }
 
         return parseHunkLines(output)
     }
@@ -76,8 +78,10 @@ public object GitDiffParser {
                     .start()
             }.getOrNull() ?: return emptyList()
 
-        val output = process.inputStream.bufferedReader().readText()
-        process.waitFor(2, TimeUnit.SECONDS)
+        val output = process.inputStream.bufferedReader().use { it.readText() }
+        if (!process.waitFor(2, TimeUnit.SECONDS)) {
+            process.destroyForcibly()
+        }
 
         return parseStagedKotlinFileNames(output).map { workingDir.toPath().resolve(it) }
     }
@@ -175,8 +179,7 @@ public object HtmlReportExporter {
                 appendLine("</html>")
             }
 
-        targetFile.parent?.let { Files.createDirectories(it) }
-        Files.writeString(targetFile, html)
+        AtomicReportWriter.write(targetFile, html)
     }
 
     private fun escapeHtml(s: String): String =
@@ -265,8 +268,7 @@ public object SarifReportExporter {
                 }
             }
 
-        targetFile.parent?.let { Files.createDirectories(it) }
-        Files.writeString(targetFile, json.encodeToString(JsonObject.serializer(), sarifObj))
+        AtomicReportWriter.write(targetFile, json.encodeToString(JsonObject.serializer(), sarifObj))
     }
 }
 
@@ -324,7 +326,6 @@ public object CodeClimateReportExporter {
                     }
                 }
 
-        targetFile.parent?.let { Files.createDirectories(it) }
-        Files.writeString(targetFile, json.encodeToString(JsonArray(issues)))
+        AtomicReportWriter.write(targetFile, json.encodeToString(JsonArray(issues)))
     }
 }

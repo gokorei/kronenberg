@@ -28,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Ensured execution timeouts are reported only after the worker process tree is confirmed stopped.
 - Prevented compiled output cleanup from racing active trusted execution or compilation workers.
+- Closed CLI and Gradle pipelines, directory streams, subprocess readers, and temporary execution trees on every path.
+- Added atomic report replacement with explicit target and parent symlink rejection and structured cleanup diagnostics.
+- Added repeated CLI and Gradle audit invocation coverage for lifecycle stability.
 
 ## [0.1.0] - 2026-09-12
 

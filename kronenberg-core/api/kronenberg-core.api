@@ -383,6 +383,11 @@ public final class com/gokorei/kronenberg/doc/ReleaseEntry {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class com/gokorei/kronenberg/io/AtomicReportWriter {
+	public static final field INSTANCE Lcom/gokorei/kronenberg/io/AtomicReportWriter;
+	public final fun write (Ljava/nio/file/Path;Ljava/lang/String;)V
+}
+
 public final class com/gokorei/kronenberg/model/AstEdit {
 	public static final field Companion Lcom/gokorei/kronenberg/model/AstEdit$Companion;
 	public fun <init> (IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;IILjava/lang/String;)V
@@ -466,6 +471,37 @@ public final synthetic class com/gokorei/kronenberg/model/AstMutant$$serializer 
 }
 
 public final class com/gokorei/kronenberg/model/AstMutant$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/gokorei/kronenberg/model/CleanupDiagnostic {
+	public static final field Companion Lcom/gokorei/kronenberg/model/CleanupDiagnostic$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/gokorei/kronenberg/model/CleanupDiagnostic;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/model/CleanupDiagnostic;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/model/CleanupDiagnostic;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMessage ()Ljava/lang/String;
+	public final fun getOperation ()Ljava/lang/String;
+	public final fun getResource ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/gokorei/kronenberg/model/CleanupDiagnostic$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/gokorei/kronenberg/model/CleanupDiagnostic$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/gokorei/kronenberg/model/CleanupDiagnostic;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/gokorei/kronenberg/model/CleanupDiagnostic;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/gokorei/kronenberg/model/CleanupDiagnostic$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
@@ -571,8 +607,8 @@ public final class com/gokorei/kronenberg/model/MutationConfig$Companion {
 
 public final class com/gokorei/kronenberg/model/MutationReport {
 	public static final field Companion Lcom/gokorei/kronenberg/model/MutationReport$Companion;
-	public fun <init> (IIIIIDLjava/util/List;Ljava/lang/String;)V
-	public synthetic fun <init> (IIIIIDLjava/util/List;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (IIIIIDLjava/util/List;Ljava/lang/String;Ljava/util/List;)V
+	public synthetic fun <init> (IIIIIDLjava/util/List;Ljava/lang/String;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()I
 	public final fun component2 ()I
 	public final fun component3 ()I
@@ -581,10 +617,12 @@ public final class com/gokorei/kronenberg/model/MutationReport {
 	public final fun component6 ()D
 	public final fun component7 ()Ljava/util/List;
 	public final fun component8 ()Ljava/lang/String;
-	public final fun copy (IIIIIDLjava/util/List;Ljava/lang/String;)Lcom/gokorei/kronenberg/model/MutationReport;
-	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/model/MutationReport;IIIIIDLjava/util/List;Ljava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/model/MutationReport;
+	public final fun component9 ()Ljava/util/List;
+	public final fun copy (IIIIIDLjava/util/List;Ljava/lang/String;Ljava/util/List;)Lcom/gokorei/kronenberg/model/MutationReport;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/model/MutationReport;IIIIIDLjava/util/List;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lcom/gokorei/kronenberg/model/MutationReport;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getBaselineError ()Ljava/lang/String;
+	public final fun getCleanupDiagnostics ()Ljava/util/List;
 	public final fun getCompileErrorCount ()I
 	public final fun getKilledCount ()I
 	public final fun getMutationScore ()D

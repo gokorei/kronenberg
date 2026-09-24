@@ -159,10 +159,14 @@ internal object SnippetWorker {
     private fun terminateDescendantProcesses() {
         val root = ProcessHandle.current()
         val descendants = mutableSetOf<ProcessHandle>()
-        root.descendants().forEach { descendants.add(it) }
+        root.descendants().use { descendantStream ->
+            descendantStream.forEach { descendants.add(it) }
+        }
         descendants.forEach { it.destroy() }
         while (descendants.any { it.isAlive }) {
-            root.descendants().forEach { descendants.add(it) }
+            root.descendants().use { descendantStream ->
+                descendantStream.forEach { descendants.add(it) }
+            }
             descendants.filter { it.isAlive }.forEach { it.destroyForcibly() }
             runCatching { Thread.sleep(TERMINATION_POLL_MS) }
         }
@@ -273,15 +277,19 @@ private fun terminateProcessTree(process: Process) {
     val descendants = mutableSetOf<ProcessHandle>()
 
     fun collectDescendants(handle: ProcessHandle) {
-        handle.descendants().forEach { child ->
-            if (descendants.add(child)) collectDescendants(child)
+        handle.descendants().use { descendantStream ->
+            descendantStream.forEach { child ->
+                if (descendants.add(child)) collectDescendants(child)
+            }
         }
     }
     collectDescendants(root)
     descendants.forEach { it.destroy() }
     root.destroy()
     while (root.isAlive || descendants.any { it.isAlive }) {
-        root.descendants().forEach { descendants.add(it) }
+        root.descendants().use { descendantStream ->
+            descendantStream.forEach { descendants.add(it) }
+        }
         descendants.filter { it.isAlive }.forEach { it.destroyForcibly() }
         if (root.isAlive) root.destroyForcibly()
         runCatching { Thread.sleep(TERMINATION_POLL_MS) }

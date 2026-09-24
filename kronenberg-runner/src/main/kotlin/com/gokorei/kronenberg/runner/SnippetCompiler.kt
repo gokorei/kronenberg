@@ -1,5 +1,6 @@
 package com.gokorei.kronenberg.runner
 
+import com.gokorei.kronenberg.model.CleanupDiagnostic
 import org.jetbrains.kotlin.cli.common.arguments.K2JVMCompilerArguments
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSourceLocation
@@ -57,7 +58,7 @@ public interface SnippetCompiler {
     /**
      * Cleans up temporary artifacts from a compilation pass.
      */
-    public fun cleanup(result: CompileResult)
+    public fun cleanup(result: CompileResult): List<CleanupDiagnostic>
 }
 
 /**
@@ -84,22 +85,27 @@ public class DefaultSnippetCompiler : SnippetCompiler {
         }
     }
 
+    @Suppress("ReturnCount")
     override fun compile(
         sourceCode: String,
         extraClasspath: List<String>,
         timeoutMs: Long,
     ): CompileResult {
-        val tempDir: Path
-        val sourceFile: Path
-        val outDir: Path
+        val tempDir =
+            try {
+                Files.createTempDirectory("kronenberg-compile")
+            } catch (e: Exception) {
+                return CompileResult.Failed("Failed to create compilation workspace: ${e.message}")
+            }
+        val sourceFile = tempDir.resolve(SOURCE_FILE_NAME)
+        val outDir = tempDir.resolve("out")
         try {
-            tempDir = Files.createTempDirectory("kronenberg-compile")
-            sourceFile = tempDir.resolve(SOURCE_FILE_NAME)
-            outDir = tempDir.resolve("out")
             Files.createDirectories(outDir)
             Files.writeString(sourceFile, sourceCode)
         } catch (e: Exception) {
-            return CompileResult.Failed("Failed to prepare snippet for compilation: ${e.message}")
+            val cleanupDiagnostic = deleteTemporaryTree(tempDir)
+            val cleanupMessage = cleanupDiagnostic?.let { "; cleanup failed: ${it.message}" }.orEmpty()
+            return CompileResult.Failed("Failed to prepare snippet for compilation: ${e.message}$cleanupMessage")
         }
 
         val requestFile = tempDir.resolve("request.properties")
@@ -115,25 +121,29 @@ public class DefaultSnippetCompiler : SnippetCompiler {
                     setProperty("extraClasspath.$index", entry)
                 }
             }
-        return try {
-            Files.newOutputStream(requestFile).use { request.store(it, null) }
-            when (val workerResult = runWorkerProcess(requestFile, responseFile, timeoutMs)) {
-                is WorkerProcessResult.TimedOut -> {
-                    CompileResult.TimedOut(
-                        "Compilation timed out after ${timeoutMs.coerceAtLeast(1L)}ms; worker terminated",
-                    )
-                }
+        val result =
+            try {
+                Files.newOutputStream(requestFile).use { request.store(it, null) }
+                when (val workerResult = runWorkerProcess(requestFile, responseFile, timeoutMs)) {
+                    is WorkerProcessResult.TimedOut -> {
+                        CompileResult.TimedOut(
+                            "Compilation timed out after ${timeoutMs.coerceAtLeast(1L)}ms; worker terminated",
+                        )
+                    }
 
-                is WorkerProcessResult.Completed -> {
-                    compileResultFromResponse(workerResult.response, tempDir, workerResult.exitCode)
+                    is WorkerProcessResult.Completed -> {
+                        compileResultFromResponse(workerResult.response, tempDir, workerResult.exitCode)
+                    }
                 }
+            } catch (e: Throwable) {
+                CompileResult.Failed("Failed to execute compilation worker: ${e.message}")
             }
-        } catch (e: Throwable) {
-            CompileResult.Failed("Failed to execute compilation worker: ${e.message}")
-        }.also { result ->
-            if (result !is CompileResult.Compiled) {
-                runCatching { tempDir.toFile().deleteRecursively() }
-            }
+        if (result is CompileResult.Compiled) return result
+        val cleanupDiagnostic = deleteTemporaryTree(tempDir) ?: return result
+        return when (result) {
+            is CompileResult.Failed -> result.copy(message = "${result.message}; cleanup failed: ${cleanupDiagnostic.message}")
+            is CompileResult.TimedOut -> result.copy(message = "${result.message}; cleanup failed: ${cleanupDiagnostic.message}")
+            is CompileResult.Compiled -> result
         }
     }
 
@@ -211,11 +221,12 @@ public class DefaultSnippetCompiler : SnippetCompiler {
         }
     }
 
-    override fun cleanup(result: CompileResult) {
+    override fun cleanup(result: CompileResult): List<CleanupDiagnostic> =
         if (result is CompileResult.Compiled) {
-            runCatching { result.tempRoot.toFile().deleteRecursively() }
+            listOfNotNull(deleteTemporaryTree(result.tempRoot))
+        } else {
+            emptyList()
         }
-    }
 
     private class CapturingMessageCollector : MessageCollector {
         data class Report(

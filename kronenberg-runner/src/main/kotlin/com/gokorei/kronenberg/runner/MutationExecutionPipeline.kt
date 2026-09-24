@@ -2,6 +2,7 @@ package com.gokorei.kronenberg.runner
 
 import com.gokorei.kronenberg.ast.AstMutantGenerator
 import com.gokorei.kronenberg.model.AstMutant
+import com.gokorei.kronenberg.model.CleanupDiagnostic
 import com.gokorei.kronenberg.model.MutantResult
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationConfig
@@ -11,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import java.util.concurrent.ConcurrentLinkedQueue
 
 /**
  * High-level orchestration pipeline for executing trusted AST mutation test suites.
@@ -46,6 +48,45 @@ public class DefaultMutationExecutionPipeline(
         val rejection = untrustedExecutionReport(config.executionTrust)
         if (rejection != null) return rejection
 
+        val cleanupDiagnostics = ConcurrentLinkedQueue<CleanupDiagnostic>()
+
+        fun report(
+            totalMutants: Int,
+            killedCount: Int,
+            survivedCount: Int,
+            timeoutCount: Int,
+            compileErrorCount: Int,
+            mutationScore: Double,
+            results: List<MutantResult> = emptyList(),
+            baselineError: String? = null,
+        ): MutationReport =
+            MutationReport(
+                totalMutants = totalMutants,
+                killedCount = killedCount,
+                survivedCount = survivedCount,
+                timeoutCount = timeoutCount,
+                compileErrorCount = compileErrorCount,
+                mutationScore = mutationScore,
+                results = results,
+                baselineError = baselineError,
+                cleanupDiagnostics = cleanupDiagnostics.toList(),
+            )
+
+        @Suppress("TooGenericExceptionCaught")
+        fun cleanup(result: CompileResult) {
+            try {
+                cleanupDiagnostics.addAll(compiler.cleanup(result))
+            } catch (exception: Throwable) {
+                cleanupDiagnostics.add(
+                    CleanupDiagnostic(
+                        resource = "compiler",
+                        operation = "cleanup",
+                        message = "${exception.javaClass.simpleName}: ${exception.message.orEmpty()}",
+                    ),
+                )
+            }
+        }
+
         val trimmedSource = sourceCode.trim()
         val trimmedTest = testCode.trim()
         val parsedTest = TestHarnessSynthesizer.parseTestCode(trimmedTest, trimmedSource)
@@ -53,7 +94,7 @@ public class DefaultMutationExecutionPipeline(
 
         // 0. Safety pre-flight check
         if (SnippetAstSafetyChecker.containsHostTerminatingCalls(baselineCombined)) {
-            return MutationReport(
+            return report(
                 totalMutants = 0,
                 killedCount = 0,
                 survivedCount = 0,
@@ -79,7 +120,7 @@ public class DefaultMutationExecutionPipeline(
                     is CompileResult.TimedOut -> baselineCompile.message
                     is CompileResult.Compiled -> "Baseline compilation returned no output"
                 }
-            return MutationReport(
+            return report(
                 totalMutants = 0,
                 killedCount = 0,
                 survivedCount = 0,
@@ -93,17 +134,18 @@ public class DefaultMutationExecutionPipeline(
 
         val baselineOutcome =
             try {
-                runner.run(
-                    baselineCompile.outDir,
-                    timeoutMs = config.baselineTimeoutMs,
-                    extraClasspath = config.extraClasspath,
-                )
+                runner
+                    .run(
+                        baselineCompile.outDir,
+                        timeoutMs = config.baselineTimeoutMs,
+                        extraClasspath = config.extraClasspath,
+                    ).also { cleanupDiagnostics.addAll(it.cleanupDiagnostics) }
             } finally {
-                compiler.cleanup(baselineCompile)
+                cleanup(baselineCompile)
             }
 
         if (baselineOutcome.status == MutantStatus.KILLED) {
-            return MutationReport(
+            return report(
                 totalMutants = 0,
                 killedCount = 0,
                 survivedCount = 0,
@@ -116,7 +158,7 @@ public class DefaultMutationExecutionPipeline(
         }
 
         if (baselineOutcome.status == MutantStatus.TIMED_OUT) {
-            return MutationReport(
+            return report(
                 totalMutants = 0,
                 killedCount = 0,
                 survivedCount = 0,
@@ -136,7 +178,7 @@ public class DefaultMutationExecutionPipeline(
         // 2. Generate AST mutants
         val mutants = generator.generateMutants(trimmedSource, config, filePath = sourceFilePath)
         if (mutants.isEmpty()) {
-            return MutationReport(
+            return report(
                 totalMutants = 0,
                 killedCount = 0,
                 survivedCount = 0,
@@ -203,11 +245,12 @@ public class DefaultMutationExecutionPipeline(
                                     } else {
                                         try {
                                             val outcome =
-                                                runner.run(
-                                                    compiledMutant.outDir,
-                                                    timeoutMs = calibratedTimeoutMs,
-                                                    extraClasspath = config.extraClasspath,
-                                                )
+                                                runner
+                                                    .run(
+                                                        compiledMutant.outDir,
+                                                        timeoutMs = calibratedTimeoutMs,
+                                                        extraClasspath = config.extraClasspath,
+                                                    ).also { cleanupDiagnostics.addAll(it.cleanupDiagnostics) }
                                             MutantResult(
                                                 mutant = mutant,
                                                 status = outcome.status,
@@ -215,7 +258,7 @@ public class DefaultMutationExecutionPipeline(
                                                 failureMessage = outcome.failureMessage,
                                             )
                                         } finally {
-                                            compiler.cleanup(compiledMutant)
+                                            cleanup(compiledMutant)
                                         }
                                     }
                                 }
@@ -241,7 +284,7 @@ public class DefaultMutationExecutionPipeline(
                 100.0
             }
 
-        return MutationReport(
+        return report(
             totalMutants = mutants.size,
             killedCount = killedCount,
             survivedCount = survivedCount,

@@ -1,5 +1,6 @@
 package com.gokorei.kronenberg.runner
 
+import com.gokorei.kronenberg.model.CleanupDiagnostic
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationConfig
 import com.gokorei.kronenberg.model.SnippetExecutionTrust
@@ -332,6 +333,30 @@ class MutationExecutionPipelineSpec {
     }
 
     @Test
+    fun `records cleanup failures without interrupting the audit`() {
+        val compiler = ThrowingCleanupCompiler()
+        val runner = RecordingRunner()
+        val isolatedPipeline = DefaultMutationExecutionPipeline(compiler = compiler, runner = runner)
+
+        try {
+            val report =
+                runBlocking {
+                    isolatedPipeline.execute(
+                        sourceCode = "fun add(a: Int, b: Int): Int = a + b",
+                        testCode = "fun main() { check(add(1, 2) == 3) }",
+                        config = MutationConfig(),
+                    )
+                }
+
+            report.cleanupDiagnostics.any {
+                it.resource == "compiler" && it.operation == "cleanup" && it.message.contains("cleanup denied")
+            } shouldBe true
+        } finally {
+            isolatedPipeline.close()
+        }
+    }
+
+    @Test
     fun `executes mutation pass successfully against external classes provided via extraClasspath`() {
         val compiler = DefaultSnippetCompiler()
         val externalHelperSource =
@@ -391,8 +416,9 @@ class MutationExecutionPipelineSpec {
                 tempRoot = Path.of("build", "tracking-temp"),
             )
 
-        override fun cleanup(result: CompileResult) {
+        override fun cleanup(result: CompileResult): List<CleanupDiagnostic> {
             cleanupCalled.set(true)
+            return emptyList()
         }
     }
 
@@ -426,7 +452,7 @@ class MutationExecutionPipelineSpec {
             timeoutMs: Long,
         ): CompileResult = CompileResult.TimedOut("Compilation timed out after ${timeoutMs}ms; worker terminated")
 
-        override fun cleanup(result: CompileResult) = Unit
+        override fun cleanup(result: CompileResult): List<CleanupDiagnostic> = emptyList()
     }
 
     private class DeadlineCompiler : SnippetCompiler {
@@ -444,7 +470,23 @@ class MutationExecutionPipelineSpec {
             )
         }
 
-        override fun cleanup(result: CompileResult) = Unit
+        override fun cleanup(result: CompileResult): List<CleanupDiagnostic> = emptyList()
+    }
+
+    private class ThrowingCleanupCompiler : SnippetCompiler {
+        override fun compile(
+            sourceCode: String,
+            extraClasspath: List<String>,
+            timeoutMs: Long,
+        ): CompileResult =
+            CompileResult.Compiled(
+                outDir = Path.of("build", "throwing-cleanup-output"),
+                tempRoot = Path.of("build", "throwing-cleanup-temp"),
+            )
+
+        override fun cleanup(result: CompileResult): List<CleanupDiagnostic> {
+            error("cleanup denied")
+        }
     }
 
     private class RecordingCompiler : SnippetCompiler {
@@ -459,7 +501,7 @@ class MutationExecutionPipelineSpec {
             return CompileResult.Failed("Untrusted source must not be compiled")
         }
 
-        override fun cleanup(result: CompileResult) = Unit
+        override fun cleanup(result: CompileResult): List<CleanupDiagnostic> = emptyList()
     }
 
     private class RecordingRunner : FastSnippetRunner {

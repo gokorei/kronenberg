@@ -99,6 +99,13 @@ public data class MutantResult(
     val failureMessage: String? = null,
 )
 
+@Serializable
+public data class CleanupDiagnostic(
+    val resource: String,
+    val operation: String,
+    val message: String,
+)
+
 /**
  * Aggregated mutation audit report across all evaluated mutants.
  */
@@ -112,6 +119,7 @@ public data class MutationReport(
     val mutationScore: Double,
     val results: List<MutantResult> = emptyList(),
     val baselineError: String? = null,
+    val cleanupDiagnostics: List<CleanupDiagnostic> = emptyList(),
 ) {
     public val isPassed: Boolean get() = survivedCount == 0 && baselineError == null
 }

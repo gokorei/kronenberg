@@ -87,6 +87,14 @@ class KronenbergPluginSpec {
         val reportXml = File(testProjectDir, "build/reports/kronenberg/mutation-results.xml")
         reportXml.exists() shouldBe true
         reportXml.readText() shouldContain "<testsuite name=\"Kronenberg Mutation Audit\""
+
+        val repeatedResult =
+            runner
+                .withArguments("kronenbergCheck", "--rerun-tasks", "--stacktrace")
+                .build()
+        repeatedResult.task(":kronenbergCheck")?.outcome shouldBe TaskOutcome.SUCCESS
+        reportHtml.readText() shouldContain "Kronenberg Mutation Audit"
+        reportXml.readText() shouldContain "<testsuite name=\"Kronenberg Mutation Audit\""
     }
 
     @Test

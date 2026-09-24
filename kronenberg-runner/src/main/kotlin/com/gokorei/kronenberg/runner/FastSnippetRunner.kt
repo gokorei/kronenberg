@@ -1,5 +1,6 @@
 package com.gokorei.kronenberg.runner
 
+import com.gokorei.kronenberg.model.CleanupDiagnostic
 import com.gokorei.kronenberg.model.MutantStatus
 import java.io.ByteArrayOutputStream
 import java.io.OutputStream
@@ -84,6 +85,7 @@ public data class RunnerOutcome(
     val stdout: String = "",
     val stderr: String = "",
     val failureMessage: String? = null,
+    val cleanupDiagnostics: List<CleanupDiagnostic> = emptyList(),
 )
 
 /**
@@ -124,40 +126,43 @@ public class DefaultFastSnippetRunner(
                     setProperty("extraClasspath.$index", entry)
                 }
             }
-        return try {
-            Files.newOutputStream(requestFile).use { request.store(it, null) }
-            when (val workerResult = runWorkerProcess(requestFile, responseFile, timeoutMs)) {
-                is WorkerProcessResult.TimedOut -> {
-                    RunnerOutcome(
-                        status = MutantStatus.TIMED_OUT,
-                        executionTimeMs = elapsedMs(startNanos),
-                        failureMessage = "Execution timed out after ${timeoutMs.coerceAtLeast(1L)}ms; worker terminated",
-                    )
-                }
+        val outcome =
+            try {
+                Files.newOutputStream(requestFile).use { request.store(it, null) }
+                when (val workerResult = runWorkerProcess(requestFile, responseFile, timeoutMs)) {
+                    is WorkerProcessResult.TimedOut -> {
+                        RunnerOutcome(
+                            status = MutantStatus.TIMED_OUT,
+                            executionTimeMs = elapsedMs(startNanos),
+                            failureMessage = "Execution timed out after ${timeoutMs.coerceAtLeast(1L)}ms; worker terminated",
+                        )
+                    }
 
-                is WorkerProcessResult.Completed -> {
-                    val status =
-                        runCatching {
-                            MutantStatus.valueOf(workerResult.response.getProperty("status"))
-                        }.getOrDefault(MutantStatus.KILLED)
-                    RunnerOutcome(
-                        status = status,
-                        executionTimeMs = elapsedMs(startNanos),
-                        stdout = workerResult.response.getProperty("stdout").orEmpty(),
-                        stderr = workerResult.response.getProperty("stderr").orEmpty(),
-                        failureMessage = workerResult.response.getProperty("message"),
-                    )
+                    is WorkerProcessResult.Completed -> {
+                        val status =
+                            runCatching {
+                                MutantStatus.valueOf(workerResult.response.getProperty("status"))
+                            }.getOrDefault(MutantStatus.KILLED)
+                        RunnerOutcome(
+                            status = status,
+                            executionTimeMs = elapsedMs(startNanos),
+                            stdout = workerResult.response.getProperty("stdout").orEmpty(),
+                            stderr = workerResult.response.getProperty("stderr").orEmpty(),
+                            failureMessage = workerResult.response.getProperty("message"),
+                        )
+                    }
                 }
+            } catch (e: Throwable) {
+                RunnerOutcome(
+                    status = MutantStatus.KILLED,
+                    executionTimeMs = elapsedMs(startNanos),
+                    failureMessage = "${e.javaClass.simpleName}: ${e.message.orEmpty()}",
+                )
             }
-        } catch (e: Throwable) {
-            RunnerOutcome(
-                status = MutantStatus.KILLED,
-                executionTimeMs = elapsedMs(startNanos),
-                failureMessage = "${e.javaClass.simpleName}: ${e.message.orEmpty()}",
-            )
-        } finally {
-            runCatching { tempDir.toFile().deleteRecursively() }
-        }
+        val cleanupDiagnostic = deleteTemporaryTree(tempDir)
+        return outcome.copy(
+            cleanupDiagnostics = outcome.cleanupDiagnostics + listOfNotNull(cleanupDiagnostic),
+        )
     }
 
     override fun close(): Unit = Unit
