@@ -2,6 +2,7 @@ package com.gokorei.kronenberg.model
 
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.jupiter.api.Test
@@ -14,9 +15,44 @@ class MutationModelsSerializationSpec {
         }
 
     @Test
+    fun `compact public report omits execution source`() {
+        val secret = "S9WT162W_SOURCE_SECRET"
+        val result =
+            MutantResult(
+                mutant =
+                    ReportMutant(
+                        id = "mutant-redacted",
+                        mutatorName = "ArithmeticOperatorMutator",
+                        category = MutatorCategory.ARITHMETIC_OPERATOR,
+                        line = 1,
+                        column = 25,
+                        filePath = "src/main/kotlin/Secret.kt",
+                    ),
+                status = MutantStatus.SURVIVED,
+                executionTimeMs = 3L,
+            )
+        val report =
+            MutationReport(
+                totalMutants = 1,
+                killedCount = 0,
+                survivedCount = 1,
+                timeoutCount = 0,
+                compileErrorCount = 0,
+                mutationScore = 0.0,
+                results = listOf(result),
+            )
+
+        json.encodeToString(report) shouldNotContain secret
+        json.encodeToString(report) shouldNotContain "mutatedSource"
+        json.encodeToString(report) shouldNotContain "originalText"
+        json.encodeToString(report) shouldNotContain "replacementText"
+        json.encodeToString(report) shouldNotContain "failureMessage"
+    }
+
+    @Test
     fun `roundtrip serialization for complete MutationReport`() {
         val mutant =
-            AstMutant(
+            ReportMutant(
                 id = "fom-1",
                 mutatorName = "ArithmeticOperatorMutator",
                 category = MutatorCategory.ARITHMETIC_OPERATOR,

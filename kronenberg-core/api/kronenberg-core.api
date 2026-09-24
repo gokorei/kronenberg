@@ -426,7 +426,6 @@ public final class com/gokorei/kronenberg/model/AstEdit$Companion {
 }
 
 public final class com/gokorei/kronenberg/model/AstMutant {
-	public static final field Companion Lcom/gokorei/kronenberg/model/AstMutant$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutatorCategory;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutatorCategory;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
@@ -454,35 +453,20 @@ public final class com/gokorei/kronenberg/model/AstMutant {
 	public fun toString ()Ljava/lang/String;
 }
 
-public final synthetic class com/gokorei/kronenberg/model/AstMutant$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
-	public static final field INSTANCE Lcom/gokorei/kronenberg/model/AstMutant$$serializer;
-	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
-	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/gokorei/kronenberg/model/AstMutant;
-	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
-	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
-	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/gokorei/kronenberg/model/AstMutant;)V
-	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
-	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
-}
-
-public final class com/gokorei/kronenberg/model/AstMutant$Companion {
-	public final fun serializer ()Lkotlinx/serialization/KSerializer;
-}
-
 public final class com/gokorei/kronenberg/model/MutantResult {
 	public static final field Companion Lcom/gokorei/kronenberg/model/MutantResult$Companion;
-	public fun <init> (Lcom/gokorei/kronenberg/model/AstMutant;Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;)V
-	public synthetic fun <init> (Lcom/gokorei/kronenberg/model/AstMutant;Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun component1 ()Lcom/gokorei/kronenberg/model/AstMutant;
+	public fun <init> (Lcom/gokorei/kronenberg/model/ReportMutant;Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;)V
+	public synthetic fun <init> (Lcom/gokorei/kronenberg/model/ReportMutant;Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lcom/gokorei/kronenberg/model/ReportMutant;
 	public final fun component2 ()Lcom/gokorei/kronenberg/model/MutantStatus;
 	public final fun component3 ()J
 	public final fun component4 ()Ljava/lang/String;
-	public final fun copy (Lcom/gokorei/kronenberg/model/AstMutant;Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;)Lcom/gokorei/kronenberg/model/MutantResult;
-	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/model/MutantResult;Lcom/gokorei/kronenberg/model/AstMutant;Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/model/MutantResult;
+	public final fun copy (Lcom/gokorei/kronenberg/model/ReportMutant;Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;)Lcom/gokorei/kronenberg/model/MutantResult;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/model/MutantResult;Lcom/gokorei/kronenberg/model/ReportMutant;Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/model/MutantResult;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getExecutionTimeMs ()J
 	public final fun getFailureMessage ()Ljava/lang/String;
-	public final fun getMutant ()Lcom/gokorei/kronenberg/model/AstMutant;
+	public final fun getMutant ()Lcom/gokorei/kronenberg/model/ReportMutant;
 	public final fun getStatus ()Lcom/gokorei/kronenberg/model/MutantStatus;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
@@ -634,6 +618,50 @@ public final class com/gokorei/kronenberg/model/MutatorCategory : java/lang/Enum
 }
 
 public final class com/gokorei/kronenberg/model/MutatorCategory$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/gokorei/kronenberg/model/ReportMutant {
+	public static final field Companion Lcom/gokorei/kronenberg/model/ReportMutant$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutatorCategory;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutatorCategory;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lcom/gokorei/kronenberg/model/MutatorCategory;
+	public final fun component4 ()I
+	public final fun component5 ()I
+	public final fun component6 ()Ljava/lang/String;
+	public final fun component7 ()Ljava/lang/String;
+	public final fun component8 ()Ljava/lang/String;
+	public final fun component9 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutatorCategory;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/gokorei/kronenberg/model/ReportMutant;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/model/ReportMutant;Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutatorCategory;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/model/ReportMutant;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCategory ()Lcom/gokorei/kronenberg/model/MutatorCategory;
+	public final fun getColumn ()I
+	public final fun getFilePath ()Ljava/lang/String;
+	public final fun getId ()Ljava/lang/String;
+	public final fun getLine ()I
+	public final fun getMutatedSource ()Ljava/lang/String;
+	public final fun getMutatorName ()Ljava/lang/String;
+	public final fun getOriginalText ()Ljava/lang/String;
+	public final fun getReplacementText ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/gokorei/kronenberg/model/ReportMutant$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/gokorei/kronenberg/model/ReportMutant$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/gokorei/kronenberg/model/ReportMutant;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/gokorei/kronenberg/model/ReportMutant;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/gokorei/kronenberg/model/ReportMutant$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 

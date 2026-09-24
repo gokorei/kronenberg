@@ -1,7 +1,7 @@
 package com.gokorei.kronenberg.runner
 
-import com.gokorei.kronenberg.model.AstMutant
 import com.gokorei.kronenberg.model.MutatorCategory
+import com.gokorei.kronenberg.model.ReportMutant
 
 /**
  * Framework style for synthesized test proposals.
@@ -15,7 +15,7 @@ public enum class TestStyle {
  * Synthesized test method proposal guiding developers to kill a surviving mutant.
  */
 public data class ProposedTest(
-    val mutant: AstMutant,
+    val mutant: ReportMutant,
     val targetFunctionName: String?,
     val style: TestStyle,
     val rationale: String,
@@ -27,7 +27,7 @@ public data class ProposedTest(
  */
 public object SurvivingMutantTestProposer {
     public fun proposeTest(
-        mutant: AstMutant,
+        mutant: ReportMutant,
         sourceCode: String,
         style: TestStyle = TestStyle.KOTEST,
     ): ProposedTest {
@@ -35,19 +35,14 @@ public object SurvivingMutantTestProposer {
         val fnName = enclosingFn ?: "targetFunction"
         val capitalizedFn = fnName.replaceFirstChar { it.uppercase() }
 
-        val rationale =
-            "Mutant survived because tests did not distinguish between original expression " +
-                "'${mutant.originalText}' and mutated replacement '${mutant.replacementText}'."
+        val rationale = "Mutant survived because tests did not distinguish the mutation at line ${mutant.line}."
 
         val code =
             when (style) {
                 TestStyle.KOTEST -> {
                     buildString {
                         appendLine("    test(\"kill surviving mutant in $fnName at line ${mutant.line}\") {")
-                        appendLine(
-                            "        // Survived: ${mutant.mutatorName} replaced '${mutant.originalText}' with '${mutant.replacementText}'",
-                        )
-                        appendLine("        // Invariant: verify behavior specifically distinguishing this replacement")
+                        appendLine("        // Invariant: verify behavior at line ${mutant.line}")
                         when (mutant.category) {
                             MutatorCategory.RELATIONAL_BOUNDARY -> {
                                 appendLine("        $fnName(/* TODO: boundary value */) shouldBe /* expected */")
@@ -73,10 +68,7 @@ public object SurvivingMutantTestProposer {
                     buildString {
                         appendLine("    @Test")
                         appendLine("    fun test${capitalizedFn}KillMutantLine${mutant.line}() {")
-                        appendLine(
-                            "        // Survived: ${mutant.mutatorName} replaced '${mutant.originalText}' with '${mutant.replacementText}'",
-                        )
-                        appendLine("        // Invariant: verify behavior specifically distinguishing this replacement")
+                        appendLine("        // Invariant: verify behavior at line ${mutant.line}")
                         when (mutant.category) {
                             MutatorCategory.RELATIONAL_BOUNDARY -> {
                                 appendLine("        assertEquals(/* expected */, $fnName(/* TODO: boundary value */))")

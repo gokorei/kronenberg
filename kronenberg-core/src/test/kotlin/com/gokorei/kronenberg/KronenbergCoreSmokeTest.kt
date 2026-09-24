@@ -1,10 +1,10 @@
 package com.gokorei.kronenberg
 
-import com.gokorei.kronenberg.model.AstMutant
 import com.gokorei.kronenberg.model.MutantResult
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationReport
 import com.gokorei.kronenberg.model.MutatorCategory
+import com.gokorei.kronenberg.model.ReportMutant
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import kotlinx.serialization.encodeToString
@@ -15,7 +15,7 @@ class KronenbergCoreSmokeTest {
     @Test
     fun `domain models serialize and deserialize cleanly to JSON`() {
         val mutant =
-            AstMutant(
+            ReportMutant(
                 id = "mutant-1",
                 mutatorName = "RelationalBoundaryMutator",
                 category = MutatorCategory.RELATIONAL_BOUNDARY,

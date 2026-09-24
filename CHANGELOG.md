@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub Actions CodeQL security scanning workflow (`.github/workflows/codeql.yml`).
 - Automated GitHub Wiki synchronization workflow (`.github/workflows/wiki-sync.yml`).
 
+### Changed
+- Made mutant identifiers and report fingerprints deterministic from mutation content.
+- Made cache keys include mutation configuration, calibrated timeout, compiler/runtime versions, and classpath without using mutant IDs.
+- Made disk cache persistence bounded, compact, synchronized, atomic, and value-based for persistence errors.
+- Separated internal mutant execution data from compact public report DTOs and made complete source diagnostic output an explicit warned CLI opt-in.
+- Redacted source snippets from default JSON, XML, HTML, SARIF, Code Climate, and cache artifacts while enforcing owner-only cache permissions.
+
 ## [0.1.0] - 2026-09-12
 
 ### Added

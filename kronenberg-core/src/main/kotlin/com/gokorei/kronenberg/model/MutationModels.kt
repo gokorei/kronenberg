@@ -1,5 +1,6 @@
 package com.gokorei.kronenberg.model
 
+import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.Serializable
 
 /**
@@ -67,7 +68,6 @@ public data class AstEdit(
 /**
  * Represents a single syntactic mutation injected into Kotlin source AST.
  */
-@Serializable
 public data class AstMutant(
     val id: String,
     val mutatorName: String,
@@ -80,14 +80,31 @@ public data class AstMutant(
     val filePath: String? = null,
 )
 
+@Serializable
+public data class ReportMutant(
+    val id: String,
+    val mutatorName: String,
+    val category: MutatorCategory,
+    val line: Int,
+    val column: Int,
+    val filePath: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val originalText: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val replacementText: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val mutatedSource: String? = null,
+)
+
 /**
  * Execution result for a single mutant.
  */
 @Serializable
 public data class MutantResult(
-    val mutant: AstMutant,
+    val mutant: ReportMutant,
     val status: MutantStatus,
     val executionTimeMs: Long,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
     val failureMessage: String? = null,
 )
 

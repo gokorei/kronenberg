@@ -90,6 +90,22 @@ class AstMutantGeneratorSpec {
     }
 
     @Test
+    fun `generates content-derived mutant ids independently across generator instances`() {
+        val source =
+            """
+            fun calculate(value: Int): Int {
+                return value + 1
+            }
+            """.trimIndent()
+
+        val first = AstMutantGenerator(MutatorRegistry.default()).generateMutants(source)
+        val second = AstMutantGenerator(MutatorRegistry.default()).generateMutants(source)
+
+        first.map { it.id } shouldBe second.map { it.id }
+        first.map { it.id }.toSet().size shouldBe first.size
+    }
+
+    @Test
     fun `computeLineAndColumn correctly calculates 1-indexed coordinates`() {
         val source = "line1\nline2\nline3"
         // Offset 0 = line 1, col 1

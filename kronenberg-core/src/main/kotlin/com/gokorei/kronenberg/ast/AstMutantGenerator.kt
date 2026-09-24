@@ -19,7 +19,7 @@ import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtPsiFactory
 import org.jetbrains.kotlin.psi.KtTreeVisitorVoid
-import java.util.UUID
+import java.security.MessageDigest
 
 /**
  * Embedded K2 PSI Frontend parser for Kotlin source text.
@@ -99,12 +99,26 @@ public class AstMutantGenerator(
         val mutants = mutableListOf<AstMutant>()
 
         // 1. First-Order Mutants (FOM)
-        edits.forEachIndexed { index, (mutator, edit) ->
+        edits.forEach { (mutator, edit) ->
             val mutatedSource = replaceRange(sourceCode, edit.startOffset, edit.endOffset, edit.replacement)
             val lineCol = computeLineAndColumn(sourceCode, edit.startOffset)
             mutants.add(
                 AstMutant(
-                    id = "mutant-fom-${index + 1}-${UUID.randomUUID().toString().take(6)}",
+                    id =
+                        stableMutantId(
+                            kind = "fom",
+                            identity =
+                                listOf(
+                                    mutator.name,
+                                    mutator.category.name,
+                                    lineCol.first.toString(),
+                                    lineCol.second.toString(),
+                                    edit.originalText,
+                                    edit.replacement,
+                                    mutatedSource,
+                                    filePath ?: edit.filePath.orEmpty(),
+                                ),
+                        ),
                     mutatorName = mutator.name,
                     category = mutator.category,
                     line = lineCol.first,
@@ -135,7 +149,7 @@ public class AstMutantGenerator(
                 }
             }
 
-            sampledPairs.forEachIndexed { idx, (p1, p2) ->
+            sampledPairs.forEach { (p1, p2) ->
                 val sorted = listOf(p1.second, p2.second).sortedByDescending { it.startOffset }
                 var src = sourceCode
                 for (e in sorted) {
@@ -144,7 +158,21 @@ public class AstMutantGenerator(
 
                 mutants.add(
                     AstMutant(
-                        id = "mutant-hom-${idx + 1}-${UUID.randomUUID().toString().take(6)}",
+                        id =
+                            stableMutantId(
+                                kind = "hom",
+                                identity =
+                                    listOf(
+                                        "CompoundHigherOrderMutator",
+                                        MutatorCategory.EXTREME.name,
+                                        p1.second.line.toString(),
+                                        p1.second.column.toString(),
+                                        "${p1.second.originalText} & ${p2.second.originalText}",
+                                        "${p1.second.replacement} & ${p2.second.replacement}",
+                                        src,
+                                        filePath ?: p1.second.filePath.orEmpty(),
+                                    ),
+                            ),
                         mutatorName = "CompoundHigherOrderMutator",
                         category = MutatorCategory.EXTREME,
                         line = p1.second.line,
@@ -167,6 +195,22 @@ public class AstMutantGenerator(
 
         val result = filteredMutants.distinctBy { it.mutatedSource }
         return if (config.maxMutants != null) result.take(config.maxMutants) else result
+    }
+
+    private fun stableMutantId(
+        kind: String,
+        identity: List<String>,
+    ): String {
+        val payload =
+            (listOf(STABLE_MUTANT_ID_VERSION, kind) + identity).joinToString("\u0000") { "${it.length}:$it" }
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hash = digest.digest(payload.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+        return "mutant-$kind-${hash.take(STABLE_MUTANT_ID_LENGTH)}"
+    }
+
+    private companion object {
+        private const val STABLE_MUTANT_ID_VERSION: String = "kronenberg-mutant-id-v1"
+        private const val STABLE_MUTANT_ID_LENGTH: Int = 24
     }
 
     private fun replaceRange(
