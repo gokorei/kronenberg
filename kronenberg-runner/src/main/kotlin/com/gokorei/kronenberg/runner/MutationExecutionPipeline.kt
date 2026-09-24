@@ -6,13 +6,14 @@ import com.gokorei.kronenberg.model.MutantResult
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationConfig
 import com.gokorei.kronenberg.model.MutationReport
+import com.gokorei.kronenberg.model.SnippetExecutionTrust
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 
 /**
- * High-level orchestration pipeline for executing in-process AST mutation test suites.
+ * High-level orchestration pipeline for executing trusted AST mutation test suites.
  */
 public interface MutationExecutionPipeline : AutoCloseable {
     /**
@@ -27,7 +28,7 @@ public interface MutationExecutionPipeline : AutoCloseable {
 }
 
 /**
- * Default implementation of the in-process mutation execution pipeline with coroutine parallelism.
+ * Default implementation of the trusted mutation execution pipeline with bounded worker parallelism.
  */
 public class DefaultMutationExecutionPipeline(
     private val generator: AstMutantGenerator = AstMutantGenerator(),
@@ -35,12 +36,16 @@ public class DefaultMutationExecutionPipeline(
     private val runner: FastSnippetRunner = DefaultFastSnippetRunner(),
     private val cache: MutationResultCache = DefaultMutationResultCache(),
 ) : MutationExecutionPipeline {
+    @Suppress("CyclomaticComplexMethod", "LongMethod", "ReturnCount")
     override suspend fun execute(
         sourceCode: String,
         testCode: String,
         config: MutationConfig,
         sourceFilePath: String?,
     ): MutationReport {
+        val rejection = untrustedExecutionReport(config.executionTrust)
+        if (rejection != null) return rejection
+
         val trimmedSource = sourceCode.trim()
         val trimmedTest = testCode.trim()
         val parsedTest = TestHarnessSynthesizer.parseTestCode(trimmedTest, trimmedSource)
@@ -61,9 +66,19 @@ public class DefaultMutationExecutionPipeline(
         }
 
         // 1. Verify baseline code and tests
-        val baselineCompile = compiler.compile(baselineCombined, extraClasspath = config.extraClasspath)
+        val baselineCompile =
+            compiler.compile(
+                sourceCode = baselineCombined,
+                extraClasspath = config.extraClasspath,
+                timeoutMs = config.compileTimeoutMs,
+            )
         if (baselineCompile !is CompileResult.Compiled) {
-            val failMsg = (baselineCompile as? CompileResult.Failed)?.message ?: "Baseline compilation failed"
+            val failMsg =
+                when (baselineCompile) {
+                    is CompileResult.Failed -> baselineCompile.message
+                    is CompileResult.TimedOut -> baselineCompile.message
+                    is CompileResult.Compiled -> "Baseline compilation returned no output"
+                }
             return MutationReport(
                 totalMutants = 0,
                 killedCount = 0,
@@ -137,7 +152,7 @@ public class DefaultMutationExecutionPipeline(
             coroutineScope {
                 mutants
                     .map { mutant ->
-                        async(Dispatchers.Default) {
+                        async(Dispatchers.Default.limitedParallelism(2)) {
                             val cacheKey =
                                 if (config.enableCache) {
                                     cache.computeKey(mutant.mutatedSource, testCode, mutant.id)
@@ -166,14 +181,24 @@ public class DefaultMutationExecutionPipeline(
                                         failureMessage = "Blocked dangerous mutant containing host-terminating call",
                                     )
                                 } else {
-                                    val compiledMutant = compiler.compile(combinedMutantCode, extraClasspath = config.extraClasspath)
+                                    val compiledMutant =
+                                        compiler.compile(
+                                            sourceCode = combinedMutantCode,
+                                            extraClasspath = config.extraClasspath,
+                                            timeoutMs = config.compileTimeoutMs,
+                                        )
 
                                     if (compiledMutant !is CompileResult.Compiled) {
                                         MutantResult(
                                             mutant = mutant,
                                             status = MutantStatus.COMPILE_ERROR,
                                             executionTimeMs = 0L,
-                                            failureMessage = (compiledMutant as? CompileResult.Failed)?.message,
+                                            failureMessage =
+                                                when (compiledMutant) {
+                                                    is CompileResult.Failed -> compiledMutant.message
+                                                    is CompileResult.TimedOut -> compiledMutant.message
+                                                    is CompileResult.Compiled -> "Compilation returned no output"
+                                                },
                                         )
                                     } else {
                                         try {
@@ -230,4 +255,20 @@ public class DefaultMutationExecutionPipeline(
     override fun close() {
         runner.close()
     }
+}
+
+private fun untrustedExecutionReport(executionTrust: SnippetExecutionTrust): MutationReport? {
+    if (executionTrust != SnippetExecutionTrust.UNTRUSTED) return null
+    return MutationReport(
+        totalMutants = 0,
+        killedCount = 0,
+        survivedCount = 0,
+        timeoutCount = 0,
+        compileErrorCount = 0,
+        mutationScore = 0.0,
+        results = emptyList(),
+        baselineError =
+            "Untrusted project code execution is not supported. " +
+                "Kronenberg only executes trusted local code; run untrusted repositories in a separate disposable environment.",
+    )
 }

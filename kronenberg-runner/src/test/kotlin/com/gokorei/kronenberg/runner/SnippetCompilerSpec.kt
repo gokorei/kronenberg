@@ -26,6 +26,12 @@ class SnippetCompilerSpec {
     }
 
     @Test
+    fun `returns structured timed out result when compile deadline expires`() {
+        val result = compiler.compile("fun main() { }", timeoutMs = 1L)
+        result.shouldBeInstanceOf<CompileResult.TimedOut>()
+    }
+
+    @Test
     fun `returns structured failed result with diagnostics on syntax error without throwing`() {
         val invalidSource =
             """

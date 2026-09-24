@@ -54,6 +54,20 @@ public final class com/gokorei/kronenberg/runner/CompileResult$Failed : com/goko
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class com/gokorei/kronenberg/runner/CompileResult$TimedOut : com/gokorei/kronenberg/runner/CompileResult {
+	public fun <init> (Ljava/lang/String;Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/util/List;)Lcom/gokorei/kronenberg/runner/CompileResult$TimedOut;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/runner/CompileResult$TimedOut;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/CompileResult$TimedOut;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDiagnostics ()Ljava/util/List;
+	public final fun getMessage ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/gokorei/kronenberg/runner/CompilerDiagnostic {
 	public fun <init> (Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
@@ -102,7 +116,7 @@ public final class com/gokorei/kronenberg/runner/DefaultSnippetCompiler : com/go
 	public static final field SOURCE_FILE_NAME Ljava/lang/String;
 	public fun <init> ()V
 	public fun cleanup (Lcom/gokorei/kronenberg/runner/CompileResult;)V
-	public fun compile (Ljava/lang/String;Ljava/util/List;)Lcom/gokorei/kronenberg/runner/CompileResult;
+	public fun compile (Ljava/lang/String;Ljava/util/List;J)Lcom/gokorei/kronenberg/runner/CompileResult;
 }
 
 public final class com/gokorei/kronenberg/runner/DefaultSnippetCompiler$Companion {
@@ -197,12 +211,12 @@ public final class com/gokorei/kronenberg/runner/SnippetAstSafetyChecker {
 
 public abstract interface class com/gokorei/kronenberg/runner/SnippetCompiler {
 	public abstract fun cleanup (Lcom/gokorei/kronenberg/runner/CompileResult;)V
-	public abstract fun compile (Ljava/lang/String;Ljava/util/List;)Lcom/gokorei/kronenberg/runner/CompileResult;
-	public static synthetic fun compile$default (Lcom/gokorei/kronenberg/runner/SnippetCompiler;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/CompileResult;
+	public abstract fun compile (Ljava/lang/String;Ljava/util/List;J)Lcom/gokorei/kronenberg/runner/CompileResult;
+	public static synthetic fun compile$default (Lcom/gokorei/kronenberg/runner/SnippetCompiler;Ljava/lang/String;Ljava/util/List;JILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/CompileResult;
 }
 
 public final class com/gokorei/kronenberg/runner/SnippetCompiler$DefaultImpls {
-	public static synthetic fun compile$default (Lcom/gokorei/kronenberg/runner/SnippetCompiler;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/CompileResult;
+	public static synthetic fun compile$default (Lcom/gokorei/kronenberg/runner/SnippetCompiler;Ljava/lang/String;Ljava/util/List;JILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/CompileResult;
 }
 
 public final class com/gokorei/kronenberg/runner/SurvivingMutantTestProposer {

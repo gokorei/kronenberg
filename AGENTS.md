@@ -11,10 +11,12 @@ Welcome to **Kronenberg** ("*Long live the new flesh*"). When contributing to or
 
 ---
 
-## 2. In-Process Execution & Zero Build Daemons
-- **NEVER** spawn external Gradle sub-processes, Maven daemons, or OS subprocesses to execute mutation test passes.
-- **ALWAYS** use in-process compilation via `SnippetCompiler` and isolated `URLClassLoader` execution sandboxes via `FastSnippetRunner` with Java 21 Virtual Threads.
-- **Rationale**: Spawning external build tools introduces multi-second daemon startup penalties. Kronenberg is designed for sub-50ms per-mutant evaluation.
+## 2. Trusted-Local In-Process Execution & Zero Build Daemons
+- **NEVER** spawn external Gradle sub-processes, Maven daemons, or OS subprocesses to execute trusted mutation test passes.
+- **ALWAYS** use in-process compilation via `SnippetCompiler` and fresh `URLClassLoader` scopes via `FastSnippetRunner` with Java 21 Virtual Threads for trusted local code.
+- **NEVER** describe in-process execution, class loaders, virtual threads, or AST guards as a security sandbox or boundary.
+- **ALWAYS** reject untrusted project code through the supported trust policy unless a separate process has OS-enforced isolation and a minimal, host-independent worker classpath.
+- **Rationale**: Spawning external build tools introduces multi-second daemon startup penalties for trusted local evaluation, while process separation without OS restrictions is not a security boundary.
 
 ---
 

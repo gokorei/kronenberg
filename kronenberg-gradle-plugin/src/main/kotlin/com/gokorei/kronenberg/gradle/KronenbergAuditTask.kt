@@ -27,6 +27,8 @@ import javax.inject.Inject
 import kotlin.io.path.nameWithoutExtension
 import kotlin.io.path.readText
 
+private const val DEFAULT_COMPILE_TIMEOUT_MS: Long = 30_000L
+
 /**
  * Gradle task executing in-process K2 AST mutation tests against Kotlin source and test sets.
  */
@@ -52,6 +54,9 @@ public abstract class KronenbergAuditTask
 
         @get:Input
         public val baselineTimeoutMs: Property<Long> = objects.property(Long::class.java).convention(2000L)
+
+        @get:Input
+        public val compileTimeoutMs: Property<Long> = objects.property(Long::class.java).convention(DEFAULT_COMPILE_TIMEOUT_MS)
 
         @get:Input
         public val includeExtreme: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
@@ -93,6 +98,7 @@ public abstract class KronenbergAuditTask
                     includeExtreme = includeExtreme.get(),
                     higherOrderMutants = higherOrderMutants.get(),
                     baselineTimeoutMs = baselineTimeoutMs.get(),
+                    compileTimeoutMs = compileTimeoutMs.get(),
                     maxMutants = if (maxMutants.isPresent) maxMutants.get() else null,
                     enableCache = enableCache.get(),
                     extraClasspath = extraClasspathList,

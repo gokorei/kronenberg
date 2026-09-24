@@ -2,18 +2,13 @@ package com.gokorei.kronenberg.runner
 
 import com.gokorei.kronenberg.model.MutantStatus
 import java.io.ByteArrayOutputStream
-import java.io.File
 import java.io.OutputStream
 import java.io.PrintStream
-import java.lang.reflect.InvocationTargetException
-import java.net.URLClassLoader
+import java.nio.file.Files
 import java.nio.file.Path
-import java.util.concurrent.Callable
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
-import java.util.concurrent.Future
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeoutException
+import java.util.Properties
+
+private const val NANOS_PER_MILLISECOND: Long = 1_000_000L
 
 /**
  * Thread-safe PrintStream interceptor that captures stdout/stderr during in-process execution.
@@ -81,7 +76,7 @@ public class ThreadLocalPrintStream(
 }
 
 /**
- * Execution outcome from running compiled bytecode inside a virtual-thread sandbox.
+ * Execution outcome from running trusted project bytecode in a worker process.
  */
 public data class RunnerOutcome(
     val status: MutantStatus,
@@ -92,11 +87,11 @@ public data class RunnerOutcome(
 )
 
 /**
- * In-process virtual-thread snippet execution sandbox contract.
+ * Worker-process execution contract for trusted local snippets.
  */
 public interface FastSnippetRunner : AutoCloseable {
     /**
-     * Executes bytecode in [classesDir] with isolated URLClassLoader and Virtual Thread sandbox.
+     * Executes trusted local bytecode in [classesDir] with a fresh URLClassLoader in a worker process.
      */
     public fun run(
         classesDir: Path,
@@ -106,25 +101,9 @@ public interface FastSnippetRunner : AutoCloseable {
     ): RunnerOutcome
 }
 
-/**
- * Default sandbox runner using isolated URLClassLoaders and Java 21 Virtual Threads.
- */
 public class DefaultFastSnippetRunner(
-    threadPoolSize: Int = 4,
+    @Suppress("UNUSED_PARAMETER") threadPoolSize: Int = 4,
 ) : FastSnippetRunner {
-    private val executor: ExecutorService =
-        try {
-            Executors.newVirtualThreadPerTaskExecutor()
-        } catch (_: Throwable) {
-            Executors.newFixedThreadPool(threadPoolSize) { r ->
-                Thread(r, "FastSnippetRunner-Worker").apply { isDaemon = true }
-            }
-        }
-
-    init {
-        ThreadLocalPrintStream.install()
-    }
-
     override fun run(
         classesDir: Path,
         mainClass: String,
@@ -132,104 +111,56 @@ public class DefaultFastSnippetRunner(
         extraClasspath: List<String>,
     ): RunnerOutcome {
         val startNanos = System.nanoTime()
-        val fullCp =
-            listOf(classesDir.toUri().toURL()) +
-                extraClasspath.filter { it.isNotBlank() }.map { File(it).toURI().toURL() }
-
-        val capturedOut = ByteArrayOutputStream()
-        val customPrintStream = PrintStream(capturedOut, true, Charsets.UTF_8.name())
-
-        val task =
-            Callable {
-                val classLoader =
-                    object : URLClassLoader(fullCp.toTypedArray(), this::class.java.classLoader) {
-                        override fun loadClass(
-                            name: String,
-                            resolve: Boolean,
-                        ): Class<*> {
-                            val classFile = classesDir.resolve(name.replace('.', '/') + ".class").toFile()
-                            if (classFile.exists()) {
-                                val loaded = findLoadedClass(name)
-                                if (loaded != null) return loaded
-                                return findClass(name)
-                            }
-                            return super.loadClass(name, resolve)
-                        }
-                    }
-                try {
-                    val clazz =
-                        try {
-                            classLoader.loadClass(mainClass)
-                        } catch (e: ClassNotFoundException) {
-                            val candidate =
-                                classesDir
-                                    .toFile()
-                                    .walkTopDown()
-                                    .firstOrNull { it.isFile && it.extension == "class" && !it.name.contains("$") }
-                            val rel =
-                                candidate
-                                    ?.relativeTo(classesDir.toFile())
-                                    ?.path
-                                    ?.removeSuffix(".class")
-                                    ?.replace('/', '.') ?: "SnippetKt"
-                            classLoader.loadClass(rel)
-                        }
-
-                    val entryMethod =
-                        try {
-                            clazz.getMethod("main", Array<String>::class.java)
-                        } catch (_: NoSuchMethodException) {
-                            clazz.getMethod("main")
-                        }
-
-                    val initialProps = java.util.Properties().apply { putAll(System.getProperties()) }
-                    try {
-                        ThreadLocalPrintStream.withCapture(customPrintStream) {
-                            val invokeArgs =
-                                if (entryMethod.parameterCount == 1) arrayOf<Any>(emptyArray<String>()) else emptyArray()
-                            entryMethod.invoke(null, *invokeArgs)
-                        }
-                    } finally {
-                        System.setProperties(initialProps)
-                    }
-                } finally {
-                    runCatching { classLoader.close() }
+        val tempDir = Files.createTempDirectory("kronenberg-execute")
+        val requestFile = tempDir.resolve("request.properties")
+        val responseFile = tempDir.resolve("response.properties")
+        val request =
+            Properties().apply {
+                setProperty("mode", "execute")
+                setProperty("classesDir", classesDir.toString())
+                setProperty("mainClass", mainClass)
+                setProperty("responseFile", responseFile.toString())
+                extraClasspath.filter { it.isNotBlank() }.forEachIndexed { index, entry ->
+                    setProperty("extraClasspath.$index", entry)
                 }
             }
-
-        var future: Future<*>? = null
         return try {
-            val f = executor.submit(task)
-            future = f
-            f.get(timeoutMs, TimeUnit.MILLISECONDS)
-            val durationMs = (System.nanoTime() - startNanos) / 1_000_000
-            val out = capturedOut.toString(Charsets.UTF_8.name()).trim()
-            RunnerOutcome(
-                status = MutantStatus.SURVIVED,
-                executionTimeMs = durationMs,
-                stdout = out,
-            )
-        } catch (e: TimeoutException) {
-            future?.cancel(true)
-            val durationMs = (System.nanoTime() - startNanos) / 1_000_000
-            RunnerOutcome(
-                status = MutantStatus.TIMED_OUT,
-                executionTimeMs = durationMs,
-                failureMessage = "Execution timed out after ${timeoutMs}ms",
-            )
+            Files.newOutputStream(requestFile).use { request.store(it, null) }
+            when (val workerResult = runWorkerProcess(requestFile, responseFile, timeoutMs)) {
+                is WorkerProcessResult.TimedOut -> {
+                    RunnerOutcome(
+                        status = MutantStatus.TIMED_OUT,
+                        executionTimeMs = elapsedMs(startNanos),
+                        failureMessage = "Execution timed out after ${timeoutMs.coerceAtLeast(1L)}ms; worker terminated",
+                    )
+                }
+
+                is WorkerProcessResult.Completed -> {
+                    val status =
+                        runCatching {
+                            MutantStatus.valueOf(workerResult.response.getProperty("status"))
+                        }.getOrDefault(MutantStatus.KILLED)
+                    RunnerOutcome(
+                        status = status,
+                        executionTimeMs = elapsedMs(startNanos),
+                        stdout = workerResult.response.getProperty("stdout").orEmpty(),
+                        stderr = workerResult.response.getProperty("stderr").orEmpty(),
+                        failureMessage = workerResult.response.getProperty("message"),
+                    )
+                }
+            }
         } catch (e: Throwable) {
-            val durationMs = (System.nanoTime() - startNanos) / 1_000_000
-            val target = (e.cause as? InvocationTargetException)?.targetException ?: e.cause ?: e
-            val errorMsg = "${target.javaClass.simpleName}: ${target.message.orEmpty()}"
             RunnerOutcome(
                 status = MutantStatus.KILLED,
-                executionTimeMs = durationMs,
-                failureMessage = errorMsg,
+                executionTimeMs = elapsedMs(startNanos),
+                failureMessage = "${e.javaClass.simpleName}: ${e.message.orEmpty()}",
             )
+        } finally {
+            runCatching { tempDir.toFile().deleteRecursively() }
         }
     }
 
-    override fun close() {
-        executor.shutdownNow()
-    }
+    override fun close(): Unit = Unit
 }
+
+private fun elapsedMs(startNanos: Long): Long = (System.nanoTime() - startNanos) / NANOS_PER_MILLISECOND

@@ -19,6 +19,7 @@ class KronenbergPluginSpec {
         extension shouldBe extension
         extension!!.minScore.get() shouldBe 80.0
         extension.baselineTimeoutMs.get() shouldBe 2000L
+        extension.compileTimeoutMs.get() shouldBe 30_000L
 
         val task = project.tasks.findByName("kronenbergCheck") as? KronenbergAuditTask
         task shouldBe task

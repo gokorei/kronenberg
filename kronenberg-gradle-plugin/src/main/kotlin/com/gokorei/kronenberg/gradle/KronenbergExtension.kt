@@ -5,6 +5,8 @@ import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.Property
 import javax.inject.Inject
 
+private const val DEFAULT_COMPILE_TIMEOUT_MS: Long = 30_000L
+
 /**
  * Configuration extension for the Kronenberg mutation testing Gradle plugin.
  */
@@ -26,6 +28,9 @@ public open class KronenbergExtension
          */
         public val baselineTimeoutMs: Property<Long> =
             objects.property(Long::class.java).convention(2000L)
+
+        public val compileTimeoutMs: Property<Long> =
+            objects.property(Long::class.java).convention(DEFAULT_COMPILE_TIMEOUT_MS)
 
         /**
          * Whether to enable extreme / structural mutation operators.
