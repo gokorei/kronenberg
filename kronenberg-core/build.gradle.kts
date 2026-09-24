@@ -4,7 +4,7 @@ plugins {
 }
 
 dependencies {
-    implementation(libs.kotlin.compiler.embeddable)
+    api(libs.kotlin.compiler.embeddable)
     implementation(libs.kotlinx.serialization.json)
 
     testImplementation(libs.junit.jupiter)

@@ -23,6 +23,9 @@ import java.util.UUID
 
 /**
  * Embedded K2 PSI Frontend parser for Kotlin source text.
+ *
+ * The returned compiler PSI type is public API, and the matching compiler dependency is
+ * available transitively to `kronenberg-core` consumers.
  */
 public object K2SnippetFrontend {
     @Volatile

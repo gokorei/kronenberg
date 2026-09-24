@@ -10,6 +10,9 @@ import kotlin.reflect.cast
 
 /**
  * Context provided to AST mutators during PSI traversal.
+ *
+ * [file] and [edit] intentionally expose Kotlin compiler PSI. Consumers receive the matching
+ * `kotlin-compiler-embeddable` dependency transitively from `kronenberg-core`.
  */
 public data class MutationContext(
     val code: String,
@@ -64,6 +67,9 @@ public fun computeLineAndColumn(
 
 /**
  * Service Provider Interface (SPI) for individual K2 PSI AST mutation rules.
+ *
+ * Compiler PSI is part of this public contract. The version-matched
+ * `kotlin-compiler-embeddable` dependency is exposed by the `kronenberg-core` API.
  */
 public interface AstMutator {
     /** Unique identifier for this mutator rule. */

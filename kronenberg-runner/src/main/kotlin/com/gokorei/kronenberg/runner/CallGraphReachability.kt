@@ -7,6 +7,9 @@ import org.jetbrains.kotlin.psi.KtTreeVisitorVoid
 
 /**
  * Static call-graph analysis utilities for inspecting reachability and enclosing functions via K2 PSI.
+ *
+ * [extractCalledFunctionNames] intentionally accepts a compiler PSI type. The matching
+ * `kotlin-compiler-embeddable` dependency is exposed by the `kronenberg-runner` API.
  */
 public object CallGraphReachability {
     /**
