@@ -1,6 +1,8 @@
 package com.gokorei.kronenberg.runner
 
+import com.gokorei.kronenberg.ast.DefaultPsiSourceEditor
 import com.gokorei.kronenberg.ast.K2SnippetFrontend
+import com.gokorei.kronenberg.ast.PsiReplacementResult
 import com.gokorei.kronenberg.model.AstMutant
 import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtClassOrObject
@@ -176,15 +178,14 @@ public object TestHarnessSynthesizer {
 
         if (rangesToRemove.isEmpty()) return source.trim()
 
-        val sortedRanges = rangesToRemove.sortedByDescending { it.startOffset }
-        var result = source
-        for (range in sortedRanges) {
-            val start = range.startOffset.coerceAtLeast(0)
-            val end = range.endOffset.coerceAtMost(result.length)
-            if (start < end) {
-                result = result.substring(0, start) + result.substring(end)
-            }
+        val replacement =
+            DefaultPsiSourceEditor.remove(
+                source,
+                rangesToRemove.map { it.startOffset to it.endOffset },
+            )
+        return when (replacement) {
+            is PsiReplacementResult.Applied -> replacement.source.trim()
+            is PsiReplacementResult.Rejected -> source.trim()
         }
-        return result.trim()
     }
 }

@@ -2,6 +2,7 @@ package com.gokorei.kronenberg.ast
 
 import com.gokorei.kronenberg.model.AstEdit
 import com.gokorei.kronenberg.model.MutatorCategory
+import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.KtCallExpression
 import org.jetbrains.kotlin.psi.KtPrefixExpression
 
@@ -14,7 +15,7 @@ public class PreconditionMutator : TypedAstMutator<KtCallExpression>(KtCallExpre
     override val description: String = "Mutates defensive precondition assertions (require, check, requireNotNull, checkNotNull)"
 
     override fun canMutateTyped(element: KtCallExpression): Boolean {
-        val callee = element.calleeExpression?.text ?: return false
+        val callee = element.typedCalleeName() ?: return false
         val args = element.valueArguments
         if (args.isEmpty()) return false
         return callee in PRECONDITION_NAMES
@@ -24,7 +25,7 @@ public class PreconditionMutator : TypedAstMutator<KtCallExpression>(KtCallExpre
         element: KtCallExpression,
         context: MutationContext,
     ): List<AstEdit> {
-        val callee = element.calleeExpression?.text ?: return emptyList()
+        val callee = element.typedCalleeName() ?: return emptyList()
         val args = element.valueArguments
         val firstArg = args.firstOrNull()?.getArgumentExpression() ?: return emptyList()
 
@@ -43,7 +44,7 @@ public class PreconditionMutator : TypedAstMutator<KtCallExpression>(KtCallExpre
             val argText = firstArg.text
 
             val negatedReplacement =
-                if (firstArg is KtPrefixExpression && firstArg.operationReference.text == "!") {
+                if (firstArg is KtPrefixExpression && firstArg.operationToken == KtTokens.EXCL) {
                     firstArg.baseExpression?.text ?: "!($argText)"
                 } else {
                     "!($argText)"

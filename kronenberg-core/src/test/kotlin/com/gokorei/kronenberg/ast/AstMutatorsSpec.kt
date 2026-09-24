@@ -267,6 +267,12 @@ class AstMutatorsSpec {
             val edits = findMutations("fun getRate(): Double = 1.5", mutator)
             edits.any { it.replacement == "2.5" } shouldBe true
         }
+
+        @Test
+        fun `uses typed literal tokens for exponent and long literals`() {
+            findMutations("fun getRate(): Float = 1e3F", mutator).map { it.replacement } shouldBe listOf("1001.0")
+            findMutations("fun getCount(): Long = 1L", mutator).isEmpty() shouldBe true
+        }
     }
 
     @Nested

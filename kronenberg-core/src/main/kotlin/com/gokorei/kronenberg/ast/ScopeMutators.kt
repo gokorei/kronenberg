@@ -13,7 +13,7 @@ public class TakeIfMutator : TypedAstMutator<KtCallExpression>(KtCallExpression:
     override val description: String = "Inverts predicate filtering calls (takeIf <-> takeUnless)"
 
     override fun canMutateTyped(element: KtCallExpression): Boolean {
-        val calleeName = element.calleeExpression?.text
+        val calleeName = element.typedCalleeName()
         return calleeName == "takeIf" || calleeName == "takeUnless"
     }
 
@@ -21,8 +21,9 @@ public class TakeIfMutator : TypedAstMutator<KtCallExpression>(KtCallExpression:
         element: KtCallExpression,
         context: MutationContext,
     ): List<AstEdit> {
-        val callee = element.calleeExpression ?: return emptyList()
-        val original = callee.text
+        val callee = element.calleeExpression
+        val original = element.typedCalleeName()
+        if (callee == null || original == null) return emptyList()
         val replacement = if (original == "takeIf") "takeUnless" else "takeIf"
         return listOf(
             context.edit(
@@ -43,7 +44,7 @@ public class ScopeFunctionMutator : TypedAstMutator<KtCallExpression>(KtCallExpr
     override val description: String = "Mutates Kotlin standard library scope functions (apply <-> also, let <-> run)"
 
     override fun canMutateTyped(element: KtCallExpression): Boolean {
-        val calleeName = element.calleeExpression?.text
+        val calleeName = element.typedCalleeName()
         return calleeName in SCOPE_SWAPS
     }
 
@@ -51,9 +52,10 @@ public class ScopeFunctionMutator : TypedAstMutator<KtCallExpression>(KtCallExpr
         element: KtCallExpression,
         context: MutationContext,
     ): List<AstEdit> {
-        val callee = element.calleeExpression ?: return emptyList()
-        val original = callee.text
-        val replacement = SCOPE_SWAPS[original] ?: return emptyList()
+        val callee = element.calleeExpression
+        val original = element.typedCalleeName()
+        val replacement = original?.let(SCOPE_SWAPS::get)
+        if (callee == null || original == null || replacement == null) return emptyList()
         return listOf(
             context.edit(
                 target = callee,

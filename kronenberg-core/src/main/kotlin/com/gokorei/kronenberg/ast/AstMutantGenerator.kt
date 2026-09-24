@@ -66,6 +66,7 @@ public object K2SnippetFrontend {
  */
 public class AstMutantGenerator(
     private val registry: MutatorRegistry = MutatorRegistry.default(),
+    private val sourceEditor: PsiSourceEditor = DefaultPsiSourceEditor,
 ) {
     /**
      * Generates all AST mutants for the provided Kotlin source code string.
@@ -100,21 +101,27 @@ public class AstMutantGenerator(
 
         // 1. First-Order Mutants (FOM)
         edits.forEachIndexed { index, (mutator, edit) ->
-            val mutatedSource = replaceRange(sourceCode, edit.startOffset, edit.endOffset, edit.replacement)
-            val lineCol = computeLineAndColumn(sourceCode, edit.startOffset)
-            mutants.add(
-                AstMutant(
-                    id = "mutant-fom-${index + 1}-${UUID.randomUUID().toString().take(6)}",
-                    mutatorName = mutator.name,
-                    category = mutator.category,
-                    line = lineCol.first,
-                    column = lineCol.second,
-                    originalText = edit.originalText,
-                    replacementText = edit.replacement,
-                    mutatedSource = mutatedSource,
-                    filePath = filePath ?: edit.filePath,
-                ),
-            )
+            when (val result = sourceEditor.replace(sourceCode, listOf(edit.toPsiSourceEdit()))) {
+                is PsiReplacementResult.Applied -> {
+                    val lineCol = computeLineAndColumn(sourceCode, edit.startOffset)
+                    mutants.add(
+                        AstMutant(
+                            id = "mutant-fom-${index + 1}-${UUID.randomUUID().toString().take(6)}",
+                            mutatorName = mutator.name,
+                            category = mutator.category,
+                            line = lineCol.first,
+                            column = lineCol.second,
+                            originalText = edit.originalText,
+                            replacementText = edit.replacement,
+                            mutatedSource = result.source,
+                            filePath = filePath ?: edit.filePath,
+                        ),
+                    )
+                }
+
+                is PsiReplacementResult.Rejected -> {
+                }
+            }
         }
 
         // 2. Higher-Order Mutants (HOM)
@@ -136,25 +143,28 @@ public class AstMutantGenerator(
             }
 
             sampledPairs.forEachIndexed { idx, (p1, p2) ->
-                val sorted = listOf(p1.second, p2.second).sortedByDescending { it.startOffset }
-                var src = sourceCode
-                for (e in sorted) {
-                    src = replaceRange(src, e.startOffset, e.endOffset, e.replacement)
-                }
+                val edits = listOf(p1.second.toPsiSourceEdit(), p2.second.toPsiSourceEdit())
+                when (val result = sourceEditor.replace(sourceCode, edits)) {
+                    is PsiReplacementResult.Applied -> {
+                        mutants.add(
+                            AstMutant(
+                                id = "mutant-hom-${idx + 1}-${UUID.randomUUID().toString().take(6)}",
+                                mutatorName = "CompoundHigherOrderMutator",
+                                category = MutatorCategory.EXTREME,
+                                line = p1.second.line,
+                                column = p1.second.column,
+                                originalText = "${p1.second.originalText} & ${p2.second.originalText}",
+                                replacementText = "${p1.second.replacement} & ${p2.second.replacement}",
+                                mutatedSource = result.source,
+                                filePath = filePath ?: p1.second.filePath,
+                            ),
+                        )
+                    }
 
-                mutants.add(
-                    AstMutant(
-                        id = "mutant-hom-${idx + 1}-${UUID.randomUUID().toString().take(6)}",
-                        mutatorName = "CompoundHigherOrderMutator",
-                        category = MutatorCategory.EXTREME,
-                        line = p1.second.line,
-                        column = p1.second.column,
-                        originalText = "${p1.second.originalText} & ${p2.second.originalText}",
-                        replacementText = "${p1.second.replacement} & ${p2.second.replacement}",
-                        mutatedSource = src,
-                        filePath = filePath ?: p1.second.filePath,
-                    ),
-                )
+                    is PsiReplacementResult.Rejected -> {
+                        Unit
+                    }
+                }
             }
         }
 
@@ -169,14 +179,5 @@ public class AstMutantGenerator(
         return if (config.maxMutants != null) result.take(config.maxMutants) else result
     }
 
-    private fun replaceRange(
-        source: String,
-        start: Int,
-        end: Int,
-        replacement: String,
-    ): String {
-        val safeStart = start.coerceIn(0, source.length)
-        val safeEnd = end.coerceIn(safeStart, source.length)
-        return source.substring(0, safeStart) + replacement + source.substring(safeEnd)
-    }
+    private fun com.gokorei.kronenberg.model.AstEdit.toPsiSourceEdit(): PsiSourceEdit = PsiSourceEdit(startOffset, endOffset, replacement)
 }

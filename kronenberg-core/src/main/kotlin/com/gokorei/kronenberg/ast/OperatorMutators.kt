@@ -5,7 +5,6 @@ import com.gokorei.kronenberg.model.MutatorCategory
 import org.jetbrains.kotlin.com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.KtBinaryExpression
-import org.jetbrains.kotlin.psi.KtConstantExpression
 import org.jetbrains.kotlin.psi.KtPostfixExpression
 import org.jetbrains.kotlin.psi.KtPrefixExpression
 import org.jetbrains.kotlin.psi.KtStringTemplateExpression
@@ -104,9 +103,7 @@ public class ArithmeticOperatorMutator : TypedAstMutator<KtBinaryExpression>(KtB
         if (sign == KtTokens.PLUS) {
             val left = element.left
             val right = element.right
-            val leftIsString = left is KtStringTemplateExpression || (left is KtConstantExpression && left.text.startsWith("\""))
-            val rightIsString = right is KtStringTemplateExpression || (right is KtConstantExpression && right.text.startsWith("\""))
-            if (leftIsString || rightIsString) {
+            if (left is KtStringTemplateExpression || right is KtStringTemplateExpression) {
                 return false
             }
         }
@@ -234,9 +231,12 @@ public class BitwiseOperatorMutator : TypedAstMutator<KtBinaryExpression>(KtBina
     override val category: MutatorCategory = MutatorCategory.BITWISE_OPERATOR
     override val description: String = "Mutates bitwise infix operators (and <-> or, xor <-> and)"
 
-    private val supported = setOf("and", "or", "xor")
+    private fun KtBinaryExpression.isSupportedBitwiseOperator(): Boolean {
+        val name = operationReference.getReferencedName()
+        return name == "and" || name == "or" || name == "xor"
+    }
 
-    override fun canMutateTyped(element: KtBinaryExpression): Boolean = element.operationReference.text in supported
+    override fun canMutateTyped(element: KtBinaryExpression): Boolean = element.isSupportedBitwiseOperator()
 
     override fun mutateTyped(
         element: KtBinaryExpression,
