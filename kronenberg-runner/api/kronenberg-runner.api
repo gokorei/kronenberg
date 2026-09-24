@@ -226,14 +226,3 @@ public final class com/gokorei/kronenberg/runner/TestStyle : java/lang/Enum {
 	public static fun values ()[Lcom/gokorei/kronenberg/runner/TestStyle;
 }
 
-public final class com/gokorei/kronenberg/runner/ThreadLocalPrintStream : java/io/PrintStream {
-	public static final field Companion Lcom/gokorei/kronenberg/runner/ThreadLocalPrintStream$Companion;
-	public fun <init> (Ljava/io/PrintStream;)V
-	public fun close ()V
-}
-
-public final class com/gokorei/kronenberg/runner/ThreadLocalPrintStream$Companion {
-	public final fun install ()V
-	public final fun withCapture (Ljava/io/PrintStream;Lkotlin/jvm/functions/Function0;)Ljava/lang/Object;
-}
-

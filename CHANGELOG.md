@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added abuse-case coverage for filesystem, network, process, reflection, environment, and JVM-global-state capabilities.
 - Clarified that `URLClassLoader`, Virtual Threads, AST guards, property rollback, and ordinary child processes are not security boundaries and documented requirements for any future OS-isolated worker.
 
+### Fixed
+- Serialized trusted-local snippet execution that mutates JVM-global state, restored `System.out`, `System.err`, and system properties before returning on success, failure, or timeout, and preserved per-mutant stdout and stderr attribution.
+
 ## [0.1.0] - 2026-09-12
 
 ### Added
