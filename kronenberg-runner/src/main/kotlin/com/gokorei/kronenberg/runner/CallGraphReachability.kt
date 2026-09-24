@@ -1,6 +1,7 @@
 package com.gokorei.kronenberg.runner
 
 import com.gokorei.kronenberg.ast.K2SnippetFrontend
+import com.gokorei.kronenberg.ast.buildSourceMetadata
 import org.jetbrains.kotlin.psi.KtCallExpression
 import org.jetbrains.kotlin.psi.KtNamedFunction
 import org.jetbrains.kotlin.psi.KtTreeVisitorVoid
@@ -33,21 +34,7 @@ public object CallGraphReachability {
         line: Int,
     ): String? {
         val psi = K2SnippetFrontend.parsePsi(sourceCode)
-        var enclosingName: String? = null
-        psi.accept(
-            object : KtTreeVisitorVoid() {
-                override fun visitNamedFunction(function: KtNamedFunction) {
-                    val range = function.textRange
-                    val (startLine, _) = computeLineAndColumn(sourceCode, range.startOffset)
-                    val (endLine, _) = computeLineAndColumn(sourceCode, range.endOffset)
-                    if (line in startLine..endLine) {
-                        enclosingName = function.name
-                    }
-                    super.visitNamedFunction(function)
-                }
-            },
-        )
-        return enclosingName
+        return buildSourceMetadata(sourceCode, psi).enclosingFunctionName(line)
     }
 
     /**

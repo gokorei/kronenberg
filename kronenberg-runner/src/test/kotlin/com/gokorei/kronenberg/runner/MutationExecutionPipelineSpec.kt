@@ -9,6 +9,9 @@ import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
+import java.nio.file.Files
+import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicInteger
 
 class MutationExecutionPipelineSpec {
     private val pipeline: MutationExecutionPipeline = DefaultMutationExecutionPipeline()
@@ -163,6 +166,89 @@ class MutationExecutionPipelineSpec {
     }
 
     @Test
+    fun `rejects oversized inputs before parsing and reports input metrics`() {
+        val pipeline = DefaultMutationExecutionPipeline()
+        try {
+            val report =
+                runBlocking {
+                    pipeline.execute(
+                        sourceCode = "fun value(): Int = 1",
+                        testCode = "fun main() { check(value() == 1) }",
+                        config = MutationConfig(maxInputCharacters = 4),
+                    )
+                }
+
+            report.baselineError shouldContain "Input exceeds"
+            report.totalMutants shouldBe 0
+            report.metrics.phaseMetrics.map { it.phase } shouldBe listOf("input")
+        } finally {
+            pipeline.close()
+        }
+    }
+
+    @Test
+    fun `records cache hits across repeated bounded audits`() {
+        val compiler = RecordingCompiler()
+        val runner = RecordingRunner()
+        val pipeline = DefaultMutationExecutionPipeline(compiler = compiler, runner = runner)
+        val source = "fun add(a: Int, b: Int): Int = a + b"
+        val test = "fun main() { check(add(1, 2) == 3) }"
+        try {
+            val first =
+                runBlocking {
+                    pipeline.execute(source, test, MutationConfig(maxMutants = 1, enableCache = true))
+                }
+            val second =
+                runBlocking {
+                    pipeline.execute(source, test, MutationConfig(maxMutants = 1, enableCache = true))
+                }
+
+            first.metrics.cacheMisses shouldBe 1
+            first.metrics.cacheHits shouldBe 0
+            second.metrics.cacheHits shouldBe 1
+            second.metrics.cacheMisses shouldBe 0
+        } finally {
+            pipeline.close()
+        }
+    }
+
+    @Test
+    fun `limits compile and execution concurrency independently`() {
+        val compiler = RecordingCompiler()
+        val runner = RecordingRunner()
+        val pipeline = DefaultMutationExecutionPipeline(compiler = compiler, runner = runner)
+        val source =
+            """
+            fun addOne(a: Int, b: Int): Int = a + b
+            fun addTwo(a: Int, b: Int): Int = a + b
+            fun addThree(a: Int, b: Int): Int = a + b
+            fun addFour(a: Int, b: Int): Int = a + b
+            """.trimIndent()
+        val test = "fun main() { check(addOne(1, 2) == 3) }"
+        try {
+            val report =
+                runBlocking {
+                    pipeline.execute(
+                        sourceCode = source,
+                        testCode = test,
+                        config =
+                            MutationConfig(
+                                maxMutants = 4,
+                                maxCompileConcurrency = 1,
+                                maxExecutionConcurrency = 2,
+                            ),
+                    )
+                }
+
+            report.totalMutants shouldBe 4
+            (compiler.maxConcurrent() <= 1) shouldBe true
+            (runner.maxConcurrent() <= 2) shouldBe true
+        } finally {
+            pipeline.close()
+        }
+    }
+
+    @Test
     fun `reports baseline error when baseline test fails prior to mutation`() {
         val source = "fun increment(x: Int): Int = x + 1"
         val failingBaselineTest = "fun main() { check(increment(5) == 100) }"
@@ -234,4 +320,57 @@ class MutationExecutionPipelineSpec {
             compiler.cleanup(compiledHelper)
         }
     }
+}
+
+private class RecordingCompiler : SnippetCompiler {
+    private val active = AtomicInteger()
+    private val maximum = AtomicInteger()
+
+    override fun compile(
+        sourceCode: String,
+        extraClasspath: List<String>,
+    ): CompileResult {
+        val current = active.incrementAndGet()
+        maximum.updateAndGet { previous -> maxOf(previous, current) }
+        return try {
+            Thread.sleep(20L)
+            val directory = Files.createTempDirectory("recording-compiler")
+            CompileResult.Compiled(directory, tempRoot = directory)
+        } finally {
+            active.decrementAndGet()
+        }
+    }
+
+    override fun cleanup(result: CompileResult) {
+        if (result is CompileResult.Compiled) {
+            result.tempRoot.toFile().deleteRecursively()
+        }
+    }
+
+    fun maxConcurrent(): Int = maximum.get()
+}
+
+private class RecordingRunner : FastSnippetRunner {
+    private val active = AtomicInteger()
+    private val maximum = AtomicInteger()
+
+    override fun run(
+        classesDir: Path,
+        mainClass: String,
+        timeoutMs: Long,
+        extraClasspath: List<String>,
+    ): RunnerOutcome {
+        val current = active.incrementAndGet()
+        maximum.updateAndGet { previous -> maxOf(previous, current) }
+        return try {
+            Thread.sleep(20L)
+            RunnerOutcome(MutantStatus.SURVIVED, executionTimeMs = 20L)
+        } finally {
+            active.decrementAndGet()
+        }
+    }
+
+    override fun close() = Unit
+
+    fun maxConcurrent(): Int = maximum.get()
 }

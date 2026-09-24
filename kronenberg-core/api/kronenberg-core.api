@@ -13,6 +13,8 @@ public final class com/gokorei/kronenberg/ast/AstMutantGenerator {
 	public synthetic fun <init> (Lcom/gokorei/kronenberg/ast/MutatorRegistry;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun generateMutants (Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutationConfig;Ljava/lang/String;)Ljava/util/List;
 	public static synthetic fun generateMutants$default (Lcom/gokorei/kronenberg/ast/AstMutantGenerator;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutationConfig;Ljava/lang/String;ILjava/lang/Object;)Ljava/util/List;
+	public final fun generateMutantsWithMetrics (Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutationConfig;Ljava/lang/String;)Lcom/gokorei/kronenberg/ast/MutantGenerationResult;
+	public static synthetic fun generateMutantsWithMetrics$default (Lcom/gokorei/kronenberg/ast/AstMutantGenerator;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutationConfig;Ljava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/ast/MutantGenerationResult;
 }
 
 public abstract interface class com/gokorei/kronenberg/ast/AstMutator {
@@ -24,6 +26,7 @@ public abstract interface class com/gokorei/kronenberg/ast/AstMutator {
 }
 
 public final class com/gokorei/kronenberg/ast/AstMutatorKt {
+	public static final fun buildSourceMetadata (Ljava/lang/String;Lorg/jetbrains/kotlin/psi/KtFile;)Lcom/gokorei/kronenberg/ast/SourceMetadata;
 	public static final fun computeLineAndColumn (Ljava/lang/String;I)Lkotlin/Pair;
 }
 
@@ -144,20 +147,38 @@ public final class com/gokorei/kronenberg/ast/LiteralMutationMutator : com/gokor
 	public synthetic fun mutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;Lcom/gokorei/kronenberg/ast/MutationContext;)Ljava/util/List;
 }
 
+public final class com/gokorei/kronenberg/ast/MutantGenerationResult {
+	public fun <init> (Ljava/util/List;II)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun copy (Ljava/util/List;II)Lcom/gokorei/kronenberg/ast/MutantGenerationResult;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/ast/MutantGenerationResult;Ljava/util/List;IIILjava/lang/Object;)Lcom/gokorei/kronenberg/ast/MutantGenerationResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCandidateCount ()I
+	public final fun getDiscardedCount ()I
+	public final fun getMutants ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/gokorei/kronenberg/ast/MutationContext {
 	public fun <init> (Ljava/lang/String;Lorg/jetbrains/kotlin/psi/KtFile;Ljava/lang/String;)V
-	public synthetic fun <init> (Ljava/lang/String;Lorg/jetbrains/kotlin/psi/KtFile;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Lorg/jetbrains/kotlin/psi/KtFile;Ljava/lang/String;Lcom/gokorei/kronenberg/ast/SourceMetadata;)V
+	public synthetic fun <init> (Ljava/lang/String;Lorg/jetbrains/kotlin/psi/KtFile;Ljava/lang/String;Lcom/gokorei/kronenberg/ast/SourceMetadata;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Lorg/jetbrains/kotlin/psi/KtFile;
 	public final fun component3 ()Ljava/lang/String;
-	public final fun copy (Ljava/lang/String;Lorg/jetbrains/kotlin/psi/KtFile;Ljava/lang/String;)Lcom/gokorei/kronenberg/ast/MutationContext;
-	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/ast/MutationContext;Ljava/lang/String;Lorg/jetbrains/kotlin/psi/KtFile;Ljava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/ast/MutationContext;
+	public final fun component4 ()Lcom/gokorei/kronenberg/ast/SourceMetadata;
+	public final fun copy (Ljava/lang/String;Lorg/jetbrains/kotlin/psi/KtFile;Ljava/lang/String;Lcom/gokorei/kronenberg/ast/SourceMetadata;)Lcom/gokorei/kronenberg/ast/MutationContext;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/ast/MutationContext;Ljava/lang/String;Lorg/jetbrains/kotlin/psi/KtFile;Ljava/lang/String;Lcom/gokorei/kronenberg/ast/SourceMetadata;ILjava/lang/Object;)Lcom/gokorei/kronenberg/ast/MutationContext;
 	public final fun edit (Lorg/jetbrains/kotlin/com/intellij/psi/PsiElement;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/gokorei/kronenberg/model/AstEdit;
 	public static synthetic fun edit$default (Lcom/gokorei/kronenberg/ast/MutationContext;Lorg/jetbrains/kotlin/com/intellij/psi/PsiElement;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/model/AstEdit;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getCode ()Ljava/lang/String;
 	public final fun getFile ()Lorg/jetbrains/kotlin/psi/KtFile;
 	public final fun getFilePath ()Ljava/lang/String;
+	public final fun getMetadata ()Lcom/gokorei/kronenberg/ast/SourceMetadata;
 	public fun hashCode ()I
 	public final fun lineAndCol (I)Lkotlin/Pair;
 	public fun toString ()Ljava/lang/String;
@@ -280,6 +301,11 @@ public final class com/gokorei/kronenberg/ast/SmartCastMutator : com/gokorei/kro
 	public fun getDescription ()Ljava/lang/String;
 	public fun getName ()Ljava/lang/String;
 	public fun mutate (Lorg/jetbrains/kotlin/com/intellij/psi/PsiElement;Lcom/gokorei/kronenberg/ast/MutationContext;)Ljava/util/List;
+}
+
+public final class com/gokorei/kronenberg/ast/SourceMetadata {
+	public final fun enclosingFunctionName (I)Ljava/lang/String;
+	public final fun lineAndColumn (I)Lkotlin/Pair;
 }
 
 public final class com/gokorei/kronenberg/ast/StringTemplateMutator : com/gokorei/kronenberg/ast/TypedAstMutator {
@@ -523,8 +549,13 @@ public final class com/gokorei/kronenberg/model/MutationConfig {
 	public static final field Companion Lcom/gokorei/kronenberg/model/MutationConfig$Companion;
 	public fun <init> ()V
 	public fun <init> (DDJZZLjava/lang/Integer;Ljava/util/List;ZLjava/util/List;)V
-	public synthetic fun <init> (DDJZZLjava/lang/Integer;Ljava/util/List;ZLjava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (DDJZZLjava/lang/Integer;Ljava/util/List;ZLjava/util/List;IIII)V
+	public synthetic fun <init> (DDJZZLjava/lang/Integer;Ljava/util/List;ZLjava/util/List;IIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()D
+	public final fun component10 ()I
+	public final fun component11 ()I
+	public final fun component12 ()I
+	public final fun component13 ()I
 	public final fun component2 ()D
 	public final fun component3 ()J
 	public final fun component4 ()Z
@@ -533,15 +564,19 @@ public final class com/gokorei/kronenberg/model/MutationConfig {
 	public final fun component7 ()Ljava/util/List;
 	public final fun component8 ()Z
 	public final fun component9 ()Ljava/util/List;
-	public final fun copy (DDJZZLjava/lang/Integer;Ljava/util/List;ZLjava/util/List;)Lcom/gokorei/kronenberg/model/MutationConfig;
-	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/model/MutationConfig;DDJZZLjava/lang/Integer;Ljava/util/List;ZLjava/util/List;ILjava/lang/Object;)Lcom/gokorei/kronenberg/model/MutationConfig;
+	public final fun copy (DDJZZLjava/lang/Integer;Ljava/util/List;ZLjava/util/List;IIII)Lcom/gokorei/kronenberg/model/MutationConfig;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/model/MutationConfig;DDJZZLjava/lang/Integer;Ljava/util/List;ZLjava/util/List;IIIIILjava/lang/Object;)Lcom/gokorei/kronenberg/model/MutationConfig;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getBaselineTimeoutMs ()J
 	public final fun getEnableCache ()Z
 	public final fun getExtraClasspath ()Ljava/util/List;
 	public final fun getHigherOrderMutants ()Z
 	public final fun getIncludeExtreme ()Z
+	public final fun getMaxCompileConcurrency ()I
+	public final fun getMaxExecutionConcurrency ()I
+	public final fun getMaxInputCharacters ()I
 	public final fun getMaxMutants ()Ljava/lang/Integer;
+	public final fun getMaxReportResults ()I
 	public final fun getMinScore ()D
 	public final fun getTargetLines ()Ljava/util/List;
 	public final fun getTimeoutMultiplier ()D
@@ -564,10 +599,88 @@ public final class com/gokorei/kronenberg/model/MutationConfig$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public final class com/gokorei/kronenberg/model/MutationMetrics {
+	public static final field Companion Lcom/gokorei/kronenberg/model/MutationMetrics$Companion;
+	public fun <init> ()V
+	public fun <init> (IIIILjava/util/List;)V
+	public synthetic fun <init> (IIIILjava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()Ljava/util/List;
+	public final fun copy (IIIILjava/util/List;)Lcom/gokorei/kronenberg/model/MutationMetrics;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/model/MutationMetrics;IIIILjava/util/List;ILjava/lang/Object;)Lcom/gokorei/kronenberg/model/MutationMetrics;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCacheHits ()I
+	public final fun getCacheMisses ()I
+	public final fun getCandidates ()I
+	public final fun getDiscarded ()I
+	public final fun getPhaseDurationsMs ()Ljava/util/Map;
+	public final fun getPhaseMetrics ()Ljava/util/List;
+	public fun hashCode ()I
+	public final fun plus (Lcom/gokorei/kronenberg/model/MutationMetrics;)Lcom/gokorei/kronenberg/model/MutationMetrics;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/gokorei/kronenberg/model/MutationMetrics$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/gokorei/kronenberg/model/MutationMetrics$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/gokorei/kronenberg/model/MutationMetrics;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/gokorei/kronenberg/model/MutationMetrics;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/gokorei/kronenberg/model/MutationMetrics$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/gokorei/kronenberg/model/MutationPhaseMetrics {
+	public static final field Companion Lcom/gokorei/kronenberg/model/MutationPhaseMetrics$Companion;
+	public fun <init> (Ljava/lang/String;JIIII)V
+	public synthetic fun <init> (Ljava/lang/String;JIIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()J
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()I
+	public final fun component6 ()I
+	public final fun copy (Ljava/lang/String;JIIII)Lcom/gokorei/kronenberg/model/MutationPhaseMetrics;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/model/MutationPhaseMetrics;Ljava/lang/String;JIIIIILjava/lang/Object;)Lcom/gokorei/kronenberg/model/MutationPhaseMetrics;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCacheHits ()I
+	public final fun getCacheMisses ()I
+	public final fun getCandidates ()I
+	public final fun getDiscarded ()I
+	public final fun getDurationMs ()J
+	public final fun getPhase ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/gokorei/kronenberg/model/MutationPhaseMetrics$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/gokorei/kronenberg/model/MutationPhaseMetrics$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/gokorei/kronenberg/model/MutationPhaseMetrics;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/gokorei/kronenberg/model/MutationPhaseMetrics;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/gokorei/kronenberg/model/MutationPhaseMetrics$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
 public final class com/gokorei/kronenberg/model/MutationReport {
 	public static final field Companion Lcom/gokorei/kronenberg/model/MutationReport$Companion;
 	public fun <init> (IIIIIDLjava/util/List;Ljava/lang/String;)V
-	public synthetic fun <init> (IIIIIDLjava/util/List;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (IIIIIDLjava/util/List;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutationMetrics;)V
+	public synthetic fun <init> (IIIIIDLjava/util/List;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutationMetrics;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()I
 	public final fun component2 ()I
 	public final fun component3 ()I
@@ -576,12 +689,14 @@ public final class com/gokorei/kronenberg/model/MutationReport {
 	public final fun component6 ()D
 	public final fun component7 ()Ljava/util/List;
 	public final fun component8 ()Ljava/lang/String;
-	public final fun copy (IIIIIDLjava/util/List;Ljava/lang/String;)Lcom/gokorei/kronenberg/model/MutationReport;
-	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/model/MutationReport;IIIIIDLjava/util/List;Ljava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/model/MutationReport;
+	public final fun component9 ()Lcom/gokorei/kronenberg/model/MutationMetrics;
+	public final fun copy (IIIIIDLjava/util/List;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutationMetrics;)Lcom/gokorei/kronenberg/model/MutationReport;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/model/MutationReport;IIIIIDLjava/util/List;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutationMetrics;ILjava/lang/Object;)Lcom/gokorei/kronenberg/model/MutationReport;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getBaselineError ()Ljava/lang/String;
 	public final fun getCompileErrorCount ()I
 	public final fun getKilledCount ()I
+	public final fun getMetrics ()Lcom/gokorei/kronenberg/model/MutationMetrics;
 	public final fun getMutationScore ()D
 	public final fun getResults ()Ljava/util/List;
 	public final fun getSurvivedCount ()I
