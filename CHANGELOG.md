@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Restored Gradle 9.7.1–9.8.x build compatibility and opted into documented Gradle 10 behavior previews.
+- Added scheduled current and release-candidate Gradle compatibility checks with all warnings and the configuration cache enabled.
+
+### Fixed
+- Removed implicit JDK toolchain provisioning and execution-time Gradle `Project` access that would fail in Gradle 10.
+
 ### Added
 - Automated AST mutator Markdown documentation generator (`MutatorDocGenerator`, Gradle task `generateMutatorDocs`).
 - Code-backed wiki documentation suite (`Home.md`, `Architecture-And-Sandboxing.md`, `CLI-And-Gradle-Plugin-Guide.md`, `Mutators-Reference.md`, `Release-Notes.md`).

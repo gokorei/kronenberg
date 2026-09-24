@@ -18,9 +18,7 @@ public class KronenbergPlugin : Plugin<Project> {
                 task.baselineTimeoutMs.convention(extension.baselineTimeoutMs)
                 task.includeExtreme.convention(extension.includeExtreme)
                 task.higherOrderMutants.convention(extension.higherOrderMutants)
-                if (extension.maxMutants.isPresent) {
-                    task.maxMutants.convention(extension.maxMutants)
-                }
+                task.maxMutants.convention(extension.maxMutants)
                 task.enableCache.convention(extension.enableCache)
 
                 val defaultReportDir = project.layout.buildDirectory.dir("reports/kronenberg")
@@ -29,29 +27,22 @@ public class KronenbergPlugin : Plugin<Project> {
                 )
             }
 
-        project.afterEvaluate {
-            val javaExtension = project.extensions.findByType(JavaPluginExtension::class.java)
-            if (javaExtension != null) {
-                val mainSourceSet = javaExtension.sourceSets.findByName(SourceSet.MAIN_SOURCE_SET_NAME)
-                val testSourceSet = javaExtension.sourceSets.findByName(SourceSet.TEST_SOURCE_SET_NAME)
+        project.pluginManager.withPlugin("java") {
+            val javaExtension = project.extensions.getByType(JavaPluginExtension::class.java)
+            val mainSourceSet = javaExtension.sourceSets.getByName(SourceSet.MAIN_SOURCE_SET_NAME)
+            val testSourceSet = javaExtension.sourceSets.getByName(SourceSet.TEST_SOURCE_SET_NAME)
 
-                auditTask.configure { task ->
-                    if (mainSourceSet != null) {
-                        task.sourceFiles.from(
-                            mainSourceSet.allSource.filter { it.extension == "kt" },
-                        )
-                        task.classpath.from(mainSourceSet.output.classesDirs)
-                    }
-
-                    if (testSourceSet != null) {
-                        task.testFiles.from(
-                            testSourceSet.allSource.filter { it.extension == "kt" },
-                        )
-                        task.classpath.from(testSourceSet.runtimeClasspath)
-                        task.classpath.from(testSourceSet.output.classesDirs)
-                        task.dependsOn(testSourceSet.classesTaskName)
-                    }
-                }
+            auditTask.configure { task ->
+                task.sourceFiles.from(
+                    mainSourceSet.allSource.filter { it.extension == "kt" },
+                )
+                task.classpath.from(mainSourceSet.output.classesDirs)
+                task.testFiles.from(
+                    testSourceSet.allSource.filter { it.extension == "kt" },
+                )
+                task.classpath.from(testSourceSet.runtimeClasspath)
+                task.classpath.from(testSourceSet.output.classesDirs)
+                task.dependsOn(project.tasks.named(testSourceSet.classesTaskName))
             }
         }
     }
