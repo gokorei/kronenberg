@@ -12,6 +12,9 @@ import com.github.ajalt.clikt.parameters.types.double
 import com.github.ajalt.clikt.parameters.types.int
 import com.github.ajalt.clikt.parameters.types.long
 import com.github.ajalt.clikt.parameters.types.path
+import com.gokorei.kronenberg.discovery.DefaultSourceTestMatcher
+import com.gokorei.kronenberg.discovery.SourceTestMatcher
+import com.gokorei.kronenberg.discovery.TestMatchResult
 import com.gokorei.kronenberg.model.MutantResult
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationConfig
@@ -25,7 +28,6 @@ import kotlinx.serialization.json.Json
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.isRegularFile
-import kotlin.io.path.nameWithoutExtension
 import kotlin.io.path.readText
 
 private val jsonSerializer =
@@ -33,6 +35,18 @@ private val jsonSerializer =
         prettyPrint = true
         ignoreUnknownKeys = true
     }
+
+private val testMatcher: SourceTestMatcher = DefaultSourceTestMatcher
+
+private data class AuditFilesRequest(
+    val sourceFiles: List<Path>,
+    val testFiles: List<Path>,
+    val baseConfig: MutationConfig,
+    val staged: Boolean,
+    val diffRef: String?,
+    val baseDir: Path?,
+    val testRoot: Path?,
+)
 
 /**
  * Exporter converting Kronenberg MutationReports into standardized JUnit XML format.
@@ -275,7 +289,21 @@ public class AuditCommand :
                     return
                 }
                 echo("Git pre-commit: Found ${stagedFiles.size} staged Kotlin file(s).")
-                auditFiles(pipeline, stagedFiles, testDir, config)
+                val testRoot =
+                    testDir ?: stagedFiles.asSequence().mapNotNull { DefaultSourceTestMatcher.conventionalTestRoot(it) }.firstOrNull()
+                val testFiles = testRoot?.let { collectKotlinFiles(it) }.orEmpty()
+                auditFiles(
+                    pipeline,
+                    AuditFilesRequest(
+                        sourceFiles = stagedFiles,
+                        testFiles = testFiles,
+                        baseConfig = config,
+                        staged = true,
+                        diffRef = diff,
+                        baseDir = null,
+                        testRoot = testRoot,
+                    ),
+                )
             } else {
                 echo("\u001B[31mError: Must provide either (--source and --test) or (--source-dir).\u001B[0m")
                 throw ProgramResult(1)
@@ -331,114 +359,105 @@ public class AuditCommand :
         staged: Boolean = false,
         diffRef: String? = null,
     ): MutationReport {
-        val srcFiles =
-            Files
-                .walk(srcDir)
-                .filter { it.isRegularFile() && it.toString().endsWith(".kt") }
-                .toList()
-
-        return auditFiles(pipeline, srcFiles, tstDir ?: srcDir, config, staged, diffRef, baseDir = srcDir)
+        val testRoot = tstDir ?: DefaultSourceTestMatcher.conventionalTestRoot(srcDir)
+        return auditFiles(
+            pipeline,
+            AuditFilesRequest(
+                sourceFiles = collectKotlinFiles(srcDir),
+                testFiles = testRoot?.let { collectKotlinFiles(it) }.orEmpty(),
+                baseConfig = config,
+                staged = staged,
+                diffRef = diffRef,
+                baseDir = srcDir,
+                testRoot = testRoot,
+            ),
+        )
     }
 
     private fun auditFiles(
         pipeline: DefaultMutationExecutionPipeline,
-        srcFiles: List<Path>,
-        tstDir: Path?,
-        baseConfig: MutationConfig,
-        staged: Boolean = false,
-        diffRef: String? = null,
-        baseDir: Path? = null,
+        request: AuditFilesRequest,
     ): MutationReport {
-        val allResults = mutableListOf<MutantResult>()
-        var totalMutants = 0
-        var killedCount = 0
-        var survivedCount = 0
-        var timeoutCount = 0
-        var compileErrorCount = 0
-
-        for (srcFile in srcFiles) {
-            val fileChangedLines =
-                if (staged || diffRef != null) {
-                    GitDiffParser.extractChangedLines(srcFile, diffRef, staged)
-                } else {
-                    baseConfig.targetLines
-                }
-
-            // If staged/diff is requested and no lines changed in this file, skip auditing it
-            if ((staged || diffRef != null) && fileChangedLines?.isEmpty() == true) {
-                continue
-            }
-
-            val fileConfig = baseConfig.copy(targetLines = fileChangedLines)
-            val baseName = srcFile.nameWithoutExtension
-            val matchingTestFile =
-                if (tstDir != null && Files.isDirectory(tstDir)) {
-                    Files
-                        .walk(tstDir)
-                        .filter {
-                            it.isRegularFile() &&
-                                (
-                                    it.nameWithoutExtension == "${baseName}Test" ||
-                                        it.nameWithoutExtension == "${baseName}Spec" ||
-                                        it.nameWithoutExtension == baseName
-                                )
-                        }.findFirst()
-                        .orElse(null)
-                } else {
-                    // Try adjacent or src/test path inference if no explicit tstDir provided
-                    findAdjacentTestFile(srcFile)
-                }
-
-            val testCode = matchingTestFile?.readText() ?: ""
-            if (testCode.isNotBlank()) {
-                val relPath = baseDir?.relativize(srcFile)?.toString() ?: srcFile.fileName.toString()
-                val fileReport =
-                    runBlocking {
-                        pipeline.execute(
-                            sourceCode = srcFile.readText(),
-                            testCode = testCode,
-                            config = fileConfig,
-                            sourceFilePath = relPath,
-                        )
-                    }
-                totalMutants += fileReport.totalMutants
-                killedCount += fileReport.killedCount
-                survivedCount += fileReport.survivedCount
-                timeoutCount += fileReport.timeoutCount
-                compileErrorCount += fileReport.compileErrorCount
-                allResults.addAll(fileReport.results)
-            }
-        }
-
-        val totalEffective = killedCount + survivedCount + timeoutCount
+        val fileReports = request.sourceFiles.mapNotNull { auditFile(pipeline, it, request) }
+        val totalEffective = fileReports.sumOf { it.killedCount + it.survivedCount + it.timeoutCount }
         val score =
             if (totalEffective > 0) {
-                ((killedCount + timeoutCount).toDouble() / totalEffective.toDouble()) * 100.0
+                (fileReports.sumOf { it.killedCount + it.timeoutCount }.toDouble() / totalEffective.toDouble()) * 100.0
             } else {
                 100.0
             }
-
         return MutationReport(
-            totalMutants = totalMutants,
-            killedCount = killedCount,
-            survivedCount = survivedCount,
-            timeoutCount = timeoutCount,
-            compileErrorCount = compileErrorCount,
+            totalMutants = fileReports.sumOf { it.totalMutants },
+            killedCount = fileReports.sumOf { it.killedCount },
+            survivedCount = fileReports.sumOf { it.survivedCount },
+            timeoutCount = fileReports.sumOf { it.timeoutCount },
+            compileErrorCount = fileReports.sumOf { it.compileErrorCount },
             mutationScore = (score * 10.0).toInt() / 10.0,
-            results = allResults,
+            results = fileReports.flatMap { it.results },
         )
     }
 
-    private fun findAdjacentTestFile(srcFile: Path): Path? {
-        val baseName = srcFile.nameWithoutExtension
-        val parent = srcFile.parent ?: return null
-        val candidates =
-            listOf(
-                parent.resolve("${baseName}Test.kt"),
-                parent.resolve("${baseName}Spec.kt"),
+    private fun auditFile(
+        pipeline: DefaultMutationExecutionPipeline,
+        srcFile: Path,
+        request: AuditFilesRequest,
+    ): MutationReport? {
+        val fileChangedLines =
+            if (request.staged || request.diffRef != null) {
+                GitDiffParser.extractChangedLines(srcFile, request.diffRef, request.staged)
+            } else {
+                request.baseConfig.targetLines
+            }
+        if ((request.staged || request.diffRef != null) && fileChangedLines?.isEmpty() == true) {
+            return null
+        }
+        val testFile = matchingTestFile(srcFile, request)
+        val relPath =
+            request.baseDir
+                ?.toAbsolutePath()
+                ?.normalize()
+                ?.relativize(srcFile.toAbsolutePath().normalize())
+                ?.toString()
+                ?: srcFile.fileName.toString()
+        return runBlocking {
+            pipeline.execute(
+                sourceCode = srcFile.readText(),
+                testCode = testFile.readText(),
+                config = request.baseConfig.copy(targetLines = fileChangedLines),
+                sourceFilePath = relPath,
             )
-        return candidates.firstOrNull { Files.isRegularFile(it) }
+        }
     }
+
+    private fun matchingTestFile(
+        srcFile: Path,
+        request: AuditFilesRequest,
+    ): Path =
+        when (
+            val matchResult = testMatcher.match(srcFile, request.testFiles, request.baseDir, request.testRoot)
+        ) {
+            is TestMatchResult.Matched -> {
+                matchResult.testFile
+            }
+
+            is TestMatchResult.Missing -> {
+                echo("Error: No matching test file found for source $srcFile.")
+                throw ProgramResult(1)
+            }
+
+            is TestMatchResult.Ambiguous -> {
+                echo(
+                    "Error: Multiple matching test files found for source $srcFile: " +
+                        matchResult.candidates.joinToString { it.toString() },
+                )
+                throw ProgramResult(1)
+            }
+        }
+
+    private fun collectKotlinFiles(directory: Path): List<Path> =
+        Files
+            .walk(directory)
+            .use { paths -> paths.filter { it.isRegularFile() && it.toString().endsWith(".kt") }.toList() }
 
     private fun renderTerminalReport(report: MutationReport) {
         val statusSymbol = if (report.mutationScore >= threshold) "\u001B[32m✔ PASS\u001B[0m" else "\u001B[31m✘ FAIL\u001B[0m"

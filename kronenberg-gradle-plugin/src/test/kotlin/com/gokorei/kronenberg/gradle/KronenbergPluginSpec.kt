@@ -26,6 +26,47 @@ class KronenbergPluginSpec {
     }
 
     @Test
+    fun `task audit fails explicitly when a source file has no matching test`(
+        @TempDir testProjectDir: File,
+    ) {
+        val buildFile = File(testProjectDir, "build.gradle.kts")
+        val settingsFile = File(testProjectDir, "settings.gradle.kts")
+        settingsFile.writeText("rootProject.name = \"test-missing-sample\"")
+
+        buildFile.writeText(
+            """
+            plugins {
+                kotlin("jvm") version "2.4.10"
+                id("com.gokorei.kronenberg")
+            }
+
+            repositories {
+                mavenCentral()
+            }
+
+            kronenberg {
+                minScore.set(0.0)
+            }
+            """.trimIndent(),
+        )
+
+        val srcDir = File(testProjectDir, "src/main/kotlin")
+        srcDir.mkdirs()
+        File(srcDir, "Unmatched.kt").writeText("fun unmatched() = 1")
+
+        val result =
+            GradleRunner
+                .create()
+                .withProjectDir(testProjectDir)
+                .withPluginClasspath()
+                .withArguments("kronenbergCheck")
+                .buildAndFail()
+
+        result.task(":kronenbergCheck")?.outcome shouldBe TaskOutcome.FAILED
+        result.output shouldContain "No matching test file found"
+    }
+
+    @Test
     fun `task audit succeeds and outputs reports on sample kotlin project`(
         @TempDir testProjectDir: File,
     ) {
