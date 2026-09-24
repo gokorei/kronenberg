@@ -40,6 +40,10 @@ apiValidation {
 allprojects {
     group = "com.gokorei.kronenberg"
     version = "0.1.0-SNAPSHOT"
+
+    dependencyLocking {
+        lockAllConfigurations()
+    }
 }
 
 subprojects {
