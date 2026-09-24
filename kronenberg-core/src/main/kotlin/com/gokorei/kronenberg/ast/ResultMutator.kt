@@ -22,15 +22,15 @@ public class ResultMutator : TypedAstMutator<KtCallExpression>(KtCallExpression:
         element: KtCallExpression,
         context: MutationContext,
     ): List<AstEdit> {
-        val callee = element.calleeExpression ?: return emptyList()
-        val original = callee.text
-        val replacement = RESULT_MUTATIONS[original] ?: return emptyList()
+        val callee = element.calleeExpression?.text ?: return emptyList()
+        val replacement = RESULT_MUTATIONS[callee] ?: return emptyList()
+        val original = element.text
 
         return listOf(
             context.edit(
-                target = callee,
+                target = element,
                 replacement = replacement,
-                description = "Mutated Result operation '$original' to '$replacement'",
+                description = "Mutated Result call '$original' to '$replacement'",
             ),
         )
     }
@@ -38,11 +38,11 @@ public class ResultMutator : TypedAstMutator<KtCallExpression>(KtCallExpression:
     public companion object {
         private val RESULT_MUTATIONS =
             mapOf(
-                "getOrElse" to "getOrThrow",
-                "getOrDefault" to "getOrThrow",
-                "getOrNull" to "getOrThrow",
-                "onSuccess" to "onFailure",
-                "onFailure" to "onSuccess",
+                "getOrElse" to "getOrThrow()",
+                "getOrDefault" to "getOrThrow()",
+                "getOrNull" to "getOrThrow()",
+                "onSuccess" to "onFailure {}",
+                "onFailure" to "onSuccess {}",
             )
     }
 }

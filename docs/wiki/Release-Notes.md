@@ -18,6 +18,7 @@ Overview of all notable changes to Kronenberg by version.
 - Automated GitHub Wiki synchronization workflow (`.github/workflows/wiki-sync.yml`).
 
 ### Bug Fixes
+- Fixed ResultMutator to replace complete recovery and callback call expressions with syntactically and semantically compilable calls.
 
 ### Improvements
 
