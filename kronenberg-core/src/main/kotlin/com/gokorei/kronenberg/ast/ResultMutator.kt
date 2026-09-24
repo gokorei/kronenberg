@@ -2,6 +2,7 @@ package com.gokorei.kronenberg.ast
 
 import com.gokorei.kronenberg.model.AstEdit
 import com.gokorei.kronenberg.model.MutatorCategory
+import org.jetbrains.kotlin.com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.psi.KtCallExpression
 
 /**
@@ -21,11 +22,25 @@ public class ResultMutator : TypedAstMutator<KtCallExpression>(KtCallExpression:
     override fun mutateTyped(
         element: KtCallExpression,
         context: MutationContext,
+    ): List<AstEdit> = mutateName(element.calleeExpression?.text ?: return emptyList(), element, context)
+
+    internal fun mutateResolved(
+        element: PsiElement,
+        context: MutationContext,
+        target: ResolvedSemanticTarget,
+    ): List<AstEdit> {
+        if (element !is KtCallExpression || target.name !in RESULT_MUTATIONS) return emptyList()
+        return mutateName(target.name, element, context)
+    }
+
+    @Suppress("ReturnCount")
+    private fun mutateName(
+        original: String,
+        element: KtCallExpression,
+        context: MutationContext,
     ): List<AstEdit> {
         val callee = element.calleeExpression ?: return emptyList()
-        val original = callee.text
         val replacement = RESULT_MUTATIONS[original] ?: return emptyList()
-
         return listOf(
             context.edit(
                 target = callee,

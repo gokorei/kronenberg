@@ -2,6 +2,7 @@ package com.gokorei.kronenberg.ast
 
 import com.gokorei.kronenberg.model.AstEdit
 import com.gokorei.kronenberg.model.MutatorCategory
+import org.jetbrains.kotlin.com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.psi.KtCallExpression
 import org.jetbrains.kotlin.psi.KtPrefixExpression
 
@@ -23,10 +24,24 @@ public class PreconditionMutator : TypedAstMutator<KtCallExpression>(KtCallExpre
     override fun mutateTyped(
         element: KtCallExpression,
         context: MutationContext,
+    ): List<AstEdit> = mutateName(element.calleeExpression?.text ?: return emptyList(), element, context)
+
+    internal fun mutateResolved(
+        element: PsiElement,
+        context: MutationContext,
+        target: ResolvedSemanticTarget,
     ): List<AstEdit> {
-        val callee = element.calleeExpression?.text ?: return emptyList()
-        val args = element.valueArguments
-        val firstArg = args.firstOrNull()?.getArgumentExpression() ?: return emptyList()
+        if (element !is KtCallExpression || target.name !in PRECONDITION_NAMES) return emptyList()
+        return mutateName(target.name, element, context)
+    }
+
+    @Suppress("ReturnCount")
+    private fun mutateName(
+        callee: String,
+        element: KtCallExpression,
+        context: MutationContext,
+    ): List<AstEdit> {
+        val firstArg = element.valueArguments.firstOrNull()?.getArgumentExpression() ?: return emptyList()
 
         if (callee == "requireNotNull" || callee == "checkNotNull") {
             return listOf(
@@ -41,14 +56,12 @@ public class PreconditionMutator : TypedAstMutator<KtCallExpression>(KtCallExpre
         if (callee == "require" || callee == "check") {
             val edits = mutableListOf<AstEdit>()
             val argText = firstArg.text
-
             val negatedReplacement =
                 if (firstArg is KtPrefixExpression && firstArg.operationReference.text == "!") {
                     firstArg.baseExpression?.text ?: "!($argText)"
                 } else {
                     "!($argText)"
                 }
-
             edits.add(
                 context.edit(
                     target = firstArg,
@@ -57,7 +70,6 @@ public class PreconditionMutator : TypedAstMutator<KtCallExpression>(KtCallExpre
                     originalText = firstArg.text,
                 ),
             )
-
             edits.add(
                 context.edit(
                     target = firstArg,
@@ -66,7 +78,6 @@ public class PreconditionMutator : TypedAstMutator<KtCallExpression>(KtCallExpre
                     originalText = firstArg.text,
                 ),
             )
-
             return edits
         }
 

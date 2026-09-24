@@ -58,6 +58,37 @@ public class CoroutineConcurrencyMutator : AstMutator {
         return emptyList()
     }
 
+    @Suppress("ReturnCount")
+    internal fun mutateResolved(
+        element: PsiElement,
+        context: MutationContext,
+        target: ResolvedSemanticTarget,
+    ): List<AstEdit> {
+        if (element is KtDotQualifiedExpression) {
+            val dispatcher = target.fqName.removePrefix("kotlinx.coroutines.")
+            val replacement = DISPATCHER_SWAPS[dispatcher] ?: return emptyList()
+            return listOf(
+                context.edit(
+                    target = element,
+                    replacement = replacement,
+                    description = "Mutated coroutine dispatcher '$dispatcher' to '$replacement'",
+                ),
+            )
+        }
+        if (element is KtCallExpression) {
+            val callee = element.calleeExpression ?: return emptyList()
+            val replacement = COROUTINE_CALL_SWAPS[target.name] ?: return emptyList()
+            return listOf(
+                context.edit(
+                    target = callee,
+                    replacement = replacement,
+                    description = "Mutated coroutine primitive '${target.name}' to '$replacement'",
+                ),
+            )
+        }
+        return emptyList()
+    }
+
     public companion object {
         private val DISPATCHER_SWAPS =
             mapOf(

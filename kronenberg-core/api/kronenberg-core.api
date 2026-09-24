@@ -13,6 +13,8 @@ public final class com/gokorei/kronenberg/ast/AstMutantGenerator {
 	public synthetic fun <init> (Lcom/gokorei/kronenberg/ast/MutatorRegistry;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun generateMutants (Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutationConfig;Ljava/lang/String;)Ljava/util/List;
 	public static synthetic fun generateMutants$default (Lcom/gokorei/kronenberg/ast/AstMutantGenerator;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutationConfig;Ljava/lang/String;ILjava/lang/Object;)Ljava/util/List;
+	public final fun generateMutationResult (Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutationConfig;Ljava/lang/String;)Lcom/gokorei/kronenberg/ast/MutantGenerationResult;
+	public static synthetic fun generateMutationResult$default (Lcom/gokorei/kronenberg/ast/AstMutantGenerator;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutationConfig;Ljava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/ast/MutantGenerationResult;
 }
 
 public abstract interface class com/gokorei/kronenberg/ast/AstMutator {
@@ -112,6 +114,34 @@ public final class com/gokorei/kronenberg/ast/DestructuringMutator : com/gokorei
 	public synthetic fun mutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;Lcom/gokorei/kronenberg/ast/MutationContext;)Ljava/util/List;
 }
 
+public final class com/gokorei/kronenberg/ast/DiscardedMutant {
+	public fun <init> (Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutatorCategory;IILjava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/ast/MutantDiscardReason;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutatorCategory;IILjava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/ast/MutantDiscardReason;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lcom/gokorei/kronenberg/model/MutatorCategory;
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()Ljava/lang/String;
+	public final fun component6 ()Ljava/lang/String;
+	public final fun component7 ()Lcom/gokorei/kronenberg/ast/MutantDiscardReason;
+	public final fun component8 ()Ljava/lang/String;
+	public final fun component9 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutatorCategory;IILjava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/ast/MutantDiscardReason;Ljava/lang/String;Ljava/lang/String;)Lcom/gokorei/kronenberg/ast/DiscardedMutant;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/ast/DiscardedMutant;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutatorCategory;IILjava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/ast/MutantDiscardReason;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/ast/DiscardedMutant;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCategory ()Lcom/gokorei/kronenberg/model/MutatorCategory;
+	public final fun getColumn ()I
+	public final fun getFilePath ()Ljava/lang/String;
+	public final fun getLine ()I
+	public final fun getMutatorName ()Ljava/lang/String;
+	public final fun getOriginalText ()Ljava/lang/String;
+	public final fun getReason ()Lcom/gokorei/kronenberg/ast/MutantDiscardReason;
+	public final fun getReplacementText ()Ljava/lang/String;
+	public final fun getResolvedTarget ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/gokorei/kronenberg/ast/ElvisLeftHandMutator : com/gokorei/kronenberg/ast/TypedAstMutator {
 	public fun <init> ()V
 	public synthetic fun canMutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;)Z
@@ -142,6 +172,29 @@ public final class com/gokorei/kronenberg/ast/LiteralMutationMutator : com/gokor
 	public fun getDescription ()Ljava/lang/String;
 	public fun getName ()Ljava/lang/String;
 	public synthetic fun mutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;Lcom/gokorei/kronenberg/ast/MutationContext;)Ljava/util/List;
+}
+
+public final class com/gokorei/kronenberg/ast/MutantDiscardReason : java/lang/Enum {
+	public static final field NON_STANDARD_TARGET Lcom/gokorei/kronenberg/ast/MutantDiscardReason;
+	public static final field TYPE_INVALID_TRANSFORMATION Lcom/gokorei/kronenberg/ast/MutantDiscardReason;
+	public static final field UNRESOLVED_TARGET Lcom/gokorei/kronenberg/ast/MutantDiscardReason;
+	public static final field VALIDATION_UNAVAILABLE Lcom/gokorei/kronenberg/ast/MutantDiscardReason;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/gokorei/kronenberg/ast/MutantDiscardReason;
+	public static fun values ()[Lcom/gokorei/kronenberg/ast/MutantDiscardReason;
+}
+
+public final class com/gokorei/kronenberg/ast/MutantGenerationResult {
+	public fun <init> (Ljava/util/List;Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;Ljava/util/List;)Lcom/gokorei/kronenberg/ast/MutantGenerationResult;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/ast/MutantGenerationResult;Ljava/util/List;Ljava/util/List;ILjava/lang/Object;)Lcom/gokorei/kronenberg/ast/MutantGenerationResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDiscarded ()Ljava/util/List;
+	public final fun getMutants ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class com/gokorei/kronenberg/ast/MutationContext {

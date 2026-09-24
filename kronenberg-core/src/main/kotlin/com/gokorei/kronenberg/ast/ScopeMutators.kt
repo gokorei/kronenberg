@@ -2,6 +2,7 @@ package com.gokorei.kronenberg.ast
 
 import com.gokorei.kronenberg.model.AstEdit
 import com.gokorei.kronenberg.model.MutatorCategory
+import org.jetbrains.kotlin.com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.psi.KtCallExpression
 
 /**
@@ -20,9 +21,24 @@ public class TakeIfMutator : TypedAstMutator<KtCallExpression>(KtCallExpression:
     override fun mutateTyped(
         element: KtCallExpression,
         context: MutationContext,
+    ): List<AstEdit> = mutateName(element.calleeExpression?.text ?: return emptyList(), element, context)
+
+    internal fun mutateResolved(
+        element: PsiElement,
+        context: MutationContext,
+        target: ResolvedSemanticTarget,
+    ): List<AstEdit> {
+        if (element !is KtCallExpression || (target.name != "takeIf" && target.name != "takeUnless")) return emptyList()
+        return mutateName(target.name, element, context)
+    }
+
+    @Suppress("ReturnCount")
+    private fun mutateName(
+        original: String,
+        element: KtCallExpression,
+        context: MutationContext,
     ): List<AstEdit> {
         val callee = element.calleeExpression ?: return emptyList()
-        val original = callee.text
         val replacement = if (original == "takeIf") "takeUnless" else "takeIf"
         return listOf(
             context.edit(
@@ -50,9 +66,24 @@ public class ScopeFunctionMutator : TypedAstMutator<KtCallExpression>(KtCallExpr
     override fun mutateTyped(
         element: KtCallExpression,
         context: MutationContext,
+    ): List<AstEdit> = mutateName(element.calleeExpression?.text ?: return emptyList(), element, context)
+
+    internal fun mutateResolved(
+        element: PsiElement,
+        context: MutationContext,
+        target: ResolvedSemanticTarget,
+    ): List<AstEdit> {
+        if (element !is KtCallExpression || target.name !in SCOPE_SWAPS) return emptyList()
+        return mutateName(target.name, element, context)
+    }
+
+    @Suppress("ReturnCount")
+    private fun mutateName(
+        original: String,
+        element: KtCallExpression,
+        context: MutationContext,
     ): List<AstEdit> {
         val callee = element.calleeExpression ?: return emptyList()
-        val original = callee.text
         val replacement = SCOPE_SWAPS[original] ?: return emptyList()
         return listOf(
             context.edit(
