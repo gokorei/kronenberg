@@ -6,14 +6,20 @@ import java.io.File
 import java.io.OutputStream
 import java.io.PrintStream
 import java.lang.reflect.InvocationTargetException
+import java.lang.reflect.Method
+import java.lang.reflect.Modifier
 import java.net.URLClassLoader
+import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.Callable
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
+
+private const val CLASS_SUFFIX: String = ".class"
 
 /**
  * Thread-safe PrintStream interceptor that captures stdout/stderr during in-process execution.
@@ -80,6 +86,14 @@ public class ThreadLocalPrintStream(
     }
 }
 
+public sealed interface RunnerError {
+    public data object MissingEntrypoint : RunnerError
+
+    public data class AmbiguousEntrypoint(
+        val candidates: List<String>,
+    ) : RunnerError
+}
+
 /**
  * Execution outcome from running compiled bytecode inside a virtual-thread sandbox.
  */
@@ -89,11 +103,17 @@ public data class RunnerOutcome(
     val stdout: String = "",
     val stderr: String = "",
     val failureMessage: String? = null,
+    val error: RunnerError? = null,
 )
 
-private class RunnerInfrastructureFailure(
+private open class RunnerInfrastructureFailure(
     override val cause: Throwable,
 ) : RuntimeException(cause)
+
+private class EntrypointFailure(
+    val runnerError: RunnerError,
+    override val message: String,
+) : RunnerInfrastructureFailure(IllegalStateException(message))
 
 private class TestExecutionFailure(
     override val cause: Throwable,
@@ -112,6 +132,36 @@ public interface FastSnippetRunner : AutoCloseable {
         timeoutMs: Long = 2000L,
         extraClasspath: List<String> = emptyList(),
     ): RunnerOutcome
+
+    public fun run(
+        classesDir: Path,
+        entrypoint: CompilationEntrypoint,
+        timeoutMs: Long = 2000L,
+        extraClasspath: List<String> = emptyList(),
+    ): RunnerOutcome =
+        when (entrypoint) {
+            is CompilationEntrypoint.Missing -> {
+                RunnerOutcome(
+                    status = MutantStatus.INFRASTRUCTURE_ERROR,
+                    executionTimeMs = 0L,
+                    failureMessage = "MissingEntrypoint: no deterministic main entrypoint was found",
+                    error = RunnerError.MissingEntrypoint,
+                )
+            }
+
+            is CompilationEntrypoint.Ambiguous -> {
+                RunnerOutcome(
+                    status = MutantStatus.INFRASTRUCTURE_ERROR,
+                    executionTimeMs = 0L,
+                    failureMessage = "AmbiguousEntrypoint: multiple main entrypoints were found",
+                    error = RunnerError.AmbiguousEntrypoint(entrypoint.candidates.map { it.className }.distinct()),
+                )
+            }
+
+            is CompilationEntrypoint.Resolved -> {
+                run(classesDir, entrypoint.className, timeoutMs, extraClasspath)
+            }
+        }
 }
 
 /**
@@ -139,6 +189,26 @@ public class DefaultFastSnippetRunner(
         mainClass: String,
         timeoutMs: Long,
         extraClasspath: List<String>,
+    ): RunnerOutcome = runInternal(classesDir, mainClass, null, timeoutMs, extraClasspath)
+
+    override fun run(
+        classesDir: Path,
+        entrypoint: CompilationEntrypoint,
+        timeoutMs: Long,
+        extraClasspath: List<String>,
+    ): RunnerOutcome =
+        when (entrypoint) {
+            is CompilationEntrypoint.Missing -> runInternal(classesDir, null, entrypoint, timeoutMs, extraClasspath)
+            is CompilationEntrypoint.Ambiguous -> runInternal(classesDir, null, entrypoint, timeoutMs, extraClasspath)
+            is CompilationEntrypoint.Resolved -> runInternal(classesDir, null, entrypoint, timeoutMs, extraClasspath)
+        }
+
+    private fun runInternal(
+        classesDir: Path,
+        fallbackMainClass: String?,
+        entrypoint: CompilationEntrypoint?,
+        timeoutMs: Long,
+        extraClasspath: List<String>,
     ): RunnerOutcome {
         val startNanos = System.nanoTime()
         val fullCp =
@@ -153,9 +223,25 @@ public class DefaultFastSnippetRunner(
 
         val capturedOut = ByteArrayOutputStream()
         val customPrintStream = PrintStream(capturedOut, true, Charsets.UTF_8.name())
-        val task = Callable { executeSnippet(classesDir, mainClass, fullCp.getOrThrow(), customPrintStream) }
+        val task =
+            Callable {
+                executeSnippet(
+                    classesDir,
+                    entrypoint,
+                    fallbackMainClass ?: DefaultSnippetCompiler.MAIN_CLASS,
+                    fullCp.getOrThrow(),
+                    customPrintStream,
+                )
+            }
+        return awaitCompletion(startNanos, timeoutMs, capturedOut, runCatching { executor.submit(task) })
+    }
 
-        val submitted = runCatching { executor.submit(task) }
+    private fun awaitCompletion(
+        startNanos: Long,
+        timeoutMs: Long,
+        capturedOut: ByteArrayOutputStream,
+        submitted: Result<Future<*>>,
+    ): RunnerOutcome {
         val future = submitted.getOrNull()
         return if (future == null) {
             failureFromException(
@@ -204,12 +290,20 @@ public class DefaultFastSnippetRunner(
 
     private fun executeSnippet(
         classesDir: Path,
-        mainClass: String,
+        entrypoint: CompilationEntrypoint?,
+        fallbackMainClass: String,
         fullCp: List<java.net.URL>,
         output: PrintStream,
     ) {
         val classLoader = createClassLoader(fullCp, classesDir)
-        val execution = runCatching { invokeSnippet(classLoader, mainClass, output) }
+        val execution =
+            runCatching {
+                if (entrypoint == null) {
+                    invokeLegacySnippet(classLoader, fallbackMainClass, output)
+                } else {
+                    invokeSnippet(classLoader, classesDir, entrypoint, output)
+                }
+            }
         var failure = execution.exceptionOrNull()
         val closeFailure = runCatching { classLoader.close() }.exceptionOrNull()
         if (failure == null) {
@@ -242,7 +336,7 @@ public class DefaultFastSnippetRunner(
             }
         }.getOrElse { throw RunnerInfrastructureFailure(it) }
 
-    private fun invokeSnippet(
+    private fun invokeLegacySnippet(
         classLoader: URLClassLoader,
         mainClass: String,
         output: PrintStream,
@@ -270,6 +364,200 @@ public class DefaultFastSnippetRunner(
         }
     }
 
+    private fun invokeSnippet(
+        classLoader: URLClassLoader,
+        classesDir: Path,
+        entrypoint: CompilationEntrypoint,
+        output: PrintStream,
+    ) {
+        val resolved = requireResolvedEntrypoint(classLoader, classesDir, entrypoint)
+        val clazz = loadEntrypointClass(classLoader, resolved)
+        val entryMethod = findMainMethod(clazz, resolved)
+        val receiver = entryReceiver(classLoader, clazz, resolved)
+        val initialProps = java.util.Properties().apply { putAll(System.getProperties()) }
+        try {
+            ThreadLocalPrintStream.withCapture(output) {
+                try {
+                    if (entryMethod.parameterCount == 1) {
+                        entryMethod.invoke(receiver, emptyArray<String>())
+                    } else {
+                        entryMethod.invoke(receiver)
+                    }
+                } catch (e: InvocationTargetException) {
+                    throw invocationFailure(e)
+                }
+            }
+        } finally {
+            System.setProperties(initialProps)
+        }
+    }
+
+    private fun requireResolvedEntrypoint(
+        classLoader: URLClassLoader,
+        classesDir: Path,
+        entrypoint: CompilationEntrypoint,
+    ): CompilationEntrypoint.Resolved =
+        when (val resolved = resolveEntrypoint(classLoader, classesDir, entrypoint)) {
+            is CompilationEntrypoint.Missing -> {
+                throw EntrypointFailure(
+                    RunnerError.MissingEntrypoint,
+                    "MissingEntrypoint: no deterministic main entrypoint was found",
+                )
+            }
+
+            is CompilationEntrypoint.Ambiguous -> {
+                throw EntrypointFailure(
+                    RunnerError.AmbiguousEntrypoint(resolved.candidates.map { it.className }.distinct()),
+                    "AmbiguousEntrypoint: multiple main entrypoints were found",
+                )
+            }
+
+            is CompilationEntrypoint.Resolved -> {
+                resolved
+            }
+        }
+
+    private fun loadEntrypointClass(
+        classLoader: URLClassLoader,
+        entrypoint: CompilationEntrypoint.Resolved,
+    ): Class<*> =
+        runCatching { classLoader.loadClass(entrypoint.className) }.getOrElse {
+            throw EntrypointFailure(
+                RunnerError.MissingEntrypoint,
+                "MissingEntrypoint: class ${entrypoint.className} does not exist",
+            )
+        }
+
+    private fun resolveEntrypoint(
+        classLoader: URLClassLoader,
+        classesDir: Path,
+        entrypoint: CompilationEntrypoint,
+    ): CompilationEntrypoint =
+        when (entrypoint) {
+            is CompilationEntrypoint.Missing -> discoverEntrypoint(classLoader, classesDir)
+            is CompilationEntrypoint.Ambiguous -> entrypoint
+            is CompilationEntrypoint.Resolved -> entrypoint
+        }
+
+    private fun discoverEntrypoint(
+        classLoader: URLClassLoader,
+        classesDir: Path,
+    ): CompilationEntrypoint {
+        val availableClassNames = classNames(classesDir)
+        val candidates =
+            availableClassNames.flatMap { className ->
+                runCatching {
+                    val clazz = classLoader.loadClass(className)
+                    clazz.declaredMethods
+                        .asSequence()
+                        .filter { method ->
+                            Modifier.isPublic(method.modifiers) &&
+                                Modifier.isStatic(method.modifiers) &&
+                                isMainMethod(method)
+                        }.map { method ->
+                            CompilationEntrypoint.Resolved(
+                                className = className,
+                                parameterCount = method.parameterCount,
+                            )
+                        }.toList()
+                }.getOrDefault(emptyList())
+            }
+        val deterministicCandidates =
+            candidates
+                .distinct()
+                .sortedWith(compareBy({ it.className }, { it.parameterCount }))
+        return when (deterministicCandidates.size) {
+            0 -> CompilationEntrypoint.Missing(availableClassNames)
+            1 -> deterministicCandidates.single()
+            else -> CompilationEntrypoint.Ambiguous(deterministicCandidates)
+        }
+    }
+
+    private fun classNames(classesDir: Path): List<String> {
+        if (!Files.isDirectory(classesDir)) return emptyList()
+        return Files.walk(classesDir).use { paths ->
+            paths
+                .filter { path -> Files.isRegularFile(path) && path.fileName.toString().endsWith(CLASS_SUFFIX) }
+                .sorted()
+                .map { path ->
+                    val relative = classesDir.relativize(path)
+                    val simpleName = path.fileName.toString().removeSuffix(CLASS_SUFFIX)
+                    val packageName =
+                        if (relative.nameCount == 1) {
+                            ""
+                        } else {
+                            relative.subpath(0, relative.nameCount - 1).joinToString(".")
+                        }
+                    if (packageName.isBlank()) simpleName else "$packageName.$simpleName"
+                }.toList()
+        }
+    }
+
+    private fun findMainMethod(
+        clazz: Class<*>,
+        entrypoint: CompilationEntrypoint.Resolved,
+    ): Method {
+        val methods =
+            clazz.declaredMethods
+                .asSequence()
+                .filter { method -> Modifier.isPublic(method.modifiers) && isMainMethod(method) }
+                .filter { method -> entrypoint.parameterCount == null || method.parameterCount == entrypoint.parameterCount }
+                .toList()
+        return when (methods.size) {
+            0 -> {
+                throw EntrypointFailure(
+                    RunnerError.MissingEntrypoint,
+                    "MissingEntrypoint: ${entrypoint.className} has no matching main method",
+                )
+            }
+
+            1 -> {
+                methods.single()
+            }
+
+            else -> {
+                throw EntrypointFailure(
+                    RunnerError.AmbiguousEntrypoint(listOf(entrypoint.className)),
+                    "AmbiguousEntrypoint: ${entrypoint.className} has multiple matching main methods",
+                )
+            }
+        }
+    }
+
+    private fun isMainMethod(method: Method): Boolean =
+        method.name == "main" &&
+            (method.parameterCount == 0 || method.parameterTypes.singleOrNull() == Array<String>::class.java)
+
+    private fun entryReceiver(
+        classLoader: URLClassLoader,
+        clazz: Class<*>,
+        entrypoint: CompilationEntrypoint.Resolved,
+    ): Any? =
+        when (entrypoint.receiver) {
+            EntrypointReceiver.STATIC -> {
+                null
+            }
+
+            EntrypointReceiver.CLASS -> {
+                clazz.getDeclaredConstructor().newInstance()
+            }
+
+            EntrypointReceiver.OBJECT -> {
+                clazz.getField("INSTANCE").get(null)
+            }
+
+            EntrypointReceiver.COMPANION -> {
+                val ownerName =
+                    entrypoint.ownerClassName
+                        ?: throw EntrypointFailure(
+                            RunnerError.MissingEntrypoint,
+                            "MissingEntrypoint: companion owner is unavailable for ${entrypoint.className}",
+                        )
+                val fieldName = entrypoint.className.substringAfterLast('$')
+                classLoader.loadClass(ownerName).getField(fieldName).get(null)
+            }
+        }
+
     private fun invocationFailure(failure: InvocationTargetException): Throwable {
         val target = failure.targetException ?: return RunnerInfrastructureFailure(failure)
         return if (isInfrastructureOrFatal(target)) target else TestExecutionFailure(target)
@@ -286,35 +574,43 @@ public class DefaultFastSnippetRunner(
         startNanos: Long,
         failure: Throwable,
         capturedOut: ByteArrayOutputStream,
-    ): RunnerOutcome {
-        val target = unwrapFailure(failure)
-        return failureOutcome(
+    ): RunnerOutcome =
+        failureOutcome(
             startNanos = startNanos,
             status = statusForFailure(failure),
-            message = failureMessage(target),
+            message = failureMessage(failure),
             stdout = capturedOut.toString(Charsets.UTF_8.name()).trim(),
+            error = runnerError(failure),
         )
-    }
 
     private fun failureOutcome(
         startNanos: Long,
         status: MutantStatus,
         message: String,
         stdout: String,
+        error: RunnerError? = null,
     ): RunnerOutcome =
         RunnerOutcome(
             status = status,
             executionTimeMs = elapsedMs(startNanos),
             stdout = stdout,
             failureMessage = message,
+            error = error,
         )
 
-    private fun statusForFailure(failure: Throwable): MutantStatus {
-        val target = unwrapFailure(failure)
-        return when {
+    private fun statusForFailure(failure: Throwable): MutantStatus =
+        when {
+            failure is EntrypointFailure ||
+                (failure is ExecutionException && failure.cause is EntrypointFailure) -> MutantStatus.INFRASTRUCTURE_ERROR
+
             failure is TestExecutionFailure ||
                 (failure is ExecutionException && failure.cause is TestExecutionFailure) -> MutantStatus.KILLED
 
+            else -> statusForTarget(unwrapFailure(failure))
+        }
+
+    private fun statusForTarget(target: Throwable): MutantStatus =
+        when {
             target is VirtualMachineError -> MutantStatus.RUNNER_ERROR
 
             target is LinkageError ||
@@ -323,11 +619,8 @@ public class DefaultFastSnippetRunner(
                 target is ReflectiveOperationException ||
                 target is SecurityException -> MutantStatus.INFRASTRUCTURE_ERROR
 
-            target is Error && target !is AssertionError -> MutantStatus.RUNNER_ERROR
-
             else -> MutantStatus.RUNNER_ERROR
         }
-    }
 
     private fun unwrapFailure(failure: Throwable): Throwable =
         when (failure) {
@@ -338,7 +631,21 @@ public class DefaultFastSnippetRunner(
             else -> failure
         }
 
-    private fun failureMessage(failure: Throwable): String = "${failure.javaClass.simpleName}: ${failure.message.orEmpty()}"
+    private fun runnerError(failure: Throwable): RunnerError? =
+        when (failure) {
+            is EntrypointFailure -> failure.runnerError
+            is ExecutionException -> failure.cause?.let(::runnerError)
+            else -> null
+        }
+
+    private fun failureMessage(failure: Throwable): String =
+        when (failure) {
+            is EntrypointFailure -> failure.message.orEmpty()
+            is ExecutionException -> failure.cause?.let(::failureMessage) ?: failure.toString()
+            is TestExecutionFailure -> failureMessage(failure.cause)
+            is RunnerInfrastructureFailure -> failureMessage(failure.cause)
+            else -> "${failure.javaClass.simpleName}: ${failure.message.orEmpty()}"
+        }
 
     private fun elapsedMs(startNanos: Long): Long = (System.nanoTime() - startNanos) / 1_000_000
 

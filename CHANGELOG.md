@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Infrastructure and runner failures no longer count as killed mutants or inflate mutation scores across CLI, Gradle, XML, SARIF, and Code Climate reports.
+- Compiled snippets now resolve deterministic package-qualified entrypoints across top-level, class, nested, object, and companion declarations, with structured missing and ambiguous entrypoint errors.
 
 ## [0.1.0] - 2026-09-12
 

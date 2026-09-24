@@ -57,6 +57,151 @@ class FastSnippetRunnerSpec {
     }
 
     @Test
+    fun `returns structured missing entrypoint error`() {
+        val compiled = compiler.compile("class NoEntrypoint")
+        try {
+            val classes = compiled.shouldBeInstanceOf<CompileResult.Compiled>()
+            val outcome = runner.run(classes.outDir, classes.entrypoint, timeoutMs = 1000L)
+
+            outcome.error shouldBe RunnerError.MissingEntrypoint
+            outcome.status shouldBe MutantStatus.INFRASTRUCTURE_ERROR
+            outcome.failureMessage shouldBe "MissingEntrypoint: no deterministic main entrypoint was found"
+        } finally {
+            compiler.cleanup(compiled)
+        }
+    }
+
+    @Test
+    fun `returns structured ambiguous entrypoint error`() {
+        val source =
+            """
+            package audit.fixture
+
+            object First {
+                @JvmStatic
+                fun main(args: Array<String>) = Unit
+            }
+
+            object Second {
+                @JvmStatic
+                fun main(args: Array<String>) = Unit
+            }
+            """.trimIndent()
+        val compiled = compiler.compile(source)
+        try {
+            val classes = compiled.shouldBeInstanceOf<CompileResult.Compiled>()
+            val outcome = runner.run(classes.outDir, classes.entrypoint, timeoutMs = 1000L)
+
+            outcome.status shouldBe MutantStatus.INFRASTRUCTURE_ERROR
+            outcome.error shouldBe
+                RunnerError.AmbiguousEntrypoint(
+                    candidates = listOf("audit.fixture.First", "audit.fixture.Second"),
+                )
+        } finally {
+            compiler.cleanup(compiled)
+        }
+    }
+
+    @Test
+    fun `executes packaged top-level class and nested entrypoints`() {
+        assertEntrypoints(
+            listOf(
+                """
+                package audit.fixture
+
+                class Decoy
+
+                fun main() {
+                    check(true)
+                }
+                """.trimIndent(),
+                """
+                package audit.fixture
+
+                class Entry {
+                    fun main() {
+                        check(true)
+                    }
+                }
+                """.trimIndent(),
+                """
+                package audit.fixture
+
+                class Outer {
+                    class Entry {
+                        fun main() {
+                            check(true)
+                        }
+                    }
+                }
+                """.trimIndent(),
+            ),
+        )
+    }
+
+    @Test
+    fun `executes packaged object and companion entrypoints`() {
+        assertEntrypoints(
+            listOf(
+                """
+                package audit.fixture
+
+                object Entry {
+                    fun main() {
+                        check(true)
+                    }
+                }
+                """.trimIndent(),
+                """
+                package audit.fixture
+
+                class Entry {
+                    companion object {
+                        fun main() {
+                            check(true)
+                        }
+                    }
+                }
+                """.trimIndent(),
+                """
+                package audit.fixture
+
+                object Entry {
+                    @JvmStatic
+                    fun main() {
+                        check(true)
+                    }
+                }
+                """.trimIndent(),
+                """
+                package audit.fixture
+
+                class Entry {
+                    companion object {
+                        @JvmStatic
+                        fun main() {
+                            check(true)
+                        }
+                    }
+                }
+                """.trimIndent(),
+            ),
+        )
+    }
+
+    private fun assertEntrypoints(sources: List<String>) {
+        sources.forEach { source ->
+            val compiled = compiler.compile(source)
+            try {
+                val classes = compiled.shouldBeInstanceOf<CompileResult.Compiled>()
+                runner.run(classes.outDir, classes.entrypoint, timeoutMs = 1000L).status shouldBe MutantStatus.SURVIVED
+            } finally {
+                compiler.cleanup(compiled)
+            }
+        }
+    }
+
+    @Test
     fun `reports linkage failure as infrastructure error`() {
         val helper = compiler.compile("package external\nclass Helper {}")
         val app =

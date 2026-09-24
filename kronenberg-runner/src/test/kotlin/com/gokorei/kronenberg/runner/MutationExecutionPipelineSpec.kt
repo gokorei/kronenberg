@@ -136,6 +136,31 @@ class MutationExecutionPipelineSpec {
     }
 
     @Test
+    fun `executes packaged source with synthetic harness main`() {
+        val source =
+            """
+            package audit.fixture
+
+            fun isPositive(value: Int): Boolean = value > 0
+            """.trimIndent()
+        val test =
+            """
+            fun testPositive() {
+                check(isPositive(1))
+                check(!isPositive(0))
+            }
+            """.trimIndent()
+
+        runBlocking {
+            val report = pipeline.execute(source, test, MutationConfig())
+
+            report.baselineError shouldBe null
+            report.totalMutants shouldNotBe 0
+            report.killedCount shouldNotBe 0
+        }
+    }
+
+    @Test
     fun `executes mutants concurrently and outputs deterministic results`() {
         val source =
             """

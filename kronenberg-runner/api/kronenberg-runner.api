@@ -21,19 +21,66 @@ public final class com/gokorei/kronenberg/runner/CandidateTestFunction {
 	public fun toString ()Ljava/lang/String;
 }
 
+public abstract interface class com/gokorei/kronenberg/runner/CompilationEntrypoint {
+}
+
+public final class com/gokorei/kronenberg/runner/CompilationEntrypoint$Ambiguous : com/gokorei/kronenberg/runner/CompilationEntrypoint {
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Lcom/gokorei/kronenberg/runner/CompilationEntrypoint$Ambiguous;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/runner/CompilationEntrypoint$Ambiguous;Ljava/util/List;ILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/CompilationEntrypoint$Ambiguous;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCandidates ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/gokorei/kronenberg/runner/CompilationEntrypoint$Missing : com/gokorei/kronenberg/runner/CompilationEntrypoint {
+	public fun <init> ()V
+	public fun <init> (Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Lcom/gokorei/kronenberg/runner/CompilationEntrypoint$Missing;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/runner/CompilationEntrypoint$Missing;Ljava/util/List;ILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/CompilationEntrypoint$Missing;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCandidateClassNames ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/gokorei/kronenberg/runner/CompilationEntrypoint$Resolved : com/gokorei/kronenberg/runner/CompilationEntrypoint {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Integer;Lcom/gokorei/kronenberg/runner/EntrypointReceiver;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Integer;Lcom/gokorei/kronenberg/runner/EntrypointReceiver;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/Integer;
+	public final fun component3 ()Lcom/gokorei/kronenberg/runner/EntrypointReceiver;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/Integer;Lcom/gokorei/kronenberg/runner/EntrypointReceiver;Ljava/lang/String;)Lcom/gokorei/kronenberg/runner/CompilationEntrypoint$Resolved;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/runner/CompilationEntrypoint$Resolved;Ljava/lang/String;Ljava/lang/Integer;Lcom/gokorei/kronenberg/runner/EntrypointReceiver;Ljava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/CompilationEntrypoint$Resolved;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getClassName ()Ljava/lang/String;
+	public final fun getOwnerClassName ()Ljava/lang/String;
+	public final fun getParameterCount ()Ljava/lang/Integer;
+	public final fun getReceiver ()Lcom/gokorei/kronenberg/runner/EntrypointReceiver;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public abstract class com/gokorei/kronenberg/runner/CompileResult {
 }
 
 public final class com/gokorei/kronenberg/runner/CompileResult$Compiled : com/gokorei/kronenberg/runner/CompileResult {
-	public fun <init> (Ljava/nio/file/Path;Ljava/util/List;Ljava/nio/file/Path;)V
-	public synthetic fun <init> (Ljava/nio/file/Path;Ljava/util/List;Ljava/nio/file/Path;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/nio/file/Path;Ljava/util/List;Ljava/nio/file/Path;Lcom/gokorei/kronenberg/runner/CompilationEntrypoint;)V
+	public synthetic fun <init> (Ljava/nio/file/Path;Ljava/util/List;Ljava/nio/file/Path;Lcom/gokorei/kronenberg/runner/CompilationEntrypoint;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/nio/file/Path;
 	public final fun component2 ()Ljava/util/List;
 	public final fun component3 ()Ljava/nio/file/Path;
-	public final fun copy (Ljava/nio/file/Path;Ljava/util/List;Ljava/nio/file/Path;)Lcom/gokorei/kronenberg/runner/CompileResult$Compiled;
-	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/runner/CompileResult$Compiled;Ljava/nio/file/Path;Ljava/util/List;Ljava/nio/file/Path;ILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/CompileResult$Compiled;
+	public final fun component4 ()Lcom/gokorei/kronenberg/runner/CompilationEntrypoint;
+	public final fun copy (Ljava/nio/file/Path;Ljava/util/List;Ljava/nio/file/Path;Lcom/gokorei/kronenberg/runner/CompilationEntrypoint;)Lcom/gokorei/kronenberg/runner/CompileResult$Compiled;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/runner/CompileResult$Compiled;Ljava/nio/file/Path;Ljava/util/List;Ljava/nio/file/Path;Lcom/gokorei/kronenberg/runner/CompilationEntrypoint;ILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/CompileResult$Compiled;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getDiagnostics ()Ljava/util/List;
+	public final fun getEntrypoint ()Lcom/gokorei/kronenberg/runner/CompilationEntrypoint;
 	public final fun getOutDir ()Ljava/nio/file/Path;
 	public final fun getTempRoot ()Ljava/nio/file/Path;
 	public fun hashCode ()I
@@ -76,6 +123,7 @@ public final class com/gokorei/kronenberg/runner/DefaultFastSnippetRunner : com/
 	public fun <init> (I)V
 	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun close ()V
+	public fun run (Ljava/nio/file/Path;Lcom/gokorei/kronenberg/runner/CompilationEntrypoint;JLjava/util/List;)Lcom/gokorei/kronenberg/runner/RunnerOutcome;
 	public fun run (Ljava/nio/file/Path;Ljava/lang/String;JLjava/util/List;)Lcom/gokorei/kronenberg/runner/RunnerOutcome;
 }
 
@@ -108,12 +156,26 @@ public final class com/gokorei/kronenberg/runner/DefaultSnippetCompiler : com/go
 public final class com/gokorei/kronenberg/runner/DefaultSnippetCompiler$Companion {
 }
 
+public final class com/gokorei/kronenberg/runner/EntrypointReceiver : java/lang/Enum {
+	public static final field CLASS Lcom/gokorei/kronenberg/runner/EntrypointReceiver;
+	public static final field COMPANION Lcom/gokorei/kronenberg/runner/EntrypointReceiver;
+	public static final field OBJECT Lcom/gokorei/kronenberg/runner/EntrypointReceiver;
+	public static final field STATIC Lcom/gokorei/kronenberg/runner/EntrypointReceiver;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/gokorei/kronenberg/runner/EntrypointReceiver;
+	public static fun values ()[Lcom/gokorei/kronenberg/runner/EntrypointReceiver;
+}
+
 public abstract interface class com/gokorei/kronenberg/runner/FastSnippetRunner : java/lang/AutoCloseable {
+	public fun run (Ljava/nio/file/Path;Lcom/gokorei/kronenberg/runner/CompilationEntrypoint;JLjava/util/List;)Lcom/gokorei/kronenberg/runner/RunnerOutcome;
 	public abstract fun run (Ljava/nio/file/Path;Ljava/lang/String;JLjava/util/List;)Lcom/gokorei/kronenberg/runner/RunnerOutcome;
+	public static synthetic fun run$default (Lcom/gokorei/kronenberg/runner/FastSnippetRunner;Ljava/nio/file/Path;Lcom/gokorei/kronenberg/runner/CompilationEntrypoint;JLjava/util/List;ILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/RunnerOutcome;
 	public static synthetic fun run$default (Lcom/gokorei/kronenberg/runner/FastSnippetRunner;Ljava/nio/file/Path;Ljava/lang/String;JLjava/util/List;ILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/RunnerOutcome;
 }
 
 public final class com/gokorei/kronenberg/runner/FastSnippetRunner$DefaultImpls {
+	public static fun run (Lcom/gokorei/kronenberg/runner/FastSnippetRunner;Ljava/nio/file/Path;Lcom/gokorei/kronenberg/runner/CompilationEntrypoint;JLjava/util/List;)Lcom/gokorei/kronenberg/runner/RunnerOutcome;
+	public static synthetic fun run$default (Lcom/gokorei/kronenberg/runner/FastSnippetRunner;Ljava/nio/file/Path;Lcom/gokorei/kronenberg/runner/CompilationEntrypoint;JLjava/util/List;ILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/RunnerOutcome;
 	public static synthetic fun run$default (Lcom/gokorei/kronenberg/runner/FastSnippetRunner;Ljava/nio/file/Path;Ljava/lang/String;JLjava/util/List;ILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/RunnerOutcome;
 }
 
@@ -170,17 +232,40 @@ public final class com/gokorei/kronenberg/runner/ProposedTest {
 	public fun toString ()Ljava/lang/String;
 }
 
+public abstract interface class com/gokorei/kronenberg/runner/RunnerError {
+}
+
+public final class com/gokorei/kronenberg/runner/RunnerError$AmbiguousEntrypoint : com/gokorei/kronenberg/runner/RunnerError {
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Lcom/gokorei/kronenberg/runner/RunnerError$AmbiguousEntrypoint;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/runner/RunnerError$AmbiguousEntrypoint;Ljava/util/List;ILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/RunnerError$AmbiguousEntrypoint;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCandidates ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/gokorei/kronenberg/runner/RunnerError$MissingEntrypoint : com/gokorei/kronenberg/runner/RunnerError {
+	public static final field INSTANCE Lcom/gokorei/kronenberg/runner/RunnerError$MissingEntrypoint;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/gokorei/kronenberg/runner/RunnerOutcome {
-	public fun <init> (Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
-	public synthetic fun <init> (Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/runner/RunnerError;)V
+	public synthetic fun <init> (Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/runner/RunnerError;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Lcom/gokorei/kronenberg/model/MutantStatus;
 	public final fun component2 ()J
 	public final fun component3 ()Ljava/lang/String;
 	public final fun component4 ()Ljava/lang/String;
 	public final fun component5 ()Ljava/lang/String;
-	public final fun copy (Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/gokorei/kronenberg/runner/RunnerOutcome;
-	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/runner/RunnerOutcome;Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/RunnerOutcome;
+	public final fun component6 ()Lcom/gokorei/kronenberg/runner/RunnerError;
+	public final fun copy (Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/runner/RunnerError;)Lcom/gokorei/kronenberg/runner/RunnerOutcome;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/runner/RunnerOutcome;Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/runner/RunnerError;ILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/RunnerOutcome;
 	public fun equals (Ljava/lang/Object;)Z
+	public final fun getError ()Lcom/gokorei/kronenberg/runner/RunnerError;
 	public final fun getExecutionTimeMs ()J
 	public final fun getFailureMessage ()Ljava/lang/String;
 	public final fun getStatus ()Lcom/gokorei/kronenberg/model/MutantStatus;

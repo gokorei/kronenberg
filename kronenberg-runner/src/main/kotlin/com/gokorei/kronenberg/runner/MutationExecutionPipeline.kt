@@ -89,6 +89,7 @@ public class DefaultMutationExecutionPipeline(
             try {
                 runner.run(
                     baselineCompile.outDir,
+                    baselineCompile.entrypoint,
                     timeoutMs = config.baselineTimeoutMs,
                     extraClasspath = config.extraClasspath,
                 )
@@ -292,6 +293,7 @@ public class DefaultMutationExecutionPipeline(
             val outcome =
                 runner.run(
                     compiled.outDir,
+                    compiled.entrypoint,
                     timeoutMs = calibratedTimeoutMs,
                     extraClasspath = config.extraClasspath,
                 )

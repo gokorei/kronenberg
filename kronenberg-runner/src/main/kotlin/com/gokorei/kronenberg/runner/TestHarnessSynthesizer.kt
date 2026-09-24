@@ -6,6 +6,7 @@ import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtClassOrObject
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtNamedFunction
+import org.jetbrains.kotlin.psi.KtTreeVisitorVoid
 
 /**
  * Metadata representing a candidate test function discovered in test source code.
@@ -46,8 +47,8 @@ public object TestHarnessSynthesizer {
         val pkg = testFile.packageDirective?.takeIf { it.text.isNotBlank() }?.text
         val rawBody = stripPackageAndImports(testCode, testFile)
 
-        val testHasMain = testFile.declarations.filterIsInstance<KtNamedFunction>().any { it.name == "main" }
-        val sourceHasMain = sourceFile?.declarations?.filterIsInstance<KtNamedFunction>()?.any { it.name == "main" } == true
+        val testHasMain = containsMain(testFile)
+        val sourceHasMain = sourceFile?.let(::containsMain) == true
         val hasMain = testHasMain || sourceHasMain
 
         val candidateTests = mutableListOf<CandidateTestFunction>()
@@ -86,6 +87,19 @@ public object TestHarnessSynthesizer {
         }
 
         return ParsedTestCode(pkg, imports, rawBody, hasMain, candidateTests)
+    }
+
+    private fun containsMain(file: KtFile): Boolean {
+        var found = false
+        file.accept(
+            object : KtTreeVisitorVoid() {
+                override fun visitNamedFunction(function: KtNamedFunction) {
+                    if (function.name == "main") found = true
+                    super.visitNamedFunction(function)
+                }
+            },
+        )
+        return found
     }
 
     private fun isTestFunctionCandidate(fn: KtNamedFunction): Boolean {
