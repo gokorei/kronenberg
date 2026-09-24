@@ -7,14 +7,14 @@
 
 > *"Long live the new flesh."*
 
-**Kronenberg** is a high-performance, in-process **K2 PSI AST mutation testing engine** for Kotlin. Designed from the ground up for speed and deterministic execution, Kronenberg evaluates test suite quality by injecting precise syntactic mutants directly into Kotlin ASTs and executing tests within an in-memory virtual-thread sandbox—with zero external build daemons and sub-50ms mutation cycles.
+**Kronenberg** is a high-performance, in-process **K2 PSI AST mutation testing engine** for Kotlin. Designed for speed and deterministic execution, Kronenberg evaluates trusted local test suites by injecting precise syntactic mutants directly into Kotlin ASTs and executing them in fresh virtual-thread execution contexts—with zero external build daemons and sub-50ms mutation cycles.
 
 ---
 
 ## ⚡ Highlights
 
 - **Pure K2 PSI Traversal**: Mutates code via compiler AST elements (`KtTreeVisitorVoid`), avoiding brittle regexes or byte-code transforms.
-- **In-Memory Compilation & Execution**: Compiles mutated snippets in-process and runs tests inside isolated `URLClassLoader` sandboxes using Java 21 Virtual Threads.
+- **In-Memory Compilation & Execution**: Compiles mutated snippets in isolated worker processes and runs trusted local tests in fresh `URLClassLoader` scopes with confirmed hard-deadline termination. This is not a security sandbox.
 - **First-Order (FOM) & Higher-Order (HOM) Mutants**: Supports traditional single-point mutations as well as complex multi-operator mutations with strided sampling.
 - **Sub-50ms Mutant Execution**: Designed for instant feedback during local development, pre-commit hooks, and AI agent test verification loops.
 - **Pluggable Mutator SPI**: Extensible rule engine covering relational boundaries, arithmetic operators, boolean inversions, collection operations, null safety, and extreme body-horror mutations.
@@ -32,7 +32,7 @@ Kronenberg is organized into a clean, multi-module architecture:
                   └──────────┬───────────┘
                              │ depends on
                   ┌──────────▼───────────┐
-                  │  kronenberg-runner   │  (In-Process Compiler & Sandboxed Runner)
+                  │  kronenberg-runner   │  (In-Process Compiler & Trusted-Local Runner)
                   └──────────┬───────────┘
                              │ depends on
                   ┌──────────▼───────────┐
@@ -43,9 +43,17 @@ Kronenberg is organized into a clean, multi-module architecture:
 | Module | Description | Key Dependencies |
 | :--- | :--- | :--- |
 | **`kronenberg-core`** | Domain models (`AstMutant`, `MutantResult`, `MutationReport`), AST mutator SPI (`AstMutator`, `MutatorRegistry`), and standard/extreme K2 PSI mutation rules. | `kotlin-compiler-embeddable`, `kotlinx-serialization-json` |
-| **`kronenberg-runner`** | In-process K2 compilation (`SnippetCompiler`), virtual-thread sandbox (`FastSnippetRunner`), and `MutationExecutionPipeline`. | `kronenberg-core`, `kotlinx-coroutines-core` |
+| **`kronenberg-runner`** | In-process K2 compilation (`SnippetCompiler`), trusted-local virtual-thread runner (`FastSnippetRunner`), and `MutationExecutionPipeline`. | `kronenberg-core`, `kotlinx-coroutines-core` |
 | **`kronenberg-cli`** | Standalone CLI binary providing `kronenberg audit` with ANSI terminal diffs, JUnit XML, and JSON export. | `kronenberg-runner`, `clikt` |
 | **`kronenberg-gradle-plugin`** | First-party Gradle plugin providing `kronenbergCheck` task and DSL extension for seamless project builds. | `kronenberg-core`, `kronenberg-runner` |
+
+---
+
+## Execution Trust Boundary
+
+Kronenberg supports **trusted local project code only**. Its in-process compiler, `URLClassLoader`, virtual threads, AST guard, and property rollback improve performance and reliability, but they do not form a security boundary. Project code retains the filesystem, network, process, reflection, environment, and JVM-global capabilities of the host test worker.
+
+Untrusted repositories and hostile pull requests are unsupported. Set `SnippetExecutionTrust.UNTRUSTED` in `MutationConfig` to fail closed before parsing, compilation, classpath access, or execution. Run untrusted repositories in an external disposable VM, container, or isolated CI job with no secrets or internal-network access. See [Architecture & Execution Trust Boundary](docs/wiki/Architecture-And-Sandboxing.md) for the complete threat model and future untrusted-worker requirements.
 
 ---
 

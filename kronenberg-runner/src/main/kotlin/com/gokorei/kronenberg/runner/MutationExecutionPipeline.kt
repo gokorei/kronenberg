@@ -2,17 +2,20 @@ package com.gokorei.kronenberg.runner
 
 import com.gokorei.kronenberg.ast.AstMutantGenerator
 import com.gokorei.kronenberg.model.AstMutant
+import com.gokorei.kronenberg.model.CleanupDiagnostic
 import com.gokorei.kronenberg.model.MutantResult
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationConfig
 import com.gokorei.kronenberg.model.MutationReport
+import com.gokorei.kronenberg.model.SnippetExecutionTrust
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import java.util.concurrent.ConcurrentLinkedQueue
 
 /**
- * High-level orchestration pipeline for executing in-process AST mutation test suites.
+ * High-level orchestration pipeline for executing trusted AST mutation test suites.
  */
 public interface MutationExecutionPipeline : AutoCloseable {
     /**
@@ -27,7 +30,7 @@ public interface MutationExecutionPipeline : AutoCloseable {
 }
 
 /**
- * Default implementation of the in-process mutation execution pipeline with coroutine parallelism.
+ * Default implementation of the trusted mutation execution pipeline with bounded worker parallelism.
  */
 public class DefaultMutationExecutionPipeline(
     private val generator: AstMutantGenerator = AstMutantGenerator(),
@@ -35,12 +38,55 @@ public class DefaultMutationExecutionPipeline(
     private val runner: FastSnippetRunner = DefaultFastSnippetRunner(),
     private val cache: MutationResultCache = DefaultMutationResultCache(),
 ) : MutationExecutionPipeline {
+    @Suppress("CyclomaticComplexMethod", "LongMethod", "ReturnCount")
     override suspend fun execute(
         sourceCode: String,
         testCode: String,
         config: MutationConfig,
         sourceFilePath: String?,
     ): MutationReport {
+        val rejection = untrustedExecutionReport(config.executionTrust)
+        if (rejection != null) return rejection
+
+        val cleanupDiagnostics = ConcurrentLinkedQueue<CleanupDiagnostic>()
+
+        fun report(
+            totalMutants: Int,
+            killedCount: Int,
+            survivedCount: Int,
+            timeoutCount: Int,
+            compileErrorCount: Int,
+            mutationScore: Double,
+            results: List<MutantResult> = emptyList(),
+            baselineError: String? = null,
+        ): MutationReport =
+            MutationReport(
+                totalMutants = totalMutants,
+                killedCount = killedCount,
+                survivedCount = survivedCount,
+                timeoutCount = timeoutCount,
+                compileErrorCount = compileErrorCount,
+                mutationScore = mutationScore,
+                results = results,
+                baselineError = baselineError,
+                cleanupDiagnostics = cleanupDiagnostics.toList(),
+            )
+
+        @Suppress("TooGenericExceptionCaught")
+        fun cleanup(result: CompileResult) {
+            try {
+                cleanupDiagnostics.addAll(compiler.cleanup(result))
+            } catch (exception: Throwable) {
+                cleanupDiagnostics.add(
+                    CleanupDiagnostic(
+                        resource = "compiler",
+                        operation = "cleanup",
+                        message = "${exception.javaClass.simpleName}: ${exception.message.orEmpty()}",
+                    ),
+                )
+            }
+        }
+
         val trimmedSource = sourceCode.trim()
         val trimmedTest = testCode.trim()
         val parsedTest = TestHarnessSynthesizer.parseTestCode(trimmedTest, trimmedSource)
@@ -48,7 +94,7 @@ public class DefaultMutationExecutionPipeline(
 
         // 0. Safety pre-flight check
         if (SnippetAstSafetyChecker.containsHostTerminatingCalls(baselineCombined)) {
-            return MutationReport(
+            return report(
                 totalMutants = 0,
                 killedCount = 0,
                 survivedCount = 0,
@@ -61,10 +107,20 @@ public class DefaultMutationExecutionPipeline(
         }
 
         // 1. Verify baseline code and tests
-        val baselineCompile = compiler.compile(baselineCombined, extraClasspath = config.extraClasspath)
+        val baselineCompile =
+            compiler.compile(
+                sourceCode = baselineCombined,
+                extraClasspath = config.extraClasspath,
+                timeoutMs = config.compileTimeoutMs,
+            )
         if (baselineCompile !is CompileResult.Compiled) {
-            val failMsg = (baselineCompile as? CompileResult.Failed)?.message ?: "Baseline compilation failed"
-            return MutationReport(
+            val failMsg =
+                when (baselineCompile) {
+                    is CompileResult.Failed -> baselineCompile.message
+                    is CompileResult.TimedOut -> baselineCompile.message
+                    is CompileResult.Compiled -> "Baseline compilation returned no output"
+                }
+            return report(
                 totalMutants = 0,
                 killedCount = 0,
                 survivedCount = 0,
@@ -78,17 +134,18 @@ public class DefaultMutationExecutionPipeline(
 
         val baselineOutcome =
             try {
-                runner.run(
-                    baselineCompile.outDir,
-                    timeoutMs = config.baselineTimeoutMs,
-                    extraClasspath = config.extraClasspath,
-                )
+                runner
+                    .run(
+                        baselineCompile.outDir,
+                        timeoutMs = config.baselineTimeoutMs,
+                        extraClasspath = config.extraClasspath,
+                    ).also { cleanupDiagnostics.addAll(it.cleanupDiagnostics) }
             } finally {
-                compiler.cleanup(baselineCompile)
+                cleanup(baselineCompile)
             }
 
         if (baselineOutcome.status == MutantStatus.KILLED) {
-            return MutationReport(
+            return report(
                 totalMutants = 0,
                 killedCount = 0,
                 survivedCount = 0,
@@ -101,7 +158,7 @@ public class DefaultMutationExecutionPipeline(
         }
 
         if (baselineOutcome.status == MutantStatus.TIMED_OUT) {
-            return MutationReport(
+            return report(
                 totalMutants = 0,
                 killedCount = 0,
                 survivedCount = 0,
@@ -121,7 +178,7 @@ public class DefaultMutationExecutionPipeline(
         // 2. Generate AST mutants
         val mutants = generator.generateMutants(trimmedSource, config, filePath = sourceFilePath)
         if (mutants.isEmpty()) {
-            return MutationReport(
+            return report(
                 totalMutants = 0,
                 killedCount = 0,
                 survivedCount = 0,
@@ -137,7 +194,7 @@ public class DefaultMutationExecutionPipeline(
             coroutineScope {
                 mutants
                     .map { mutant ->
-                        async(Dispatchers.Default) {
+                        async(Dispatchers.Default.limitedParallelism(2)) {
                             val cacheKey =
                                 if (config.enableCache) {
                                     cache.computeKey(mutant.mutatedSource, testCode, mutant.id)
@@ -166,23 +223,34 @@ public class DefaultMutationExecutionPipeline(
                                         failureMessage = "Blocked dangerous mutant containing host-terminating call",
                                     )
                                 } else {
-                                    val compiledMutant = compiler.compile(combinedMutantCode, extraClasspath = config.extraClasspath)
+                                    val compiledMutant =
+                                        compiler.compile(
+                                            sourceCode = combinedMutantCode,
+                                            extraClasspath = config.extraClasspath,
+                                            timeoutMs = config.compileTimeoutMs,
+                                        )
 
                                     if (compiledMutant !is CompileResult.Compiled) {
                                         MutantResult(
                                             mutant = mutant,
                                             status = MutantStatus.COMPILE_ERROR,
                                             executionTimeMs = 0L,
-                                            failureMessage = (compiledMutant as? CompileResult.Failed)?.message,
+                                            failureMessage =
+                                                when (compiledMutant) {
+                                                    is CompileResult.Failed -> compiledMutant.message
+                                                    is CompileResult.TimedOut -> compiledMutant.message
+                                                    is CompileResult.Compiled -> "Compilation returned no output"
+                                                },
                                         )
                                     } else {
                                         try {
                                             val outcome =
-                                                runner.run(
-                                                    compiledMutant.outDir,
-                                                    timeoutMs = calibratedTimeoutMs,
-                                                    extraClasspath = config.extraClasspath,
-                                                )
+                                                runner
+                                                    .run(
+                                                        compiledMutant.outDir,
+                                                        timeoutMs = calibratedTimeoutMs,
+                                                        extraClasspath = config.extraClasspath,
+                                                    ).also { cleanupDiagnostics.addAll(it.cleanupDiagnostics) }
                                             MutantResult(
                                                 mutant = mutant,
                                                 status = outcome.status,
@@ -190,7 +258,7 @@ public class DefaultMutationExecutionPipeline(
                                                 failureMessage = outcome.failureMessage,
                                             )
                                         } finally {
-                                            compiler.cleanup(compiledMutant)
+                                            cleanup(compiledMutant)
                                         }
                                     }
                                 }
@@ -216,7 +284,7 @@ public class DefaultMutationExecutionPipeline(
                 100.0
             }
 
-        return MutationReport(
+        return report(
             totalMutants = mutants.size,
             killedCount = killedCount,
             survivedCount = survivedCount,
@@ -230,4 +298,20 @@ public class DefaultMutationExecutionPipeline(
     override fun close() {
         runner.close()
     }
+}
+
+private fun untrustedExecutionReport(executionTrust: SnippetExecutionTrust): MutationReport? {
+    if (executionTrust != SnippetExecutionTrust.UNTRUSTED) return null
+    return MutationReport(
+        totalMutants = 0,
+        killedCount = 0,
+        survivedCount = 0,
+        timeoutCount = 0,
+        compileErrorCount = 0,
+        mutationScore = 0.0,
+        results = emptyList(),
+        baselineError =
+            "Untrusted project code execution is not supported. " +
+                "Kronenberg only executes trusted local code; run untrusted repositories in a separate disposable environment.",
+    )
 }

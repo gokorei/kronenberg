@@ -2,6 +2,8 @@ package com.gokorei.kronenberg.model
 
 import kotlinx.serialization.Serializable
 
+private const val DEFAULT_COMPILE_TIMEOUT_MS: Long = 30_000L
+
 /**
  * Status outcome of an evaluated mutant.
  */
@@ -21,6 +23,12 @@ public enum class MutantStatus {
 
     /** The baseline code or test suite failed before any mutation was applied. */
     BASELINE_ERROR,
+}
+
+@Serializable
+public enum class SnippetExecutionTrust {
+    TRUSTED_LOCAL,
+    UNTRUSTED,
 }
 
 /**
@@ -91,6 +99,13 @@ public data class MutantResult(
     val failureMessage: String? = null,
 )
 
+@Serializable
+public data class CleanupDiagnostic(
+    val resource: String,
+    val operation: String,
+    val message: String,
+)
+
 /**
  * Aggregated mutation audit report across all evaluated mutants.
  */
@@ -104,6 +119,7 @@ public data class MutationReport(
     val mutationScore: Double,
     val results: List<MutantResult> = emptyList(),
     val baselineError: String? = null,
+    val cleanupDiagnostics: List<CleanupDiagnostic> = emptyList(),
 ) {
     public val isPassed: Boolean get() = survivedCount == 0 && baselineError == null
 }
@@ -116,10 +132,36 @@ public data class MutationConfig(
     val minScore: Double = 80.0,
     val timeoutMultiplier: Double = 3.0,
     val baselineTimeoutMs: Long = 1000L,
+    val compileTimeoutMs: Long = DEFAULT_COMPILE_TIMEOUT_MS,
     val higherOrderMutants: Boolean = false,
     val includeExtreme: Boolean = false,
     val maxMutants: Int? = null,
     val targetLines: List<Int>? = null,
     val enableCache: Boolean = false,
     val extraClasspath: List<String> = emptyList(),
-)
+    val executionTrust: SnippetExecutionTrust = SnippetExecutionTrust.TRUSTED_LOCAL,
+) {
+    public constructor(
+        minScore: Double,
+        timeoutMultiplier: Double,
+        baselineTimeoutMs: Long,
+        higherOrderMutants: Boolean,
+        includeExtreme: Boolean,
+        maxMutants: Int?,
+        targetLines: List<Int>?,
+        enableCache: Boolean,
+        extraClasspath: List<String>,
+    ) : this(
+        minScore,
+        timeoutMultiplier,
+        baselineTimeoutMs,
+        DEFAULT_COMPILE_TIMEOUT_MS,
+        higherOrderMutants,
+        includeExtreme,
+        maxMutants,
+        targetLines,
+        enableCache,
+        extraClasspath,
+        SnippetExecutionTrust.TRUSTED_LOCAL,
+    )
+}

@@ -19,6 +19,7 @@ class KronenbergPluginSpec {
         extension shouldBe extension
         extension!!.minScore.get() shouldBe 80.0
         extension.baselineTimeoutMs.get() shouldBe 2000L
+        extension.compileTimeoutMs.get() shouldBe 30_000L
 
         val task = project.tasks.findByName("kronenbergCheck") as? KronenbergAuditTask
         task shouldBe task
@@ -85,6 +86,14 @@ class KronenbergPluginSpec {
 
         val reportXml = File(testProjectDir, "build/reports/kronenberg/mutation-results.xml")
         reportXml.exists() shouldBe true
+        reportXml.readText() shouldContain "<testsuite name=\"Kronenberg Mutation Audit\""
+
+        val repeatedResult =
+            runner
+                .withArguments("kronenbergCheck", "--rerun-tasks", "--stacktrace")
+                .build()
+        repeatedResult.task(":kronenbergCheck")?.outcome shouldBe TaskOutcome.SUCCESS
+        reportHtml.readText() shouldContain "Kronenberg Mutation Audit"
         reportXml.readText() shouldContain "<testsuite name=\"Kronenberg Mutation Audit\""
     }
 

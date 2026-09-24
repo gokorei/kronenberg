@@ -2,8 +2,12 @@ package com.gokorei.kronenberg.runner
 
 import com.gokorei.kronenberg.model.MutantStatus
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
 import org.junit.jupiter.api.Test
+import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.io.path.createTempDirectory
+import kotlin.io.path.readText
 
 class FastSnippetRunnerSpec {
     private val runner: FastSnippetRunner = DefaultFastSnippetRunner()
@@ -21,13 +25,90 @@ class FastSnippetRunnerSpec {
     }
 
     @Test
-    fun `terminates infinite loops safely as TIMED_OUT within configured timeout threshold`() {
-        val tempDir = createTempDirectory("kronenberg-test-timeout")
+    fun `terminates infinite loops as TIMED_OUT only after worker termination`() {
+        val compiled = compiler.compile("fun main() { while (true) { } }")
         try {
-            val outcome = runner.run(tempDir, "SnippetKt", timeoutMs = 200L)
-            outcome.executionTimeMs shouldBe (outcome.executionTimeMs)
+            val output = compiled.shouldBeInstanceOf<CompileResult.Compiled>()
+            val outcome = runner.run(output.outDir, timeoutMs = 200L)
+            outcome.status shouldBe MutantStatus.TIMED_OUT
+            outcome.failureMessage!!.contains("terminated") shouldBe true
         } finally {
-            tempDir.toFile().deleteRecursively()
+            compiler.cleanup(compiled)
+        }
+    }
+
+    @Test
+    fun `terminates native blocking calls as TIMED_OUT`() {
+        val compiled = compiler.compile("fun main() { Thread.sleep(10_000L) }")
+        try {
+            val output = compiled.shouldBeInstanceOf<CompileResult.Compiled>()
+            runner.run(output.outDir, timeoutMs = 200L).status shouldBe MutantStatus.TIMED_OUT
+        } finally {
+            compiler.cleanup(compiled)
+        }
+    }
+
+    @Test
+    fun `terminates spawned child work when execution times out`() {
+        val pidFile = Files.createTempFile("kronenberg-child", ".pid")
+        val source =
+            """
+            import java.nio.file.Files
+            import java.nio.file.Path
+
+            fun main() {
+                val child = ProcessBuilder("/bin/sh", "-c", "sleep 30").start()
+                Files.writeString(Path.of("${pidFile.toAbsolutePath()}"), child.pid().toString())
+                child.waitFor()
+            }
+            """.trimIndent()
+        val compiled = compiler.compile(source)
+        try {
+            val output = compiled.shouldBeInstanceOf<CompileResult.Compiled>()
+            runner.run(output.outDir, timeoutMs = 2000L).status shouldBe MutantStatus.TIMED_OUT
+            val childPid = pidFile.readText().trim().toLong()
+            ProcessHandle.of(childPid).map { it.isAlive }.orElse(false) shouldBe false
+        } finally {
+            compiler.cleanup(compiled)
+            pidFile.toFile().delete()
+        }
+    }
+
+    @Test
+    fun `terminates spawned child work when execution returns normally`() {
+        val pidFile = Files.createTempFile("kronenberg-returning-child", ".pid")
+        val source =
+            """
+            import java.nio.file.Files
+            import java.nio.file.Path
+
+            fun main() {
+                val child = ProcessBuilder("/bin/sh", "-c", "sleep 30").start()
+                Files.writeString(Path.of("${pidFile.toAbsolutePath()}"), child.pid().toString())
+            }
+            """.trimIndent()
+        val compiled = compiler.compile(source)
+        try {
+            val output = compiled.shouldBeInstanceOf<CompileResult.Compiled>()
+            runner.run(output.outDir, timeoutMs = 2000L).status shouldBe MutantStatus.SURVIVED
+            val childPid = pidFile.readText().trim().toLong()
+            ProcessHandle.of(childPid).map { it.isAlive }.orElse(false) shouldBe false
+        } finally {
+            compiler.cleanup(compiled)
+            pidFile.toFile().delete()
+        }
+    }
+
+    @Test
+    fun `handles repeated execution timeouts without retaining workers`() {
+        val compiled = compiler.compile("fun main() { while (true) { } }")
+        try {
+            val output = compiled.shouldBeInstanceOf<CompileResult.Compiled>()
+            repeat(4) {
+                runner.run(output.outDir, timeoutMs = 100L).status shouldBe MutantStatus.TIMED_OUT
+            }
+        } finally {
+            compiler.cleanup(compiled)
         }
     }
 

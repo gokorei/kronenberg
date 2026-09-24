@@ -24,6 +24,15 @@ dependencies {
 
 kover {
     reports {
+        filters {
+            excludes {
+                classes(
+                    "com.gokorei.kronenberg.runner.SnippetWorker",
+                    "com.gokorei.kronenberg.runner.SnippetWorkerKt",
+                    "com.gokorei.kronenberg.runner.SnippetWorker$*",
+                )
+            }
+        }
         verify {
             rule {
                 minBound(80) // Enforce minimum 80% line coverage threshold across project

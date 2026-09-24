@@ -1,5 +1,6 @@
 package com.gokorei.kronenberg.runner
 
+import com.gokorei.kronenberg.model.CleanupDiagnostic
 import org.jetbrains.kotlin.cli.common.arguments.K2JVMCompilerArguments
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSourceLocation
@@ -11,7 +12,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * Diagnostic emitted by in-process K2 compilation.
+ * Diagnostic emitted by worker-isolated K2 compilation.
  */
 public data class CompilerDiagnostic(
     val severity: String,
@@ -21,7 +22,7 @@ public data class CompilerDiagnostic(
 )
 
 /**
- * Structured outcome of in-process snippet compilation.
+ * Structured outcome of worker-isolated snippet compilation.
  */
 public sealed class CompileResult {
     public data class Compiled(
@@ -34,28 +35,34 @@ public sealed class CompileResult {
         val message: String,
         val diagnostics: List<CompilerDiagnostic> = emptyList(),
     ) : CompileResult()
+
+    public data class TimedOut(
+        val message: String,
+        val diagnostics: List<CompilerDiagnostic> = emptyList(),
+    ) : CompileResult()
 }
 
 /**
- * In-process Kotlin K2 compiler contract.
+ * Worker-isolated Kotlin K2 compiler contract.
  */
 public interface SnippetCompiler {
     /**
-     * Compiles Kotlin source text into bytecode at a target directory in-process.
+     * Compiles Kotlin source text into bytecode at a target directory in a killable worker process.
      */
     public fun compile(
         sourceCode: String,
         extraClasspath: List<String> = emptyList(),
+        timeoutMs: Long = 30_000L,
     ): CompileResult
 
     /**
      * Cleans up temporary artifacts from a compilation pass.
      */
-    public fun cleanup(result: CompileResult)
+    public fun cleanup(result: CompileResult): List<CleanupDiagnostic>
 }
 
 /**
- * Default in-process compiler implementation using embedded K2 compiler.
+ * Default worker-isolated compiler implementation using embedded K2 compiler.
  */
 public class DefaultSnippetCompiler : SnippetCompiler {
     public companion object {
@@ -78,28 +85,78 @@ public class DefaultSnippetCompiler : SnippetCompiler {
         }
     }
 
+    @Suppress("ReturnCount")
     override fun compile(
         sourceCode: String,
         extraClasspath: List<String>,
+        timeoutMs: Long,
     ): CompileResult {
-        val tempDir: Path
-        val sourceFile: Path
-        val outDir: Path
+        val tempDir =
+            try {
+                Files.createTempDirectory("kronenberg-compile")
+            } catch (e: Exception) {
+                return CompileResult.Failed("Failed to create compilation workspace: ${e.message}")
+            }
+        val sourceFile = tempDir.resolve(SOURCE_FILE_NAME)
+        val outDir = tempDir.resolve("out")
         try {
-            tempDir = Files.createTempDirectory("kronenberg-compile")
-            sourceFile = tempDir.resolve(SOURCE_FILE_NAME)
-            outDir = tempDir.resolve("out")
             Files.createDirectories(outDir)
             Files.writeString(sourceFile, sourceCode)
         } catch (e: Exception) {
-            return CompileResult.Failed("Failed to prepare snippet for compilation: ${e.message}")
+            val cleanupDiagnostic = deleteTemporaryTree(tempDir)
+            val cleanupMessage = cleanupDiagnostic?.let { "; cleanup failed: ${it.message}" }.orEmpty()
+            return CompileResult.Failed("Failed to prepare snippet for compilation: ${e.message}$cleanupMessage")
         }
 
+        val requestFile = tempDir.resolve("request.properties")
+        val responseFile = tempDir.resolve("response.properties")
+        val request =
+            java.util.Properties().apply {
+                setProperty("mode", "compile")
+                setProperty("sourceFile", sourceFile.toString())
+                setProperty("outDir", outDir.toString())
+                setProperty("tempRoot", tempDir.toString())
+                setProperty("responseFile", responseFile.toString())
+                extraClasspath.filter { it.isNotBlank() }.forEachIndexed { index, entry ->
+                    setProperty("extraClasspath.$index", entry)
+                }
+            }
+        val result =
+            try {
+                Files.newOutputStream(requestFile).use { request.store(it, null) }
+                when (val workerResult = runWorkerProcess(requestFile, responseFile, timeoutMs)) {
+                    is WorkerProcessResult.TimedOut -> {
+                        CompileResult.TimedOut(
+                            "Compilation timed out after ${timeoutMs.coerceAtLeast(1L)}ms; worker terminated",
+                        )
+                    }
+
+                    is WorkerProcessResult.Completed -> {
+                        compileResultFromResponse(workerResult.response, tempDir, workerResult.exitCode)
+                    }
+                }
+            } catch (e: Throwable) {
+                CompileResult.Failed("Failed to execute compilation worker: ${e.message}")
+            }
+        if (result is CompileResult.Compiled) return result
+        val cleanupDiagnostic = deleteTemporaryTree(tempDir) ?: return result
+        return when (result) {
+            is CompileResult.Failed -> result.copy(message = "${result.message}; cleanup failed: ${cleanupDiagnostic.message}")
+            is CompileResult.TimedOut -> result.copy(message = "${result.message}; cleanup failed: ${cleanupDiagnostic.message}")
+            is CompileResult.Compiled -> result
+        }
+    }
+
+    internal fun compileInProcess(
+        sourceFile: Path,
+        outDir: Path,
+        tempRoot: Path,
+        extraClasspath: List<String>,
+    ): CompileResult {
         val effectiveClasspath =
             (extraClasspath + listOf(defaultClasspath))
                 .filter { it.isNotBlank() }
                 .joinToString(File.pathSeparator)
-
         val args =
             K2JVMCompilerArguments().apply {
                 destination = outDir.toString()
@@ -107,14 +164,12 @@ public class DefaultSnippetCompiler : SnippetCompiler {
                 freeArgs = listOf(sourceFile.toString())
                 jvmTarget = resolveTargetJvmVersion()
             }
-
         return try {
             val collector = CapturingMessageCollector()
             val compiler = K2JVMCompiler()
             compiler.exec(collector, Services.EMPTY, args)
-
             val diagnostics =
-                collector.reports.mapNotNull { report ->
+                collector.reports.map { report ->
                     val loc = report.location
                     CompilerDiagnostic(
                         severity = report.severity,
@@ -123,25 +178,55 @@ public class DefaultSnippetCompiler : SnippetCompiler {
                         message = report.message,
                     )
                 }
-
             if (collector.hasErrors()) {
                 val errorMessages = diagnostics.filter { it.severity == "error" }.joinToString("; ") { it.message }
-                tempDir.toFile().deleteRecursively()
                 CompileResult.Failed(errorMessages.ifBlank { "Compilation failed with errors" }, diagnostics)
             } else {
-                CompileResult.Compiled(outDir, diagnostics, tempDir)
+                CompileResult.Compiled(outDir, diagnostics, tempRoot)
             }
         } catch (e: Throwable) {
-            tempDir.toFile().deleteRecursively()
             CompileResult.Failed("Embedded compiler failed to execute: ${e.message}")
         }
     }
 
-    override fun cleanup(result: CompileResult) {
-        if (result is CompileResult.Compiled) {
-            runCatching { result.tempRoot.toFile().deleteRecursively() }
+    private fun compileResultFromResponse(
+        response: java.util.Properties,
+        tempRoot: Path,
+        exitCode: Int,
+    ): CompileResult {
+        val diagnostics = response.diagnostics()
+        return when (response.getProperty("status")) {
+            "compiled" -> {
+                val outDir = response.getProperty("outDir")
+                if (outDir == null) {
+                    CompileResult.Failed("Compilation worker exited without an output directory (code $exitCode)", diagnostics)
+                } else {
+                    CompileResult.Compiled(Path.of(outDir), diagnostics, tempRoot)
+                }
+            }
+
+            "failed" -> {
+                CompileResult.Failed(
+                    response.getProperty("message") ?: "Compilation failed (worker exit code $exitCode)",
+                    diagnostics,
+                )
+            }
+
+            else -> {
+                CompileResult.Failed(
+                    "Compilation worker returned an invalid result (exit code $exitCode)",
+                    diagnostics,
+                )
+            }
         }
     }
+
+    override fun cleanup(result: CompileResult): List<CleanupDiagnostic> =
+        if (result is CompileResult.Compiled) {
+            listOfNotNull(deleteTemporaryTree(result.tempRoot))
+        } else {
+            emptyList()
+        }
 
     private class CapturingMessageCollector : MessageCollector {
         data class Report(
@@ -174,4 +259,22 @@ public class DefaultSnippetCompiler : SnippetCompiler {
         val major = javaVer.removePrefix("1.").toIntOrNull() ?: 21
         return if (major in 8..21) major.toString() else "21"
     }
+}
+
+private fun java.util.Properties.diagnostics(): List<CompilerDiagnostic> {
+    val diagnostics = mutableListOf<CompilerDiagnostic>()
+    var index = 0
+    while (true) {
+        val severity = getProperty("diagnostic.$index.severity") ?: break
+        diagnostics.add(
+            CompilerDiagnostic(
+                severity = severity,
+                line = getProperty("diagnostic.$index.line")?.toIntOrNull(),
+                column = getProperty("diagnostic.$index.column")?.toIntOrNull(),
+                message = getProperty("diagnostic.$index.message").orEmpty(),
+            ),
+        )
+        index++
+    }
+    return diagnostics
 }
