@@ -32,6 +32,7 @@ private val jsonSerializer =
     Json {
         prettyPrint = true
         ignoreUnknownKeys = true
+        explicitNulls = false
     }
 
 /**
@@ -63,11 +64,22 @@ public object JUnitXmlReportExporter {
             sb.appendLine("    <testcase classname=\"$className\" name=\"$testName\" time=\"$durationSec\">")
             when (result.status) {
                 MutantStatus.SURVIVED -> {
-                    val msg = escapeXml("Mutant survived: replaced '${mutant.originalText}' with '${mutant.replacementText}'")
+                    val mutationMessage =
+                        if (mutant.originalText != null && mutant.replacementText != null) {
+                            "Mutant survived: replaced '${mutant.originalText}' with '${mutant.replacementText}'"
+                        } else {
+                            "Mutant survived at line ${mutant.line}, column ${mutant.column}"
+                        }
                     val body =
-                        escapeXml(
-                            "Mutant ID: ${mutant.id}\nMutator: ${mutant.mutatorName}\nLocation: line ${mutant.line}, column ${mutant.column}\nOriginal:\n${mutant.originalText}\nMutated:\n${mutant.replacementText}",
-                        )
+                        buildString {
+                            appendLine("Mutant ID: ${mutant.id}")
+                            appendLine("Mutator: ${mutant.mutatorName}")
+                            appendLine("Location: line ${mutant.line}, column ${mutant.column}")
+                            mutant.originalText?.let { appendLine("Original:\n$it") }
+                            mutant.replacementText?.let { appendLine("Mutated:\n$it") }
+                            mutant.mutatedSource?.let { appendLine("Mutated source:\n$it") }
+                        }.let(::escapeXml)
+                    val msg = escapeXml(mutationMessage)
                     sb.appendLine("        <failure message=\"$msg\" type=\"MutationSurvived\">$body</failure>")
                 }
 
@@ -220,6 +232,11 @@ public class AuditCommand :
         help = "Export Code Climate issue JSON report for surviving mutants",
     ).path(canBeDir = false)
 
+    private val includeFullSource: Boolean by option(
+        "--include-full-source",
+        help = "WARNING: include complete source in diagnostic reports; output may contain secrets",
+    ).flag(default = false)
+
     private val proposeTests: Boolean by option(
         "--propose-tests",
         help = "Synthesize and display template test method skeletons to kill surviving mutants",
@@ -232,6 +249,13 @@ public class AuditCommand :
     )
 
     override fun run() {
+        if (includeFullSource) {
+            echo(
+                "WARNING: --include-full-source emits complete source into diagnostic reports; output may contain secrets.",
+                err = true,
+            )
+        }
+
         val effectiveStaged = staged || preCommit
         val effectiveTimeout = if (preCommit && timeout == 2000L) 500L else timeout
         val effectiveHom = if (preCommit) false else hom
@@ -265,9 +289,9 @@ public class AuditCommand :
 
         val report: MutationReport =
             if (sourceDir != null) {
-                auditDirectory(pipeline, sourceDir!!, testDir, config, effectiveStaged, diff)
+                auditDirectory(pipeline, sourceDir!!, testDir, config, effectiveStaged, diff, includeFullSource)
             } else if (source != null && test != null) {
-                auditSingleFile(pipeline, source!!, test!!, config)
+                auditSingleFile(pipeline, source!!, test!!, config, includeFullSource)
             } else if (preCommit) {
                 val stagedFiles = GitDiffParser.extractStagedKotlinFiles()
                 if (stagedFiles.isEmpty()) {
@@ -275,7 +299,7 @@ public class AuditCommand :
                     return
                 }
                 echo("Git pre-commit: Found ${stagedFiles.size} staged Kotlin file(s).")
-                auditFiles(pipeline, stagedFiles, testDir, config)
+                auditFiles(pipeline, stagedFiles, testDir, config, includeFullSource = includeFullSource)
             } else {
                 echo("\u001B[31mError: Must provide either (--source and --test) or (--source-dir).\u001B[0m")
                 throw ProgramResult(1)
@@ -313,6 +337,7 @@ public class AuditCommand :
         src: Path,
         tst: Path,
         config: MutationConfig,
+        includeFullSource: Boolean,
     ): MutationReport =
         runBlocking {
             pipeline.execute(
@@ -320,6 +345,7 @@ public class AuditCommand :
                 testCode = tst.readText(),
                 config = config,
                 sourceFilePath = src.fileName.toString(),
+                includeFullSource = includeFullSource,
             )
         }
 
@@ -330,6 +356,7 @@ public class AuditCommand :
         config: MutationConfig,
         staged: Boolean = false,
         diffRef: String? = null,
+        includeFullSource: Boolean = false,
     ): MutationReport {
         val srcFiles =
             Files
@@ -337,7 +364,16 @@ public class AuditCommand :
                 .filter { it.isRegularFile() && it.toString().endsWith(".kt") }
                 .toList()
 
-        return auditFiles(pipeline, srcFiles, tstDir ?: srcDir, config, staged, diffRef, baseDir = srcDir)
+        return auditFiles(
+            pipeline,
+            srcFiles,
+            tstDir ?: srcDir,
+            config,
+            staged,
+            diffRef,
+            includeFullSource,
+            baseDir = srcDir,
+        )
     }
 
     private fun auditFiles(
@@ -347,6 +383,7 @@ public class AuditCommand :
         baseConfig: MutationConfig,
         staged: Boolean = false,
         diffRef: String? = null,
+        includeFullSource: Boolean = false,
         baseDir: Path? = null,
     ): MutationReport {
         val allResults = mutableListOf<MutantResult>()
@@ -399,6 +436,7 @@ public class AuditCommand :
                             testCode = testCode,
                             config = fileConfig,
                             sourceFilePath = relPath,
+                            includeFullSource = includeFullSource,
                         )
                     }
                 totalMutants += fileReport.totalMutants
@@ -463,8 +501,6 @@ public class AuditCommand :
                 val m = res.mutant
                 val srcLabel = m.filePath ?: source?.fileName?.toString() ?: "source"
                 echo(" [$idx] ${m.mutatorName} at $srcLabel:${m.line}:${m.column}")
-                echo("     - Original:    ${m.originalText}")
-                echo("     + Replacement: ${m.replacementText}")
             }
 
             if (proposeTests) {

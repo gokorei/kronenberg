@@ -1,20 +1,24 @@
 package com.gokorei.kronenberg.runner
 
-import com.gokorei.kronenberg.model.AstMutant
 import com.gokorei.kronenberg.model.MutantResult
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationConfig
 import com.gokorei.kronenberg.model.MutatorCategory
+import com.gokorei.kronenberg.model.ReportMutant
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
+import java.nio.file.attribute.PosixFileAttributeView
+import java.nio.file.attribute.PosixFilePermissions
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 
@@ -118,7 +122,7 @@ public class DefaultMutationResultCache(
         entry: CachedMutationResult,
     ): CachePersistenceResult =
         try {
-            Files.createDirectories(dir)
+            createPrivateCacheDirectory(dir)
             withFileLock(dir) {
                 when (val disk = readDocument(dir)) {
                     is CacheRead.Failed -> {
@@ -162,6 +166,7 @@ public class DefaultMutationResultCache(
             if (!Files.exists(dir)) {
                 CachePersistenceResult.Loaded
             } else {
+                setOwnerOnlyPermissions(dir, directory = true)
                 withFileLock(dir) {
                     when (val disk = readDocument(dir)) {
                         is CacheRead.Failed -> {
@@ -190,13 +195,16 @@ public class DefaultMutationResultCache(
         if (!Files.exists(cacheFile)) return CacheRead.Success(emptyMap())
 
         return try {
+            setOwnerOnlyPermissions(cacheFile, directory = false)
             if (Files.size(cacheFile) > MAX_FILE_SIZE_BYTES) {
                 CacheRead.Failed(CachePersistenceResult.Failed("Cache file exceeds the size limit"))
             } else {
                 val document = json.decodeFromString<CacheDocument>(Files.readString(cacheFile))
                 when {
                     document.schemaVersion != SCHEMA_VERSION -> {
-                        CacheRead.Failed(CachePersistenceResult.Failed("Unsupported cache schema version"))
+                        val sanitized = json.encodeToString(CacheDocument(SCHEMA_VERSION, emptyMap()))
+                        writeDocumentAtomically(dir, sanitized)
+                        CacheRead.Success(emptyMap())
                     }
 
                     document.entries.size > MAX_ENTRIES -> {
@@ -220,7 +228,7 @@ public class DefaultMutationResultCache(
         text: String,
     ) {
         val cacheFile = dir.resolve(CACHE_FILE_NAME)
-        val temporaryFile = Files.createTempFile(dir, ".mutations-cache-", ".tmp")
+        val temporaryFile = createPrivateTempFile(dir)
         try {
             val bytes = text.toByteArray(Charsets.UTF_8)
             FileChannel
@@ -245,6 +253,7 @@ public class DefaultMutationResultCache(
             } catch (_: AtomicMoveNotSupportedException) {
                 Files.move(temporaryFile, cacheFile, StandardCopyOption.REPLACE_EXISTING)
             }
+            setOwnerOnlyPermissions(cacheFile, directory = false)
         } finally {
             Files.deleteIfExists(temporaryFile)
         }
@@ -256,10 +265,10 @@ public class DefaultMutationResultCache(
     ): T {
         val lock = processLocks.computeIfAbsent(dir) { Any() }
         return synchronized(lock) {
+            val lockFile = createPrivateLockFile(dir, LOCK_FILE_NAME)
             FileChannel
                 .open(
-                    dir.resolve(LOCK_FILE_NAME),
-                    StandardOpenOption.CREATE,
+                    lockFile,
                     StandardOpenOption.WRITE,
                 ).use { channel ->
                     channel.lock().use {
@@ -276,31 +285,24 @@ public class DefaultMutationResultCache(
             category = mutant.category,
             line = mutant.line,
             column = mutant.column,
-            originalText = mutant.originalText,
-            replacementText = mutant.replacementText,
             filePath = mutant.filePath,
             status = status,
             executionTimeMs = executionTimeMs,
-            failureMessage = failureMessage,
         )
 
     private fun CachedMutationResult.toMutantResult(): MutantResult =
         MutantResult(
             mutant =
-                AstMutant(
+                ReportMutant(
                     id = id,
                     mutatorName = mutatorName,
                     category = category,
                     line = line,
                     column = column,
-                    originalText = originalText,
-                    replacementText = replacementText,
-                    mutatedSource = "",
                     filePath = filePath,
                 ),
             status = status,
             executionTimeMs = executionTimeMs,
-            failureMessage = failureMessage,
         )
 
     private sealed interface CacheRead {
@@ -326,16 +328,13 @@ public class DefaultMutationResultCache(
         val category: MutatorCategory,
         val line: Int,
         val column: Int,
-        val originalText: String,
-        val replacementText: String,
         val filePath: String? = null,
         val status: MutantStatus,
         val executionTimeMs: Long,
-        val failureMessage: String? = null,
     )
 
     public companion object {
-        public const val SCHEMA_VERSION: Int = 1
+        public const val SCHEMA_VERSION: Int = 2
         public const val MAX_ENTRIES: Int = 512
         public const val MAX_FILE_SIZE_BYTES: Long = 4L * 1024L * 1024L
         public const val CACHE_FILE_NAME: String = "mutations-cache.json"
@@ -346,6 +345,77 @@ public class DefaultMutationResultCache(
         private val processLocks = ConcurrentHashMap<Path, Any>()
     }
 }
+
+private fun createPrivateCacheDirectory(dir: Path) {
+    try {
+        Files.createDirectories(dir, PosixFilePermissions.asFileAttribute(PRIVATE_DIRECTORY_PERMISSIONS))
+    } catch (_: UnsupportedOperationException) {
+        Files.createDirectories(dir)
+    }
+    setOwnerOnlyPermissions(dir, directory = true)
+}
+
+private fun createPrivateTempFile(dir: Path): Path =
+    try {
+        Files.createTempFile(
+            dir,
+            ".mutations-cache-",
+            ".tmp",
+            PosixFilePermissions.asFileAttribute(PRIVATE_FILE_PERMISSIONS),
+        )
+    } catch (_: UnsupportedOperationException) {
+        Files.createTempFile(dir, ".mutations-cache-", ".tmp").also {
+            setOwnerOnlyPermissions(it, directory = false)
+        }
+    }
+
+private fun createPrivateLockFile(
+    dir: Path,
+    lockFileName: String,
+): Path {
+    val lockFile = dir.resolve(lockFileName)
+    try {
+        Files.createFile(lockFile, PosixFilePermissions.asFileAttribute(PRIVATE_FILE_PERMISSIONS))
+    } catch (_: FileAlreadyExistsException) {
+        setOwnerOnlyPermissions(lockFile, directory = false)
+    } catch (_: UnsupportedOperationException) {
+        if (!Files.exists(lockFile)) {
+            Files.createFile(lockFile).also { setOwnerOnlyPermissions(it, directory = false) }
+        } else {
+            setOwnerOnlyPermissions(lockFile, directory = false)
+        }
+    }
+    return lockFile
+}
+
+private fun setOwnerOnlyPermissions(
+    path: Path,
+    directory: Boolean,
+) {
+    if (Files.getFileStore(path).supportsFileAttributeView(PosixFileAttributeView::class.java)) {
+        val permissions =
+            if (directory) {
+                PRIVATE_DIRECTORY_PERMISSIONS
+            } else {
+                PRIVATE_FILE_PERMISSIONS
+            }
+        Files.setPosixFilePermissions(path, permissions)
+        return
+    }
+
+    val file = path.toFile()
+    val secured =
+        file.setReadable(false, false) &&
+            file.setWritable(false, false) &&
+            file.setExecutable(false, false) &&
+            file.setReadable(true, true) &&
+            file.setWritable(true, true) &&
+            (!directory || file.setExecutable(true, true))
+    if (!secured) throw IOException("Unable to secure cache permissions for $path")
+}
+
+private val PRIVATE_FILE_PERMISSIONS = PosixFilePermissions.fromString("rw-------")
+private val PRIVATE_DIRECTORY_PERMISSIONS = PosixFilePermissions.fromString("rwx------")
 
 private fun trimMemoryCache(memoryCache: LinkedHashMap<String, *>) {
     while (memoryCache.size > DefaultMutationResultCache.MAX_ENTRIES) {

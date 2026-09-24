@@ -241,8 +241,8 @@ public abstract class KronenbergAuditTask
                         appendLine("          <td><span class=\"badge $badgeClass\">${res.status}</span></td>")
                         appendLine("          <td>$loc</td>")
                         appendLine("          <td>${res.mutant.mutatorName}</td>")
-                        appendLine("          <td><code>${escapeHtml(res.mutant.originalText)}</code></td>")
-                        appendLine("          <td><code>${escapeHtml(res.mutant.replacementText)}</code></td>")
+                        appendLine("          <td><code>${escapeHtml(res.mutant.originalText.orEmpty())}</code></td>")
+                        appendLine("          <td><code>${escapeHtml(res.mutant.replacementText.orEmpty())}</code></td>")
                         appendLine("        </tr>")
                     }
                     appendLine("      </tbody>")
@@ -280,14 +280,17 @@ public abstract class KronenbergAuditTask
                 sb.appendLine("    <testcase classname=\"$className\" name=\"$testName\" time=\"$durationSec\">")
                 when (result.status) {
                     MutantStatus.SURVIVED -> {
-                        val orig = mutant.originalText
-                        val repl = mutant.replacementText
-                        val msg = escapeXml("Mutant survived: replaced '$orig' with '$repl'")
+                        val mutationMessage =
+                            if (mutant.originalText != null && mutant.replacementText != null) {
+                                "Mutant survived: replaced '${mutant.originalText}' with '${mutant.replacementText}'"
+                            } else {
+                                "Mutant survived at line ${mutant.line}, column ${mutant.column}"
+                            }
+                        val msg = escapeXml(mutationMessage)
                         val body =
                             escapeXml(
                                 "Mutant ID: ${mutant.id}\nMutator: ${mutant.mutatorName}\n" +
-                                    "Location: line ${mutant.line}, column ${mutant.column}\n" +
-                                    "Original:\n$orig\nMutated:\n$repl",
+                                    "Location: line ${mutant.line}, column ${mutant.column}",
                             )
                         sb.appendLine("        <failure message=\"$msg\" type=\"MutationSurvived\">$body</failure>")
                     }

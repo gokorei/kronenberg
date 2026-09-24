@@ -5,6 +5,7 @@ import com.github.ajalt.clikt.testing.test
 import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import org.junit.jupiter.api.Test
 import kotlin.io.path.createTempDirectory
@@ -316,6 +317,80 @@ class KronenbergCliSpec {
             srcFile.toFile().delete()
             testFile.toFile().delete()
             codeClimateFile.toFile().delete()
+        }
+    }
+
+    @Test
+    fun `default report artifacts omit complete source and secrets`() {
+        val secret = "S9WT162W_REPORT_SECRET"
+        val srcFile = createTempFile("RedactedReport", ".kt")
+        val testFile = createTempFile("RedactedReportTest", ".kt")
+        val reportDir = createTempDirectory("redacted-reports")
+        try {
+            srcFile.writeText(
+                """
+                private const val SOURCE_SECRET = "$secret"
+                fun secretValue(): String = SOURCE_SECRET
+                fun add(a: Int, b: Int): Int = a + b
+                """.trimIndent(),
+            )
+            testFile.writeText("fun main() { println(add(2, 3)) }")
+            val xmlFile = reportDir.resolve("report.xml")
+            val htmlFile = reportDir.resolve("report.html")
+            val sarifFile = reportDir.resolve("report.sarif")
+            val codeClimateFile = reportDir.resolve("codeclimate.json")
+
+            val result =
+                KronenbergCli()
+                    .subcommands(AuditCommand())
+                    .test(
+                        "audit --source $srcFile --test $testFile --json " +
+                            "--junit-xml $xmlFile --html-report $htmlFile " +
+                            "--sarif $sarifFile --codeclimate $codeClimateFile --threshold 0.0",
+                    )
+
+            result.statusCode shouldBe 0
+            result.output shouldNotContain secret
+            xmlFile.readText() shouldNotContain secret
+            htmlFile.readText() shouldNotContain secret
+            sarifFile.readText() shouldNotContain secret
+            codeClimateFile.readText() shouldNotContain secret
+        } finally {
+            srcFile.toFile().delete()
+            testFile.toFile().delete()
+            reportDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `full source diagnostic option emits warning and includes source only when explicit`() {
+        val secret = "S9WT162W_EXPLICIT_SOURCE_SECRET"
+        val srcFile = createTempFile("DiagnosticReport", ".kt")
+        val testFile = createTempFile("DiagnosticReportTest", ".kt")
+        try {
+            srcFile.writeText(
+                """
+                private const val SOURCE_SECRET = "$secret"
+                fun secretValue(): String = SOURCE_SECRET
+                fun add(a: Int, b: Int): Int = a + b
+                """.trimIndent(),
+            )
+            testFile.writeText("fun main() { println(add(2, 3)) }")
+
+            val result =
+                KronenbergCli()
+                    .subcommands(AuditCommand())
+                    .test(
+                        "audit --source $srcFile --test $testFile --json --include-full-source --threshold 0.0",
+                    )
+
+            result.statusCode shouldBe 0
+            result.stderr shouldContain "WARNING"
+            result.stderr shouldContain "complete source"
+            result.output shouldContain secret
+        } finally {
+            srcFile.toFile().delete()
+            testFile.toFile().delete()
         }
     }
 

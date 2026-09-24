@@ -6,6 +6,7 @@ import com.gokorei.kronenberg.model.MutantResult
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationConfig
 import com.gokorei.kronenberg.model.MutationReport
+import com.gokorei.kronenberg.model.ReportMutant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -23,6 +24,7 @@ public interface MutationExecutionPipeline : AutoCloseable {
         testCode: String,
         config: MutationConfig = MutationConfig(),
         sourceFilePath: String? = null,
+        includeFullSource: Boolean = false,
     ): MutationReport
 }
 
@@ -40,6 +42,7 @@ public class DefaultMutationExecutionPipeline(
         testCode: String,
         config: MutationConfig,
         sourceFilePath: String?,
+        includeFullSource: Boolean,
     ): MutationReport {
         val trimmedSource = sourceCode.trim()
         val trimmedTest = testCode.trim()
@@ -133,7 +136,7 @@ public class DefaultMutationExecutionPipeline(
         }
 
         // 3. Execute mutants in parallel via coroutines
-        val results: List<MutantResult> =
+        val results: List<ExecutionResult> =
             coroutineScope {
                 mutants
                     .map { mutant ->
@@ -147,7 +150,9 @@ public class DefaultMutationExecutionPipeline(
 
                             if (cacheKey != null) {
                                 val cachedResult = cache.get(cacheKey)
-                                if (cachedResult != null) return@async cachedResult.copy(mutant = mutant)
+                                if (cachedResult != null) {
+                                    return@async cachedResult.toExecutionResult(mutant, includeFullSource)
+                                }
                             }
 
                             val combinedMutantCode =
@@ -159,7 +164,7 @@ public class DefaultMutationExecutionPipeline(
 
                             val evalResult =
                                 if (SnippetAstSafetyChecker.containsHostTerminatingCalls(combinedMutantCode)) {
-                                    MutantResult(
+                                    ExecutionResult(
                                         mutant = mutant,
                                         status = MutantStatus.KILLED,
                                         executionTimeMs = 0L,
@@ -169,7 +174,7 @@ public class DefaultMutationExecutionPipeline(
                                     val compiledMutant = compiler.compile(combinedMutantCode, extraClasspath = config.extraClasspath)
 
                                     if (compiledMutant !is CompileResult.Compiled) {
-                                        MutantResult(
+                                        ExecutionResult(
                                             mutant = mutant,
                                             status = MutantStatus.COMPILE_ERROR,
                                             executionTimeMs = 0L,
@@ -183,7 +188,7 @@ public class DefaultMutationExecutionPipeline(
                                                     timeoutMs = calibratedTimeoutMs,
                                                     extraClasspath = config.extraClasspath,
                                                 )
-                                            MutantResult(
+                                            ExecutionResult(
                                                 mutant = mutant,
                                                 status = outcome.status,
                                                 executionTimeMs = outcome.executionTimeMs,
@@ -196,7 +201,7 @@ public class DefaultMutationExecutionPipeline(
                                 }
 
                             if (cacheKey != null) {
-                                cache.put(cacheKey, evalResult)
+                                cache.put(cacheKey, evalResult.toReport(includeFullSource = false))
                             }
                             evalResult
                         }
@@ -223,7 +228,7 @@ public class DefaultMutationExecutionPipeline(
             timeoutCount = timeoutCount,
             compileErrorCount = compileErrorCount,
             mutationScore = (score * 10.0).toInt() / 10.0,
-            results = results,
+            results = results.map { it.toReport(includeFullSource) },
         )
     }
 
@@ -231,3 +236,40 @@ public class DefaultMutationExecutionPipeline(
         runner.close()
     }
 }
+
+private data class ExecutionResult(
+    val mutant: AstMutant,
+    val status: MutantStatus,
+    val executionTimeMs: Long,
+    val failureMessage: String?,
+)
+
+private fun MutantResult.toExecutionResult(
+    mutant: AstMutant,
+    includeFullSource: Boolean,
+): ExecutionResult =
+    ExecutionResult(
+        mutant = mutant,
+        status = status,
+        executionTimeMs = executionTimeMs,
+        failureMessage = failureMessage.takeIf { includeFullSource },
+    )
+
+private fun ExecutionResult.toReport(includeFullSource: Boolean): MutantResult =
+    MutantResult(
+        mutant =
+            ReportMutant(
+                id = mutant.id,
+                mutatorName = mutant.mutatorName,
+                category = mutant.category,
+                line = mutant.line,
+                column = mutant.column,
+                filePath = mutant.filePath,
+                originalText = mutant.originalText.takeIf { includeFullSource },
+                replacementText = mutant.replacementText.takeIf { includeFullSource },
+                mutatedSource = mutant.mutatedSource.takeIf { includeFullSource },
+            ),
+        status = status,
+        executionTimeMs = executionTimeMs,
+        failureMessage = failureMessage,
+    )

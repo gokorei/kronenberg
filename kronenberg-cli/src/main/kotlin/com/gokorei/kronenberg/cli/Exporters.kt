@@ -163,9 +163,17 @@ public object HtmlReportExporter {
                     appendLine("          <td><span class=\"badge $badgeClass\">$badgeText</span></td>")
                     appendLine("          <td>${m.mutatorName}</td>")
                     appendLine("          <td>${escapeHtml(locationText)}</td>")
-                    appendLine("          <td><code>${escapeHtml(m.originalText)}</code></td>")
-                    appendLine("          <td><code>${escapeHtml(m.replacementText)}</code></td>")
-                    appendLine("          <td>${escapeHtml(res.failureMessage.orEmpty())}</td>")
+                    appendLine("          <td><code>${escapeHtml(m.originalText.orEmpty())}</code></td>")
+                    appendLine("          <td><code>${escapeHtml(m.replacementText.orEmpty())}</code></td>")
+                    val details =
+                        buildString {
+                            res.failureMessage?.let(::appendLine)
+                            m.mutatedSource?.let {
+                                appendLine("Mutated source:")
+                                append(it)
+                            }
+                        }
+                    appendLine("          <td>${escapeHtml(details)}</td>")
                     appendLine("        </tr>")
                 }
                 appendLine("      </tbody>")
@@ -221,7 +229,21 @@ public object SarifReportExporter {
                         put("ruleId", m.mutatorName)
                         put("level", "warning")
                         putJsonObject("message") {
-                            val msg = "Surviving Mutant: Replaced '${m.originalText}' with '${m.replacementText}' (line ${m.line})"
+                            val mutationMessage =
+                                if (m.originalText != null && m.replacementText != null) {
+                                    "Replaced '${m.originalText}' with '${m.replacementText}' (line ${m.line})"
+                                } else {
+                                    "Surviving mutant at line ${m.line}"
+                                }
+                            val msg =
+                                buildString {
+                                    append("Surviving Mutant: ")
+                                    append(mutationMessage)
+                                    m.mutatedSource?.let {
+                                        append("\n\nMutated source:\n")
+                                        append(it)
+                                    }
+                                }
                             put("text", msg)
                         }
                         putJsonArray("locations") {
@@ -288,8 +310,14 @@ public object CodeClimateReportExporter {
                 .map { res ->
                     val m = res.mutant
                     val path = m.filePath ?: sourceFilePath
+                    val mutationMessage =
+                        if (m.originalText != null && m.replacementText != null) {
+                            "replaced '${m.originalText}' with '${m.replacementText}'"
+                        } else {
+                            "reported at line ${m.line}"
+                        }
                     val description =
-                        "Surviving mutation (${m.mutatorName}): replaced '${m.originalText}' with '${m.replacementText}'. " +
+                        "Surviving mutation (${m.mutatorName}): $mutationMessage. " +
                             "Verify test coverage for this condition."
                     val fingerprint = "$path:${m.line}:${m.mutatorName}:${m.id}".hashCode().toString()
 
@@ -302,7 +330,13 @@ public object CodeClimateReportExporter {
                             buildJsonObject {
                                 put(
                                     "body",
-                                    "Mutant ID: ${m.id}\nMutator: ${m.mutatorName}\nOriginal:\n${m.originalText}\nReplacement:\n${m.replacementText}",
+                                    buildString {
+                                        appendLine("Mutant ID: ${m.id}")
+                                        appendLine("Mutator: ${m.mutatorName}")
+                                        m.originalText?.let { appendLine("Original:\n$it") }
+                                        m.replacementText?.let { appendLine("Replacement:\n$it") }
+                                        m.mutatedSource?.let { appendLine("Mutated source:\n$it") }
+                                    },
                                 )
                             },
                         )
