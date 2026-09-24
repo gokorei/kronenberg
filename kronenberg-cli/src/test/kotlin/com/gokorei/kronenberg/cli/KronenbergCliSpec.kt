@@ -346,4 +346,67 @@ class KronenbergCliSpec {
             testFile.toFile().delete()
         }
     }
+
+    @Test
+    fun `diff audit and downstream outputs use original source coordinates`() {
+        val repository = createTempDirectory("coordinates-git")
+        val testFile = createTempFile("CoordinatesTest", ".kt")
+        val htmlFile = createTempFile("coordinates-report", ".html")
+        val sarifFile = createTempFile("coordinates-report", ".sarif")
+        val codeClimateFile = createTempFile("coordinates-report", ".json")
+        val sourceFile = repository.resolve("Coordinates.kt")
+        try {
+            runGit(repository, "init")
+            runGit(repository, "config", "user.email", "test@example.com")
+            runGit(repository, "config", "user.name", "Kronenberg Test")
+            sourceFile.writeText("\r\n\r\nfun evaluate(π: Int): Int {\r\n    return π\r\n}\r\n")
+            runGit(repository, "add", "Coordinates.kt")
+            runGit(repository, "commit", "-m", "baseline")
+            sourceFile.writeText(
+                "\r\n\r\nfun evaluate(π: Int): Int {\r\n    if (π > 10) return π * 2\r\n    return π\r\n}\r\n",
+            )
+            testFile.writeText("fun main() { check(evaluate(5) == 5) }")
+
+            val cli = KronenbergCli().subcommands(AuditCommand())
+            val result =
+                cli.test(
+                    "audit --source $sourceFile --test $testFile --diff HEAD --hom --propose-tests " +
+                        "--html-report $htmlFile --sarif $sarifFile --codeclimate $codeClimateFile --threshold 0.0",
+                )
+
+            result.statusCode shouldBe 0
+            result.output shouldContain "RelationalBoundaryMutator at Coordinates.kt:4:11"
+            result.output shouldContain "CompoundHigherOrderMutator at Coordinates.kt:4:11"
+            result.output shouldContain "in evaluate at line 4"
+            result.output shouldContain "Proposal #0 for RelationalBoundaryMutator (Line 4)"
+            htmlFile.readText() shouldContain "Coordinates.kt:4:11"
+            sarifFile.readText() shouldContain "\"startLine\": 4"
+            sarifFile.readText() shouldContain "\"startColumn\": 11"
+            codeClimateFile.readText() shouldContain "\"begin\": 4"
+            codeClimateFile.readText() shouldContain "\"end\": 4"
+        } finally {
+            repository.toFile().deleteRecursively()
+            testFile.toFile().delete()
+            htmlFile.toFile().delete()
+            sarifFile.toFile().delete()
+            codeClimateFile.toFile().delete()
+        }
+    }
+
+    private fun runGit(
+        repository: java.nio.file.Path,
+        vararg arguments: String,
+    ) {
+        val command =
+            buildList {
+                add("git")
+                add("-C")
+                add(repository.toString())
+                addAll(arguments)
+            }
+        val process = ProcessBuilder(command).redirectErrorStream(true).start()
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+        check(exitCode == 0) { output }
+    }
 }

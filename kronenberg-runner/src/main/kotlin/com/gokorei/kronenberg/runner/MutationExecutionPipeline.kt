@@ -41,10 +41,9 @@ public class DefaultMutationExecutionPipeline(
         config: MutationConfig,
         sourceFilePath: String?,
     ): MutationReport {
-        val trimmedSource = sourceCode.trim()
         val trimmedTest = testCode.trim()
-        val parsedTest = TestHarnessSynthesizer.parseTestCode(trimmedTest, trimmedSource)
-        val baselineCombined = TestHarnessSynthesizer.mergeSourceWithParsedTest(trimmedSource, parsedTest, null)
+        val parsedTest = TestHarnessSynthesizer.parseTestCode(trimmedTest, sourceCode)
+        val baselineCombined = TestHarnessSynthesizer.mergeSourceWithParsedTest(sourceCode, parsedTest, null)
 
         // 0. Safety pre-flight check
         if (SnippetAstSafetyChecker.containsHostTerminatingCalls(baselineCombined)) {
@@ -119,7 +118,7 @@ public class DefaultMutationExecutionPipeline(
                 .coerceIn(50L, 10_000L)
 
         // 2. Generate AST mutants
-        val mutants = generator.generateMutants(trimmedSource, config, filePath = sourceFilePath)
+        val mutants = generator.generateMutants(sourceCode, config, filePath = sourceFilePath)
         if (mutants.isEmpty()) {
             return MutationReport(
                 totalMutants = 0,

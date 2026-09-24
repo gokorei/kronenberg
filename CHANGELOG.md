@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub Actions CodeQL security scanning workflow (`.github/workflows/codeql.yml`).
 - Automated GitHub Wiki synchronization workflow (`.github/workflows/wiki-sync.yml`).
 
+### Fixed
+- Preserved original source line and column coordinates when leading or trailing whitespace is present across diff filtering, mutant reports, proposals, and exported reports.
+
 ## [0.1.0] - 2026-09-12
 
 ### Added

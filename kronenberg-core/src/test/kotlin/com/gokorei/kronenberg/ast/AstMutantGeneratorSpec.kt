@@ -99,4 +99,34 @@ class AstMutantGeneratorSpec {
         // Offset 12 = start of 'line3' -> line 3, col 1
         computeLineAndColumn(source, 12) shouldBe Pair(3, 1)
     }
+
+    @Test
+    fun `preserves original coordinates for first-order and higher-order mutants`() {
+        val source = "\n\nfun isPositive(value: Int): Boolean = value > 0 + 1\n\n"
+        val mutants =
+            generator.generateMutants(
+                source,
+                MutationConfig(higherOrderMutants = true, targetLines = listOf(3)),
+            )
+
+        val firstOrder = mutants.first { it.mutatorName == "RelationalBoundaryMutator" }
+        firstOrder.line shouldBe 3
+        firstOrder.column shouldBe 45
+        firstOrder.mutatedSource.startsWith("\n\n") shouldBe true
+
+        val higherOrder = mutants.first { it.mutatorName == "CompoundHigherOrderMutator" }
+        higherOrder.line shouldBe 3
+        higherOrder.column shouldBe 45
+        higherOrder.mutatedSource.startsWith("\n\n") shouldBe true
+    }
+
+    @Test
+    fun `handles empty unicode CRLF and EOF coordinates`() {
+        computeLineAndColumn("", 0) shouldBe Pair(1, 1)
+
+        val source = "π\r\n😀"
+        computeLineAndColumn(source, 1) shouldBe Pair(1, 2)
+        computeLineAndColumn(source, source.indexOf("😀")) shouldBe Pair(2, 1)
+        computeLineAndColumn(source, source.length) shouldBe Pair(2, 3)
+    }
 }
