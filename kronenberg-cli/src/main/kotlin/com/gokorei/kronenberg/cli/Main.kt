@@ -124,8 +124,9 @@ public class KronenbergCli :
     }
 }
 
-public class AuditCommand :
-    CliktCommand(
+public class AuditCommand internal constructor(
+    private val gitProcessRunner: GitProcessRunner = DefaultGitProcessRunner,
+) : CliktCommand(
         name = "audit",
     ) {
     private val source: Path? by option(
@@ -239,7 +240,9 @@ public class AuditCommand :
         val pipeline = DefaultMutationExecutionPipeline()
         val changedLines =
             if (source != null && (diff != null || effectiveStaged)) {
-                GitDiffParser.extractChangedLines(source!!, diff, effectiveStaged)
+                GitDiffParser
+                    .diffResult(source!!, diff, effectiveStaged, GitProcessOptions(runner = gitProcessRunner))
+                    .valueOrGitFailure()
             } else {
                 null
             }
@@ -269,7 +272,10 @@ public class AuditCommand :
             } else if (source != null && test != null) {
                 auditSingleFile(pipeline, source!!, test!!, config)
             } else if (preCommit) {
-                val stagedFiles = GitDiffParser.extractStagedKotlinFiles()
+                val stagedFiles =
+                    GitDiffParser
+                        .stagedKotlinFilesResult(options = GitProcessOptions(runner = gitProcessRunner))
+                        .valueOrGitFailure()
                 if (stagedFiles.isEmpty()) {
                     echo("\u001B[32m✔ Git pre-commit: No staged Kotlin files to audit.\u001B[0m")
                     return
@@ -359,7 +365,9 @@ public class AuditCommand :
         for (srcFile in srcFiles) {
             val fileChangedLines =
                 if (staged || diffRef != null) {
-                    GitDiffParser.extractChangedLines(srcFile, diffRef, staged)
+                    GitDiffParser
+                        .diffResult(srcFile, diffRef, staged, GitProcessOptions(runner = gitProcessRunner))
+                        .valueOrGitFailure()
                 } else {
                     baseConfig.targetLines
                 }
@@ -438,6 +446,29 @@ public class AuditCommand :
                 parent.resolve("${baseName}Spec.kt"),
             )
         return candidates.firstOrNull { Files.isRegularFile(it) }
+    }
+
+    private fun <T> GitOperationResult<T>.valueOrGitFailure(): T =
+        when (this) {
+            is GitOperationResult.Success -> value
+            is GitOperationResult.Failure -> failGit(this)
+        }
+
+    private fun failGit(failure: GitOperationResult.Failure): Nothing {
+        val message =
+            when (failure.kind) {
+                GitFailureKind.STARTUP_FAILED -> "Git process could not start: ${failure.message}"
+                GitFailureKind.NON_ZERO_EXIT -> "Git command failed with exit code ${failure.exitCode ?: "unknown"}"
+                GitFailureKind.TIMED_OUT -> failure.message
+                GitFailureKind.OUTPUT_LIMIT_EXCEEDED -> failure.message
+                GitFailureKind.OUTPUT_READ_FAILED -> "Git output could not be read: ${failure.message}"
+                GitFailureKind.MALFORMED_OUTPUT -> failure.message
+                GitFailureKind.INVALID_REFERENCE -> failure.message
+                GitFailureKind.INTERRUPTED -> "Git process was interrupted: ${failure.message}"
+            }
+        val stderr = failure.stderr.trim()
+        echo("Error: $message${if (stderr.isEmpty()) "" else ": $stderr"}", err = true)
+        throw ProgramResult(1)
     }
 
     private fun renderTerminalReport(report: MutationReport) {
