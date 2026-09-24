@@ -16,7 +16,9 @@ public class KronenbergPlugin : Plugin<Project> {
             project.tasks.register("kronenbergCheck", KronenbergAuditTask::class.java) { task ->
                 task.minScore.convention(extension.minScore)
                 task.baselineTimeoutMs.convention(extension.baselineTimeoutMs)
+                task.compileTimeoutMs.convention(extension.compileTimeoutMs)
                 task.includeExtreme.convention(extension.includeExtreme)
+
                 task.higherOrderMutants.convention(extension.higherOrderMutants)
                 if (extension.maxMutants.isPresent) {
                     task.maxMutants.convention(extension.maxMutants)

@@ -2,6 +2,8 @@ package com.gokorei.kronenberg.model
 
 import kotlinx.serialization.Serializable
 
+private const val DEFAULT_COMPILE_TIMEOUT_MS: Long = 30_000L
+
 /**
  * Status outcome of an evaluated mutant.
  */
@@ -122,6 +124,7 @@ public data class MutationConfig(
     val minScore: Double = 80.0,
     val timeoutMultiplier: Double = 3.0,
     val baselineTimeoutMs: Long = 1000L,
+    val compileTimeoutMs: Long = DEFAULT_COMPILE_TIMEOUT_MS,
     val higherOrderMutants: Boolean = false,
     val includeExtreme: Boolean = false,
     val maxMutants: Int? = null,
@@ -144,6 +147,7 @@ public data class MutationConfig(
         minScore,
         timeoutMultiplier,
         baselineTimeoutMs,
+        DEFAULT_COMPILE_TIMEOUT_MS,
         higherOrderMutants,
         includeExtreme,
         maxMutants,

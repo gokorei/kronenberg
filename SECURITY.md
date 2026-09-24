@@ -11,9 +11,9 @@ We release patches for security vulnerabilities on the following versions:
 
 ## Execution Trust Boundary
 
-Kronenberg supports trusted local project code only. Source, tests, dependencies, and build configuration must be trusted because snippet execution occurs in the Gradle or application JVM with that process's operating-system authority.
+Kronenberg supports trusted local project code only. Source, tests, dependencies, and build configuration must be trusted because snippet execution occurs in a worker JVM with the same operating-system authority as the Gradle or application process.
 
-Kronenberg's `URLClassLoader`, virtual threads, AST guard, and global-state rollback are reliability controls, not security boundaries. They do not isolate project code from the host filesystem, network, subprocesses, environment, reflection, or JVM-global state.
+Kronenberg's worker process, `URLClassLoader`, AST guard, and global-state rollback are reliability controls, not security boundaries. They do not isolate project code from the host filesystem, network, subprocesses, environment, reflection, or JVM-global state.
 
 Untrusted repository execution is unsupported and rejected before parsing, compilation, classpath access, or execution. Run hostile repositories only in an external disposable VM, container, or isolated CI environment without secrets or internal-network access. See [Architecture & Execution Trust Boundary](docs/wiki/Architecture-And-Sandboxing.md) for the complete model.
 

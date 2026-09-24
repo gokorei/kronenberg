@@ -13,6 +13,7 @@ import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestFactory
 import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.stream.Stream
 
 class MutationExecutionPipelineSpec {
@@ -193,6 +194,69 @@ class MutationExecutionPipelineSpec {
         }
     }
 
+    @Test
+    fun `reports structured baseline compile timeout`() {
+        val compiler = TimedOutCompiler()
+        val runner = RecordingRunner()
+        val isolatedPipeline = DefaultMutationExecutionPipeline(compiler = compiler, runner = runner)
+
+        try {
+            runBlocking {
+                val report =
+                    isolatedPipeline.execute(
+                        sourceCode = "fun value(): Int = 1",
+                        testCode = "fun main() { check(value() == 1) }",
+                        config = MutationConfig(compileTimeoutMs = 1L),
+                    )
+                report.baselineError!!.contains("Compilation timed out") shouldBe true
+                report.totalMutants shouldBe 0
+            }
+        } finally {
+            isolatedPipeline.close()
+        }
+    }
+
+    @Test
+    fun `does not clean compiled output while execution is still running`() {
+        val compiler = TrackingCompiler()
+        val runner = TrackingRunner(compiler)
+        val isolatedPipeline = DefaultMutationExecutionPipeline(compiler = compiler, runner = runner)
+
+        try {
+            runBlocking {
+                isolatedPipeline.execute(
+                    sourceCode = "fun add(a: Int, b: Int): Int = a + b",
+                    testCode = "fun main() { check(add(1, 2) == 3) }",
+                    config = MutationConfig(),
+                )
+            }
+            runner.cleanupBeforeFirstRun shouldBe false
+            compiler.cleanupCalled.get() shouldBe true
+        } finally {
+            isolatedPipeline.close()
+        }
+    }
+
+    @Test
+    fun `propagates configured compile deadline to the compiler`() {
+        val compiler = DeadlineCompiler()
+        val runner = RecordingRunner()
+        val isolatedPipeline = DefaultMutationExecutionPipeline(compiler = compiler, runner = runner)
+
+        try {
+            runBlocking {
+                isolatedPipeline.execute(
+                    sourceCode = "fun add(a: Int, b: Int): Int = a + b",
+                    testCode = "fun main() { check(add(1, 2) == 3) }",
+                    config = MutationConfig(compileTimeoutMs = 17L),
+                )
+            }
+            compiler.compileTimeouts shouldBe listOf(17L, 17L)
+        } finally {
+            isolatedPipeline.close()
+        }
+    }
+
     @TestFactory
     fun `rejects untrusted capabilities before compilation or execution`(): Stream<DynamicTest> =
         Stream
@@ -314,12 +378,82 @@ class MutationExecutionPipelineSpec {
         }
     }
 
+    private class TrackingCompiler : SnippetCompiler {
+        val cleanupCalled: AtomicBoolean = AtomicBoolean(false)
+
+        override fun compile(
+            sourceCode: String,
+            extraClasspath: List<String>,
+            timeoutMs: Long,
+        ): CompileResult =
+            CompileResult.Compiled(
+                outDir = Path.of("build", "tracking-output"),
+                tempRoot = Path.of("build", "tracking-temp"),
+            )
+
+        override fun cleanup(result: CompileResult) {
+            cleanupCalled.set(true)
+        }
+    }
+
+    private class TrackingRunner(
+        private val compiler: TrackingCompiler,
+    ) : FastSnippetRunner {
+        var runCount: Int = 0
+        var cleanupBeforeFirstRun: Boolean = false
+
+        override fun run(
+            classesDir: Path,
+            mainClass: String,
+            timeoutMs: Long,
+            extraClasspath: List<String>,
+        ): RunnerOutcome {
+            runCount++
+            if (runCount == 1) {
+                cleanupBeforeFirstRun = compiler.cleanupCalled.get()
+            }
+            Thread.sleep(25L)
+            return RunnerOutcome(MutantStatus.SURVIVED, 25L)
+        }
+
+        override fun close() = Unit
+    }
+
+    private class TimedOutCompiler : SnippetCompiler {
+        override fun compile(
+            sourceCode: String,
+            extraClasspath: List<String>,
+            timeoutMs: Long,
+        ): CompileResult = CompileResult.TimedOut("Compilation timed out after ${timeoutMs}ms; worker terminated")
+
+        override fun cleanup(result: CompileResult) = Unit
+    }
+
+    private class DeadlineCompiler : SnippetCompiler {
+        val compileTimeouts: MutableList<Long> = mutableListOf()
+
+        override fun compile(
+            sourceCode: String,
+            extraClasspath: List<String>,
+            timeoutMs: Long,
+        ): CompileResult {
+            compileTimeouts.add(timeoutMs)
+            return CompileResult.Compiled(
+                outDir = Path.of("build", "deadline-output"),
+                tempRoot = Path.of("build", "deadline-temp"),
+            )
+        }
+
+        override fun cleanup(result: CompileResult) = Unit
+    }
+
     private class RecordingCompiler : SnippetCompiler {
         var compileCount: Int = 0
 
         override fun compile(
             sourceCode: String,
             extraClasspath: List<String>,
+            timeoutMs: Long,
         ): CompileResult {
             compileCount++
             return CompileResult.Failed("Untrusted source must not be compiled")

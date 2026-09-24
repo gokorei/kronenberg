@@ -14,7 +14,7 @@
 ## ⚡ Highlights
 
 - **Pure K2 PSI Traversal**: Mutates code via compiler AST elements (`KtTreeVisitorVoid`), avoiding brittle regexes or byte-code transforms.
-- **In-Memory Compilation & Execution**: Compiles mutated snippets in-process and runs trusted local tests in fresh `URLClassLoader` scopes using Java 21 Virtual Threads. This is not a security sandbox.
+- **In-Memory Compilation & Execution**: Compiles mutated snippets in isolated worker processes and runs trusted local tests in fresh `URLClassLoader` scopes with confirmed hard-deadline termination. This is not a security sandbox.
 - **First-Order (FOM) & Higher-Order (HOM) Mutants**: Supports traditional single-point mutations as well as complex multi-operator mutations with strided sampling.
 - **Sub-50ms Mutant Execution**: Designed for instant feedback during local development, pre-commit hooks, and AI agent test verification loops.
 - **Pluggable Mutator SPI**: Extensible rule engine covering relational boundaries, arithmetic operators, boolean inversions, collection operations, null safety, and extreme body-horror mutations.

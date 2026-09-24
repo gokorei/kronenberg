@@ -28,6 +28,8 @@ import kotlin.io.path.isRegularFile
 import kotlin.io.path.nameWithoutExtension
 import kotlin.io.path.readText
 
+private const val DEFAULT_COMPILE_TIMEOUT_MS: Long = 30_000L
+
 private val jsonSerializer =
     Json {
         prettyPrint = true
@@ -170,6 +172,11 @@ public class AuditCommand :
         help = "Baseline execution timeout in milliseconds (default 2000ms)",
     ).long().default(2000L)
 
+    private val compileTimeout: Long by option(
+        "--compile-timeout",
+        help = "Snippet compilation timeout in milliseconds (default 30000ms)",
+    ).long().default(DEFAULT_COMPILE_TIMEOUT_MS)
+
     private val maxMutants: Int? by option(
         "--max-mutants",
         help = "Maximum number of mutants to evaluate",
@@ -257,6 +264,7 @@ public class AuditCommand :
                 includeExtreme = extreme,
                 higherOrderMutants = effectiveHom,
                 baselineTimeoutMs = effectiveTimeout,
+                compileTimeoutMs = compileTimeout,
                 maxMutants = maxMutants,
                 targetLines = changedLines,
                 enableCache = cache,

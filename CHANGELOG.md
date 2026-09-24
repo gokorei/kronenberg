@@ -17,11 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Kover multi-module test coverage verification enforcing an 80% line coverage threshold (`koverVerify`).
 - GitHub Actions CodeQL security scanning workflow (`.github/workflows/codeql.yml`).
 - Automated GitHub Wiki synchronization workflow (`.github/workflows/wiki-sync.yml`).
+- Configurable hard compilation deadlines with structured timeout results for trusted snippet compilation.
+- Killable process workers for trusted compilation and execution with process-tree termination and cleanup ordering guarantees.
 
 ### Security
 - Defined a trusted-local-only execution threat model and fail-closed `SnippetExecutionTrust.UNTRUSTED` policy that rejects untrusted project code before parsing, compilation, classpath access, or execution.
 - Added abuse-case coverage for filesystem, network, process, reflection, environment, and JVM-global-state capabilities.
-- Clarified that `URLClassLoader`, Virtual Threads, AST guards, property rollback, and ordinary child processes are not security boundaries and documented requirements for any future OS-isolated worker.
+- Clarified that `URLClassLoader`, AST guards, property rollback, and process workers are not security boundaries and documented requirements for any future OS-isolated worker.
+
+### Fixed
+- Ensured execution timeouts are reported only after the worker process tree is confirmed stopped.
+- Prevented compiled output cleanup from racing active trusted execution or compilation workers.
 
 ## [0.1.0] - 2026-09-12
 

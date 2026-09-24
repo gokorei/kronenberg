@@ -1,6 +1,6 @@
 # Architecture & Execution Trust Boundary
 
-Kronenberg compiles K2 PSI AST mutants in the host JVM and executes trusted local snippets in fresh class-loader scopes on Java 21 virtual threads. These mechanisms provide class, thread, and lifecycle isolation. They are not a security boundary.
+Kronenberg compiles K2 PSI AST mutants in short-lived worker processes and executes trusted local snippets in fresh class-loader scopes within those workers. These mechanisms provide class, process, and lifecycle isolation. They are not a security boundary.
 
 ## Supported Threat Model
 
@@ -12,7 +12,7 @@ This mode must be used only in an environment where Kronenberg already has autho
 
 ## Capabilities Exposed in Trusted Mode
 
-Trusted snippets run in the application or Gradle test-worker JVM with the same operating-system identity. They may use capabilities that the host process can use, including:
+Trusted snippets run in a short-lived worker JVM with the same operating-system identity as the application or Gradle process. They may use capabilities that the host process can use, including:
 
 | Capability | Trusted-mode behavior | Untrusted-mode behavior |
 | --- | --- | --- |
@@ -60,10 +60,11 @@ Meeting only the classpath or child-process requirements is insufficient.
 The trusted-local path still uses mechanisms that improve correctness and performance:
 
 - K2 PSI parses and transforms Kotlin source without regular-expression source rewriting.
-- `DefaultSnippetCompiler` invokes the embedded Kotlin compiler in the host JVM and does not spawn Gradle or Maven subprocesses.
-- `DefaultFastSnippetRunner` creates a fresh `URLClassLoader` for each trusted snippet and runs it on a Java 21 virtual thread.
-- Thread-local stdout and stderr capture separates concurrent snippet output.
-- Timeout cancellation, class-loader closure, and temporary-directory cleanup bound normal resource lifetime.
+- `DefaultSnippetCompiler` invokes the embedded Kotlin compiler in a killable worker process with a configurable hard deadline.
+- `DefaultFastSnippetRunner` creates a fresh `URLClassLoader` for each trusted snippet in a killable worker process.
+- Worker stdout and stderr capture keeps snippet output separate from control responses.
+- Timeout handling destroys and awaits the worker process tree before returning `TIMED_OUT`.
+- Temporary compilation output is deleted only after its worker has exited and snippet execution has returned.
 - System properties are snapshotted and restored after a trusted snippet returns.
 - `SnippetAstSafetyChecker` uses K2 PSI to reject common host-disrupting calls such as process termination, selected subprocess creation, and destructive deletion.
 
