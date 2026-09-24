@@ -1,5 +1,8 @@
 package com.gokorei.kronenberg.gradle
 
+import com.gokorei.kronenberg.discovery.DefaultSourceTestMatcher
+import com.gokorei.kronenberg.discovery.SourceTestMatcher
+import com.gokorei.kronenberg.discovery.TestMatchResult
 import com.gokorei.kronenberg.model.MutantResult
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationConfig
@@ -24,8 +27,9 @@ import org.gradle.api.tasks.TaskAction
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.inject.Inject
-import kotlin.io.path.nameWithoutExtension
 import kotlin.io.path.readText
+
+private val testMatcher: SourceTestMatcher = DefaultSourceTestMatcher
 
 /**
  * Gradle task executing in-process K2 AST mutation tests against Kotlin source and test sets.
@@ -76,8 +80,8 @@ public abstract class KronenbergAuditTask
 
         @TaskAction
         public fun audit() {
-            val srcList = sourceFiles.files.filter { it.extension == "kt" }
-            val tstList = testFiles.files.filter { it.extension == "kt" }
+            val srcList = sourceFiles.files.filter { it.extension == "kt" }.map { it.toPath() }
+            val tstList = testFiles.files.filter { it.extension == "kt" }.map { it.toPath() }
             val extraClasspathList = classpath.files.map { it.absolutePath }
 
             logger.lifecycle("🧟 Kronenberg: Auditing ${srcList.size} Kotlin source file(s) against ${tstList.size} test file(s)...")
@@ -107,18 +111,7 @@ public abstract class KronenbergAuditTask
             var compileErrorCount = 0
 
             for (srcFile in srcList) {
-                val baseName = srcFile.nameWithoutExtension
-                val matchingTestFile =
-                    tstList.firstOrNull {
-                        val tstName = it.nameWithoutExtension
-                        tstName == "${baseName}Test" || tstName == "${baseName}Spec" || tstName == baseName
-                    }
-
-                val testCode = matchingTestFile?.readText() ?: ""
-                if (testCode.isBlank()) {
-                    logger.info("Skipping ${srcFile.name}: No matching test suite found.")
-                    continue
-                }
+                val testCode = testCodeForSource(srcFile, tstList)
 
                 val fileReport =
                     runBlocking {
@@ -126,7 +119,7 @@ public abstract class KronenbergAuditTask
                             sourceCode = srcFile.readText(),
                             testCode = testCode,
                             config = config,
-                            sourceFilePath = srcFile.name,
+                            sourceFilePath = srcFile.fileName.toString(),
                         )
                     }
 
@@ -182,6 +175,27 @@ public abstract class KronenbergAuditTask
                 )
             }
         }
+
+        private fun testCodeForSource(
+            sourceFile: Path,
+            testFiles: List<Path>,
+        ): String =
+            when (val matchResult = testMatcher.match(sourceFile, testFiles)) {
+                is TestMatchResult.Matched -> {
+                    matchResult.testFile.readText()
+                }
+
+                is TestMatchResult.Missing -> {
+                    throw GradleException("No matching test file found for source $sourceFile.")
+                }
+
+                is TestMatchResult.Ambiguous -> {
+                    throw GradleException(
+                        "Multiple matching test files found for source $sourceFile: " +
+                            matchResult.candidates.joinToString { it.toString() },
+                    )
+                }
+            }
 
         private fun exportHtmlReport(
             report: MutationReport,

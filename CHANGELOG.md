@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Kover multi-module test coverage verification enforcing an 80% line coverage threshold (`koverVerify`).
 - GitHub Actions CodeQL security scanning workflow (`.github/workflows/codeql.yml`).
 - Automated GitHub Wiki synchronization workflow (`.github/workflows/wiki-sync.yml`).
+- Shared package- and path-aware source-to-test matching for CLI and Gradle audits, including conventional `src/main`/`src/test` discovery and explicit missing or ambiguous mapping failures.
 
 ## [0.1.0] - 2026-09-12
 

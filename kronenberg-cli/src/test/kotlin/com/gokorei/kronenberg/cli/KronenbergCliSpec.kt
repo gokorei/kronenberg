@@ -287,6 +287,22 @@ class KronenbergCliSpec {
     }
 
     @Test
+    fun `audit command fails explicitly when source directory has no test mapping`() {
+        val srcDir = createTempDirectory("batch-missing")
+        try {
+            srcDir.resolve("Service.kt").writeText("fun service() = 1")
+
+            val cli = KronenbergCli().subcommands(AuditCommand())
+            val result = cli.test("audit --source-dir $srcDir --threshold 0.0")
+
+            result.statusCode shouldBe 1
+            result.output shouldContain "No matching test file found"
+        } finally {
+            srcDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun `audit command exports code climate json when --codeclimate flag is provided`() {
         val srcFile = createTempFile("CodeClimateSample", ".kt")
         val testFile = createTempFile("CodeClimateSampleTest", ".kt")
