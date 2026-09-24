@@ -1,6 +1,7 @@
 package com.gokorei.kronenberg.ast
 
 import com.gokorei.kronenberg.model.AstEdit
+import com.gokorei.kronenberg.model.MutationConfig
 import com.gokorei.kronenberg.model.MutatorCategory
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -420,12 +421,78 @@ class AstMutatorsSpec {
     @Nested
     inner class CoroutineFlowMutatorTests {
         private val mutator = CoroutineFlowMutator()
+        private val generator = AstMutantGenerator(MutatorRegistry(listOf(mutator)))
+
+        private fun generateMutants(source: String) = generator.generateMutants(source, MutationConfig(higherOrderMutants = false))
 
         @Test
-        fun `mutates delay call argument to zero`() {
+        fun `mutates delay call argument to exact zero delay source`() {
             mutator.category shouldBe MutatorCategory.COROUTINE
-            val edits = findMutations("suspend fun wait() { delay(1000L) }", mutator)
-            edits.firstOrNull()?.replacement shouldBe "0L"
+            val source = "suspend fun wait() { delay(1000L) }"
+            val mutant = generateMutants(source).single()
+
+            mutant.originalText shouldBe "1000L"
+            mutant.replacementText shouldBe "0L"
+            mutant.mutatedSource shouldBe "suspend fun wait() { delay(0L) }"
+        }
+
+        @Test
+        fun `mutates flow filter to exact filterNot source`() {
+            val source = "fun keepPositive(flow: Flow<Int>): Flow<Int> = flow.filter { it > 0 }"
+            val mutant = generateMutants(source).single()
+
+            mutant.originalText shouldBe "filter"
+            mutant.replacementText shouldBe "filterNot"
+            mutant.mutatedSource shouldBe
+                "fun keepPositive(flow: Flow<Int>): Flow<Int> = flow.filterNot { it > 0 }"
+        }
+
+        @Test
+        fun `mutates flow filterNot to exact filter source`() {
+            val source = "fun keepNegative(flow: Flow<Int>): Flow<Int> = flow.filterNot { it > 0 }"
+            val mutant = generateMutants(source).single()
+
+            mutant.originalText shouldBe "filterNot"
+            mutant.replacementText shouldBe "filter"
+            mutant.mutatedSource shouldBe
+                "fun keepNegative(flow: Flow<Int>): Flow<Int> = flow.filter { it > 0 }"
+        }
+
+        @Test
+        fun `mutates flow first to exact last source`() {
+            val source = "suspend fun firstValue(flow: Flow<Int>): Int = flow.first()"
+            val mutant = generateMutants(source).single()
+
+            mutant.originalText shouldBe "first"
+            mutant.replacementText shouldBe "last"
+            mutant.mutatedSource shouldBe
+                "suspend fun firstValue(flow: Flow<Int>): Int = flow.last()"
+        }
+
+        @Test
+        fun `mutates flow last to exact first source`() {
+            val source = "suspend fun lastValue(flow: Flow<Int>): Int = flow.last()"
+            val mutant = generateMutants(source).single()
+
+            mutant.originalText shouldBe "last"
+            mutant.replacementText shouldBe "first"
+            mutant.mutatedSource shouldBe
+                "suspend fun lastValue(flow: Flow<Int>): Int = flow.first()"
+        }
+
+        @Test
+        fun `does not mutate zero delays or unsupported flow operations`() {
+            val sources =
+                listOf(
+                    "suspend fun wait() { delay() }",
+                    "suspend fun wait() { delay(0L) }",
+                    "fun keepAll(flow: Flow<Int>): Flow<Int> = flow.map { it }",
+                    "suspend fun firstValue(flow: Flow<Int>): Int? = flow.firstOrNull()",
+                )
+
+            sources.forEach { source ->
+                generateMutants(source) shouldBe emptyList()
+            }
         }
     }
 

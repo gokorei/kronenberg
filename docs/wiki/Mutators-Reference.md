@@ -1,5 +1,4 @@
 # Kronenberg AST Mutators Reference
-
 This document is the code-backed catalog of all **27 AST mutation operators** implemented in Kronenberg.
 Every mutator is implemented via pure K2 PSI AST visitors (`KtTreeVisitorVoid`), avoiding regular expressions or bytecode transformations.
 
@@ -48,7 +47,7 @@ Every mutator is implemented via pure K2 PSI AST visitors (`KtTreeVisitorVoid`),
 | Mutator Class | Description |
 | :--- | :--- |
 | `CoroutineConcurrencyMutator` | Mutates Kotlin coroutine dispatchers, cancellation hierarchies, and builders |
-| `CoroutineFlowMutator` | Mutates Coroutine and Flow operators (delay, flow filter/first/last) |
+| `CoroutineFlowMutator` | Mutates Coroutine and Flow operators (delay, flow filter/filterNot/first/last) |
 
 ### Equality & Identity
 

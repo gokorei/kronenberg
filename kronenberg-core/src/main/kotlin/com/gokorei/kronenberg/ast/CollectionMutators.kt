@@ -80,13 +80,32 @@ public class CollectionOperatorMutator : TypedAstMutator<KtCallExpression>(KtCal
 public class CoroutineFlowMutator : TypedAstMutator<KtCallExpression>(KtCallExpression::class) {
     override val name: String = "CoroutineFlowMutator"
     override val category: MutatorCategory = MutatorCategory.COROUTINE
-    override val description: String = "Mutates Coroutine and Flow operators (delay, flow filter/first/last)"
+    override val description: String = "Mutates Coroutine and Flow operators (delay, flow filter/filterNot/first/last)"
 
-    private val supportedFlowMethods = setOf("filter", "filterNot", "first", "last")
+    private val flowMethodReplacements =
+        mapOf(
+            "filter" to "filterNot",
+            "filterNot" to "filter",
+            "first" to "last",
+            "last" to "first",
+        )
 
     override fun canMutateTyped(element: KtCallExpression): Boolean {
-        val callee = element.calleeExpression?.text ?: return false
-        return callee == "delay" || callee in supportedFlowMethods
+        val calleeName = element.calleeExpression?.text ?: return false
+        return when (calleeName) {
+            "delay" -> {
+                element.valueArgumentList
+                    ?.arguments
+                    ?.singleOrNull()
+                    ?.text
+                    ?.trim()
+                    ?.let { it != "0" && it != "0L" } == true
+            }
+
+            else -> {
+                calleeName in flowMethodReplacements
+            }
+        }
     }
 
     override fun mutateTyped(
@@ -97,17 +116,16 @@ public class CoroutineFlowMutator : TypedAstMutator<KtCallExpression>(KtCallExpr
         val calleeName = callee.text
 
         if (calleeName == "delay") {
-            val valueArgs = element.valueArgumentList ?: return emptyList()
-            if (valueArgs.arguments.isNotEmpty()) {
-                val arg = valueArgs.arguments.first()
-                if (arg.text.trim() != "0L" && arg.text.trim() != "0") {
-                    return listOf(
-                        context.edit(arg, "0L", "Mutated delay argument '${arg.text}' to '0L'"),
-                    )
-                }
-            }
+            val arg = element.valueArgumentList?.arguments?.singleOrNull() ?: return emptyList()
+            if (arg.text.trim() == "0" || arg.text.trim() == "0L") return emptyList()
+            return listOf(
+                context.edit(arg, "0L", "Mutated delay argument '${arg.text}' to '0L'"),
+            )
         }
 
-        return emptyList()
+        val replacement = flowMethodReplacements[calleeName] ?: return emptyList()
+        return listOf(
+            context.edit(callee, replacement, "Inverted $calleeName -> $replacement"),
+        )
     }
 }
