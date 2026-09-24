@@ -45,7 +45,7 @@ public object JUnitXmlReportExporter {
     ) {
         val totalTests = report.totalMutants
         val failures = report.survivedCount + report.timeoutCount
-        val errors = report.compileErrorCount
+        val errors = report.compileErrorCount + report.infrastructureErrorCount + report.runnerErrorCount
         val totalTimeSeconds = report.results.sumOf { it.executionTimeMs } / 1000.0
 
         val sb = StringBuilder()
@@ -55,47 +55,62 @@ public object JUnitXmlReportExporter {
         )
 
         for (result in report.results) {
-            val mutant = result.mutant
-            val durationSec = result.executionTimeMs / 1000.0
-            val className = "com.gokorei.kronenberg.mutant.${mutant.category.name.lowercase()}"
-            val testName = "${mutant.mutatorName}_line${mutant.line}_col${mutant.column}_${mutant.id.take(8)}"
-
-            sb.appendLine("    <testcase classname=\"$className\" name=\"$testName\" time=\"$durationSec\">")
-            when (result.status) {
-                MutantStatus.SURVIVED -> {
-                    val msg = escapeXml("Mutant survived: replaced '${mutant.originalText}' with '${mutant.replacementText}'")
-                    val body =
-                        escapeXml(
-                            "Mutant ID: ${mutant.id}\nMutator: ${mutant.mutatorName}\nLocation: line ${mutant.line}, column ${mutant.column}\nOriginal:\n${mutant.originalText}\nMutated:\n${mutant.replacementText}",
-                        )
-                    sb.appendLine("        <failure message=\"$msg\" type=\"MutationSurvived\">$body</failure>")
-                }
-
-                MutantStatus.TIMED_OUT -> {
-                    val msg = escapeXml(result.failureMessage ?: "Mutant execution timed out")
-                    sb.appendLine("        <failure message=\"$msg\" type=\"Timeout\">$msg</failure>")
-                }
-
-                MutantStatus.COMPILE_ERROR -> {
-                    val msg = escapeXml(result.failureMessage ?: "Mutant failed to compile")
-                    sb.appendLine("        <error message=\"$msg\" type=\"CompileError\">$msg</error>")
-                }
-
-                MutantStatus.BASELINE_ERROR -> {
-                    val msg = escapeXml(result.failureMessage ?: "Baseline execution failed before mutation")
-                    sb.appendLine("        <error message=\"$msg\" type=\"BaselineError\">$msg</error>")
-                }
-
-                MutantStatus.KILLED -> {
-                    // Passing test case
-                }
-            }
-            sb.appendLine("    </testcase>")
+            appendResult(sb, result)
         }
         sb.appendLine("</testsuite>")
 
         targetFile.parent?.let { Files.createDirectories(it) }
         Files.writeString(targetFile, sb.toString())
+    }
+
+    private fun appendResult(
+        sb: StringBuilder,
+        result: MutantResult,
+    ) {
+        val mutant = result.mutant
+        val durationSec = result.executionTimeMs / 1000.0
+        val className = "com.gokorei.kronenberg.mutant.${mutant.category.name.lowercase()}"
+        val testName = "${mutant.mutatorName}_line${mutant.line}_col${mutant.column}_${mutant.id.take(8)}"
+
+        sb.appendLine("    <testcase classname=\"$className\" name=\"$testName\" time=\"$durationSec\">")
+        when (result.status) {
+            MutantStatus.SURVIVED -> {
+                val msg = escapeXml("Mutant survived: replaced '${mutant.originalText}' with '${mutant.replacementText}'")
+                val body =
+                    escapeXml(
+                        "Mutant ID: ${mutant.id}\nMutator: ${mutant.mutatorName}\nLocation: line ${mutant.line}, column ${mutant.column}\nOriginal:\n${mutant.originalText}\nMutated:\n${mutant.replacementText}",
+                    )
+                sb.appendLine("        <failure message=\"$msg\" type=\"MutationSurvived\">$body</failure>")
+            }
+
+            MutantStatus.TIMED_OUT -> {
+                val msg = escapeXml(result.failureMessage ?: "Mutant execution timed out")
+                sb.appendLine("        <failure message=\"$msg\" type=\"Timeout\">$msg</failure>")
+            }
+
+            MutantStatus.COMPILE_ERROR -> {
+                val msg = escapeXml(result.failureMessage ?: "Mutant failed to compile")
+                sb.appendLine("        <error message=\"$msg\" type=\"CompileError\">$msg</error>")
+            }
+
+            MutantStatus.BASELINE_ERROR -> {
+                val msg = escapeXml(result.failureMessage ?: "Baseline execution failed before mutation")
+                sb.appendLine("        <error message=\"$msg\" type=\"BaselineError\">$msg</error>")
+            }
+
+            MutantStatus.INFRASTRUCTURE_ERROR -> {
+                val msg = escapeXml(result.failureMessage ?: "Mutant infrastructure error")
+                sb.appendLine("        <error message=\"$msg\" type=\"InfrastructureError\">$msg</error>")
+            }
+
+            MutantStatus.RUNNER_ERROR -> {
+                val msg = escapeXml(result.failureMessage ?: "Mutant runner error")
+                sb.appendLine("        <error message=\"$msg\" type=\"RunnerError\">$msg</error>")
+            }
+
+            MutantStatus.KILLED -> {}
+        }
+        sb.appendLine("    </testcase>")
     }
 
     private fun escapeXml(str: String): String =
@@ -303,10 +318,15 @@ public class AuditCommand :
             renderTerminalReport(report)
         }
 
-        if (report.mutationScore < threshold) {
+        if (hasInfrastructureFailure(report) || report.mutationScore < threshold) {
             throw ProgramResult(1)
         }
     }
+
+    private fun hasInfrastructureFailure(report: MutationReport): Boolean =
+        report.baselineError != null ||
+            report.infrastructureErrorCount > 0 ||
+            report.runnerErrorCount > 0
 
     private fun auditSingleFile(
         pipeline: DefaultMutationExecutionPipeline,
@@ -441,7 +461,12 @@ public class AuditCommand :
     }
 
     private fun renderTerminalReport(report: MutationReport) {
-        val statusSymbol = if (report.mutationScore >= threshold) "\u001B[32m✔ PASS\u001B[0m" else "\u001B[31m✘ FAIL\u001B[0m"
+        val statusSymbol =
+            if (!hasInfrastructureFailure(report) && report.mutationScore >= threshold) {
+                "\u001B[32m✔ PASS\u001B[0m"
+            } else {
+                "\u001B[31m✘ FAIL\u001B[0m"
+            }
         echo("\n=======================================================")
         echo("           KRONENBERG MUTATION AUDIT                   ")
         echo("=======================================================")
@@ -452,42 +477,61 @@ public class AuditCommand :
         echo("   - Survived:    \u001B[31m${report.survivedCount}\u001B[0m")
         echo("   - Timed Out:   \u001B[33m${report.timeoutCount}\u001B[0m")
         echo("   - Compile Err: ${report.compileErrorCount}")
+        echo("   - Infra Err:   ${report.infrastructureErrorCount}")
+        echo("   - Runner Err:  ${report.runnerErrorCount}")
+        renderInfrastructureErrors(report)
+        renderSurvivedMutants(report)
+        echo("")
+    }
+
+    private fun renderInfrastructureErrors(report: MutationReport) {
         if (report.baselineError != null) {
             echo("\n\u001B[31m🚨 BASELINE PRE-FLIGHT ERROR:\u001B[0m\n  ${report.baselineError}")
         }
-
-        val survived = report.results.filter { it.status == MutantStatus.SURVIVED }
-        if (survived.isNotEmpty()) {
-            echo("\n\u001B[31m🚨 SURVIVED MUTANTS (${survived.size}):\u001B[0m")
-            survived.forEachIndexed { idx, res ->
-                val m = res.mutant
-                val srcLabel = m.filePath ?: source?.fileName?.toString() ?: "source"
-                echo(" [$idx] ${m.mutatorName} at $srcLabel:${m.line}:${m.column}")
-                echo("     - Original:    ${m.originalText}")
-                echo("     + Replacement: ${m.replacementText}")
+        val errors =
+            report.results.filter {
+                it.status == MutantStatus.INFRASTRUCTURE_ERROR || it.status == MutantStatus.RUNNER_ERROR
             }
-
-            if (proposeTests) {
-                echo("\n=======================================================")
-                echo("   PROPOSED TEST SKELETONS TO KILL SURVIVED MUTANTS    ")
-                echo("=======================================================")
-                survived.forEachIndexed { idx, res ->
-                    val m = res.mutant
-                    val srcText =
-                        m.filePath?.let { p ->
-                            try {
-                                Path.of(p).takeIf { Files.isRegularFile(it) }?.readText()
-                            } catch (_: Exception) {
-                                null
-                            }
-                        } ?: source?.takeIf { Files.isRegularFile(it) }?.readText() ?: ""
-                    val proposal = SurvivingMutantTestProposer.proposeTest(m, srcText, TestStyle.KOTEST)
-                    echo("\n--- Proposal #$idx for ${m.mutatorName} (Line ${m.line}) ---")
-                    echo(proposal.testMethodCode)
-                }
+        if (errors.isNotEmpty()) {
+            echo("\n\u001B[31m🚨 INFRASTRUCTURE ERRORS (${errors.size}):\u001B[0m")
+            errors.forEach { result ->
+                echo(" ${result.status}: ${result.failureMessage.orEmpty()}")
             }
         }
-        echo("")
+    }
+
+    private fun renderSurvivedMutants(report: MutationReport) {
+        val survived = report.results.filter { it.status == MutantStatus.SURVIVED }
+        if (survived.isEmpty()) return
+
+        echo("\n\u001B[31m🚨 SURVIVED MUTANTS (${survived.size}):\u001B[0m")
+        survived.forEachIndexed { idx, res ->
+            val m = res.mutant
+            val srcLabel = m.filePath ?: source?.fileName?.toString() ?: "source"
+            echo(" [$idx] ${m.mutatorName} at $srcLabel:${m.line}:${m.column}")
+            echo("     - Original:    ${m.originalText}")
+            echo("     + Replacement: ${m.replacementText}")
+        }
+
+        if (proposeTests) {
+            echo("\n=======================================================")
+            echo("   PROPOSED TEST SKELETONS TO KILL SURVIVED MUTANTS    ")
+            echo("=======================================================")
+            survived.forEachIndexed { idx, res ->
+                val m = res.mutant
+                val srcText =
+                    m.filePath?.let { p ->
+                        try {
+                            Path.of(p).takeIf { Files.isRegularFile(it) }?.readText()
+                        } catch (_: Exception) {
+                            null
+                        }
+                    } ?: source?.takeIf { Files.isRegularFile(it) }?.readText() ?: ""
+                val proposal = SurvivingMutantTestProposer.proposeTest(m, srcText, TestStyle.KOTEST)
+                echo("\n--- Proposal #$idx for ${m.mutatorName} (Line ${m.line}) ---")
+                echo(proposal.testMethodCode)
+            }
+        }
     }
 }
 

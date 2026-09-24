@@ -171,17 +171,30 @@ public abstract class KronenbergAuditTask
             logger.lifecycle("  Survived      : $survivedCount")
             logger.lifecycle("  Timed Out     : $timeoutCount")
             logger.lifecycle("  Compile Errors: $compileErrorCount")
+            logger.lifecycle("  Infrastructure: ${finalReport.infrastructureErrorCount}")
+            logger.lifecycle("  Runner Errors: ${finalReport.runnerErrorCount}")
             logger.lifecycle("  Mutation Score: ${finalReport.mutationScore}% (Threshold: ${minScore.get()}%)")
+
             logger.lifecycle("  Reports       : $outDir")
             logger.lifecycle("=======================================================")
 
-            if (finalReport.mutationScore < minScore.get()) {
-                throw GradleException(
-                    "Mutation score ${finalReport.mutationScore}% is below threshold ${minScore.get()}%. " +
-                        "See reports at ${outDir.resolve("mutation-report.html")}",
-                )
+            if (hasInfrastructureFailure(finalReport) || finalReport.mutationScore < minScore.get()) {
+                val failureMessage =
+                    if (hasInfrastructureFailure(finalReport)) {
+                        "Mutation audit encountered infrastructure errors. " +
+                            "See reports at ${outDir.resolve("mutation-report.html")}"
+                    } else {
+                        "Mutation score ${finalReport.mutationScore}% is below threshold ${minScore.get()}%. " +
+                            "See reports at ${outDir.resolve("mutation-report.html")}"
+                    }
+                throw GradleException(failureMessage)
             }
         }
+
+        private fun hasInfrastructureFailure(report: MutationReport): Boolean =
+            report.baselineError != null ||
+                report.infrastructureErrorCount > 0 ||
+                report.runnerErrorCount > 0
 
         private fun exportHtmlReport(
             report: MutationReport,
@@ -207,7 +220,10 @@ public abstract class KronenbergAuditTask
                     appendLine("    .badge-killed { background: #064e3b; color: #34d399; }")
                     appendLine("    .badge-survived { background: #7f1d1d; color: #f87171; }")
                     appendLine("    .badge-timeout { background: #78350f; color: #fbbf24; }")
+                    appendLine("    .badge-infrastructure { background: #4c1d95; color: #c4b5fd; }")
+                    appendLine("    .badge-runner { background: #7f1d1d; color: #fca5a5; }")
                     appendLine("    .badge-error { background: #374151; color: #9ca3af; }")
+
                     appendLine("    code { font-family: monospace; background: #0f172a; padding: 2px 6px; }")
                     appendLine("  </style>")
                     appendLine("</head>")
@@ -222,7 +238,11 @@ public abstract class KronenbergAuditTask
                     appendLine("      <div class=\"card\"><h3>Killed</h3><div>${report.killedCount}</div></div>")
                     appendLine("      <div class=\"card\"><h3>Survived</h3><div>${report.survivedCount}</div></div>")
                     appendLine("      <div class=\"card\"><h3>Timed Out</h3><div>${report.timeoutCount}</div></div>")
+                    appendLine("      <div class=\"card\"><h3>Compile Errors</h3><div>${report.compileErrorCount}</div></div>")
+                    appendLine("      <div class=\"card\"><h3>Infrastructure</h3><div>${report.infrastructureErrorCount}</div></div>")
+                    appendLine("      <div class=\"card\"><h3>Runner Errors</h3><div>${report.runnerErrorCount}</div></div>")
                     appendLine("    </div>")
+
                     appendLine("    <table>")
                     appendLine("      <thead>")
                     appendLine("        <tr><th>Status</th><th>Location</th><th>Mutator</th><th>Original</th><th>Replacement</th></tr>")
@@ -234,6 +254,8 @@ public abstract class KronenbergAuditTask
                                 MutantStatus.KILLED -> "badge-killed"
                                 MutantStatus.SURVIVED -> "badge-survived"
                                 MutantStatus.TIMED_OUT -> "badge-timeout"
+                                MutantStatus.INFRASTRUCTURE_ERROR -> "badge-infrastructure"
+                                MutantStatus.RUNNER_ERROR -> "badge-runner"
                                 else -> "badge-error"
                             }
                         val loc = "${res.mutant.filePath ?: "unknown"}:${res.mutant.line}:${res.mutant.column}"
@@ -261,7 +283,7 @@ public abstract class KronenbergAuditTask
         ) {
             val totalTests = report.totalMutants
             val failures = report.survivedCount + report.timeoutCount
-            val errors = report.compileErrorCount
+            val errors = report.compileErrorCount + report.infrastructureErrorCount + report.runnerErrorCount
             val totalTimeSeconds = report.results.sumOf { it.executionTimeMs } / 1000.0
 
             val sb = StringBuilder()
@@ -272,51 +294,66 @@ public abstract class KronenbergAuditTask
             )
 
             for (result in report.results) {
-                val mutant = result.mutant
-                val durationSec = result.executionTimeMs / 1000.0
-                val className = "com.gokorei.kronenberg.mutant.${mutant.category.name.lowercase()}"
-                val testName = "${mutant.mutatorName}_line${mutant.line}_col${mutant.column}_${mutant.id.take(8)}"
-
-                sb.appendLine("    <testcase classname=\"$className\" name=\"$testName\" time=\"$durationSec\">")
-                when (result.status) {
-                    MutantStatus.SURVIVED -> {
-                        val orig = mutant.originalText
-                        val repl = mutant.replacementText
-                        val msg = escapeXml("Mutant survived: replaced '$orig' with '$repl'")
-                        val body =
-                            escapeXml(
-                                "Mutant ID: ${mutant.id}\nMutator: ${mutant.mutatorName}\n" +
-                                    "Location: line ${mutant.line}, column ${mutant.column}\n" +
-                                    "Original:\n$orig\nMutated:\n$repl",
-                            )
-                        sb.appendLine("        <failure message=\"$msg\" type=\"MutationSurvived\">$body</failure>")
-                    }
-
-                    MutantStatus.TIMED_OUT -> {
-                        val msg = escapeXml(result.failureMessage ?: "Mutant execution timed out")
-                        sb.appendLine("        <failure message=\"$msg\" type=\"Timeout\">$msg</failure>")
-                    }
-
-                    MutantStatus.COMPILE_ERROR -> {
-                        val msg = escapeXml(result.failureMessage ?: "Mutant failed to compile")
-                        sb.appendLine("        <error message=\"$msg\" type=\"CompileError\">$msg</error>")
-                    }
-
-                    MutantStatus.BASELINE_ERROR -> {
-                        val msg = escapeXml(result.failureMessage ?: "Baseline execution failed before mutation")
-                        sb.appendLine("        <error message=\"$msg\" type=\"BaselineError\">$msg</error>")
-                    }
-
-                    MutantStatus.KILLED -> {
-                        // Passing test case
-                    }
-                }
-                sb.appendLine("    </testcase>")
+                appendResult(sb, result)
             }
             sb.appendLine("</testsuite>")
 
             targetFile.parent?.let { Files.createDirectories(it) }
             Files.writeString(targetFile, sb.toString())
+        }
+
+        private fun appendResult(
+            sb: StringBuilder,
+            result: MutantResult,
+        ) {
+            val mutant = result.mutant
+            val durationSec = result.executionTimeMs / 1000.0
+            val className = "com.gokorei.kronenberg.mutant.${mutant.category.name.lowercase()}"
+            val testName = "${mutant.mutatorName}_line${mutant.line}_col${mutant.column}_${mutant.id.take(8)}"
+
+            sb.appendLine("    <testcase classname=\"$className\" name=\"$testName\" time=\"$durationSec\">")
+            when (result.status) {
+                MutantStatus.SURVIVED -> {
+                    val orig = mutant.originalText
+                    val repl = mutant.replacementText
+                    val msg = escapeXml("Mutant survived: replaced '$orig' with '$repl'")
+                    val body =
+                        escapeXml(
+                            "Mutant ID: ${mutant.id}\nMutator: ${mutant.mutatorName}\n" +
+                                "Location: line ${mutant.line}, column ${mutant.column}\n" +
+                                "Original:\n$orig\nMutated:\n$repl",
+                        )
+                    sb.appendLine("        <failure message=\"$msg\" type=\"MutationSurvived\">$body</failure>")
+                }
+
+                MutantStatus.TIMED_OUT -> {
+                    val msg = escapeXml(result.failureMessage ?: "Mutant execution timed out")
+                    sb.appendLine("        <failure message=\"$msg\" type=\"Timeout\">$msg</failure>")
+                }
+
+                MutantStatus.COMPILE_ERROR -> {
+                    val msg = escapeXml(result.failureMessage ?: "Mutant failed to compile")
+                    sb.appendLine("        <error message=\"$msg\" type=\"CompileError\">$msg</error>")
+                }
+
+                MutantStatus.BASELINE_ERROR -> {
+                    val msg = escapeXml(result.failureMessage ?: "Baseline execution failed before mutation")
+                    sb.appendLine("        <error message=\"$msg\" type=\"BaselineError\">$msg</error>")
+                }
+
+                MutantStatus.INFRASTRUCTURE_ERROR -> {
+                    val msg = escapeXml(result.failureMessage ?: "Mutant infrastructure error")
+                    sb.appendLine("        <error message=\"$msg\" type=\"InfrastructureError\">$msg</error>")
+                }
+
+                MutantStatus.RUNNER_ERROR -> {
+                    val msg = escapeXml(result.failureMessage ?: "Mutant runner error")
+                    sb.appendLine("        <error message=\"$msg\" type=\"RunnerError\">$msg</error>")
+                }
+
+                MutantStatus.KILLED -> {}
+            }
+            sb.appendLine("    </testcase>")
         }
 
         private fun escapeHtml(str: String): String =

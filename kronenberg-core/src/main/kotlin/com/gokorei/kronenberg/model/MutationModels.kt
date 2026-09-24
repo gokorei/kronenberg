@@ -19,8 +19,11 @@ public enum class MutantStatus {
     /** The mutation failed in-memory compilation. */
     COMPILE_ERROR,
 
-    /** The baseline code or test suite failed before any mutation was applied. */
     BASELINE_ERROR,
+
+    INFRASTRUCTURE_ERROR,
+
+    RUNNER_ERROR,
 }
 
 /**
@@ -105,7 +108,18 @@ public data class MutationReport(
     val results: List<MutantResult> = emptyList(),
     val baselineError: String? = null,
 ) {
-    public val isPassed: Boolean get() = survivedCount == 0 && baselineError == null
+    public val infrastructureErrorCount: Int
+        get() = results.count { it.status == MutantStatus.INFRASTRUCTURE_ERROR }
+
+    public val runnerErrorCount: Int
+        get() = results.count { it.status == MutantStatus.RUNNER_ERROR }
+
+    public val isPassed: Boolean
+        get() =
+            survivedCount == 0 &&
+                baselineError == null &&
+                infrastructureErrorCount == 0 &&
+                runnerErrorCount == 0
 }
 
 /**

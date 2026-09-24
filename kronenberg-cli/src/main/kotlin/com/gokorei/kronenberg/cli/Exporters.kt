@@ -1,5 +1,6 @@
 package com.gokorei.kronenberg.cli
 
+import com.gokorei.kronenberg.model.MutantResult
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationReport
 import kotlinx.serialization.json.Json
@@ -116,8 +117,11 @@ public object HtmlReportExporter {
                     .badge { display: inline-block; padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; }
                     .badge-killed { background: #064e3b; color: #34d399; }
                     .badge-survived { background: #7f1d1d; color: #f87171; }
-                    .badge-timeout { background: #78350f; color: #fbbf24; }
-                    .badge-error { background: #374151; color: #9ca3af; }
+                     .badge-timeout { background: #78350f; color: #fbbf24; }
+                     .badge-infrastructure { background: #4c1d95; color: #c4b5fd; }
+                     .badge-runner { background: #7f1d1d; color: #fca5a5; }
+                     .badge-error { background: #374151; color: #9ca3af; }
+
                     code { font-family: ui-monospace, SFMono-Regular, monospace; background: #0f172a; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
                     </style>
                     """.trimIndent(),
@@ -140,7 +144,14 @@ public object HtmlReportExporter {
                 appendLine(
                     "      <div class=\"card\"><h3>Timed Out</h3><div class=\"value\" style=\"color:#fbbf24\">${report.timeoutCount}</div></div>",
                 )
+                appendLine("      <div class=\"card\"><h3>Compile Errors</h3><div class=\"value\">${report.compileErrorCount}</div></div>")
+                appendLine(
+                    "      <div class=\"card\"><h3>Infrastructure Errors</h3>" +
+                        "<div class=\"value\">${report.infrastructureErrorCount}</div></div>",
+                )
+                appendLine("      <div class=\"card\"><h3>Runner Errors</h3><div class=\"value\">${report.runnerErrorCount}</div></div>")
                 appendLine("    </div>")
+
                 appendLine("    <table>")
                 appendLine("      <thead>")
                 appendLine(
@@ -157,6 +168,8 @@ public object HtmlReportExporter {
                             MutantStatus.TIMED_OUT -> "badge-timeout" to "TIMED_OUT"
                             MutantStatus.COMPILE_ERROR -> "badge-error" to "COMPILE_ERROR"
                             MutantStatus.BASELINE_ERROR -> "badge-error" to "BASELINE_ERROR"
+                            MutantStatus.INFRASTRUCTURE_ERROR -> "badge-infrastructure" to "INFRASTRUCTURE_ERROR"
+                            MutantStatus.RUNNER_ERROR -> "badge-runner" to "RUNNER_ERROR"
                         }
                     val locationText = if (m.filePath != null) "${m.filePath}:${m.line}:${m.column}" else "L${m.line}:C${m.column}"
                     appendLine("        <tr>")
@@ -214,15 +227,48 @@ public object SarifReportExporter {
 
         val sarifResults =
             report.results
-                .filter { it.status == MutantStatus.SURVIVED }
+                .filter { it.status != MutantStatus.KILLED }
                 .map { res ->
                     val m = res.mutant
+                    val isError = res.status != MutantStatus.SURVIVED
                     buildJsonObject {
                         put("ruleId", m.mutatorName)
-                        put("level", "warning")
+                        put("level", if (isError) "error" else "warning")
                         putJsonObject("message") {
-                            val msg = "Surviving Mutant: Replaced '${m.originalText}' with '${m.replacementText}' (line ${m.line})"
-                            put("text", msg)
+                            val message =
+                                when (res.status) {
+                                    MutantStatus.SURVIVED -> {
+                                        "Surviving Mutant: Replaced '${m.originalText}' with '${m.replacementText}' (line ${m.line})"
+                                    }
+
+                                    MutantStatus.TIMED_OUT -> {
+                                        "Timed out mutant at line ${m.line}: ${res.failureMessage.orEmpty()}"
+                                    }
+
+                                    MutantStatus.COMPILE_ERROR -> {
+                                        "Compilation error at line ${m.line}: ${res.failureMessage.orEmpty()}"
+                                    }
+
+                                    MutantStatus.BASELINE_ERROR -> {
+                                        "Baseline error at line ${m.line}: ${res.failureMessage.orEmpty()}"
+                                    }
+
+                                    MutantStatus.INFRASTRUCTURE_ERROR -> {
+                                        "Infrastructure error at line ${m.line}: ${res.failureMessage.orEmpty()}"
+                                    }
+
+                                    MutantStatus.RUNNER_ERROR -> {
+                                        "Runner error at line ${m.line}: ${res.failureMessage.orEmpty()}"
+                                    }
+
+                                    MutantStatus.KILLED -> {
+                                        ""
+                                    }
+                                }
+                            put("text", message)
+                        }
+                        putJsonObject("properties") {
+                            put("status", res.status.name)
                         }
                         putJsonArray("locations") {
                             add(
@@ -284,47 +330,94 @@ public object CodeClimateReportExporter {
     ) {
         val issues =
             report.results
-                .filter { it.status == MutantStatus.SURVIVED }
-                .map { res ->
-                    val m = res.mutant
-                    val path = m.filePath ?: sourceFilePath
-                    val description =
-                        "Surviving mutation (${m.mutatorName}): replaced '${m.originalText}' with '${m.replacementText}'. " +
-                            "Verify test coverage for this condition."
-                    val fingerprint = "$path:${m.line}:${m.mutatorName}:${m.id}".hashCode().toString()
-
-                    buildJsonObject {
-                        put("type", "issue")
-                        put("check_name", "KronenbergMutationCheck")
-                        put("description", description)
-                        put(
-                            "content",
-                            buildJsonObject {
-                                put(
-                                    "body",
-                                    "Mutant ID: ${m.id}\nMutator: ${m.mutatorName}\nOriginal:\n${m.originalText}\nReplacement:\n${m.replacementText}",
-                                )
-                            },
-                        )
-                        putJsonArray("categories") {
-                            add("Bug Risk")
-                        }
-                        putJsonObject("location") {
-                            put("path", path)
-                            putJsonObject("lines") {
-                                put("begin", m.line)
-                                put("end", m.line)
-                            }
-                        }
-                        putJsonObject("remediation_points") {
-                            put("cost", 50000)
-                        }
-                        put("severity", "minor")
-                        put("fingerprint", fingerprint)
-                    }
-                }
+                .filter { it.status != MutantStatus.KILLED }
+                .map { res -> buildIssue(res, sourceFilePath) }
 
         targetFile.parent?.let { Files.createDirectories(it) }
         Files.writeString(targetFile, json.encodeToString(JsonArray(issues)))
     }
+
+    private fun buildIssue(
+        result: MutantResult,
+        sourceFilePath: String,
+    ) = buildJsonObject {
+        val mutant = result.mutant
+        val path = mutant.filePath ?: sourceFilePath
+        val description = issueDescription(result)
+        val fingerprint = "$path:${mutant.line}:${mutant.mutatorName}:${mutant.id}:${result.status.name}".hashCode().toString()
+
+        put("type", "issue")
+        put("check_name", checkName(result.status))
+        put("description", description)
+        put(
+            "content",
+            buildJsonObject {
+                put(
+                    "body",
+                    "Mutant ID: ${mutant.id}\nStatus: ${result.status.name}\nMutator: ${mutant.mutatorName}\n" +
+                        "Original:\n${mutant.originalText}\nReplacement:\n${mutant.replacementText}",
+                )
+            },
+        )
+        putJsonArray("categories") {
+            add("Bug Risk")
+        }
+        putJsonObject("location") {
+            put("path", path)
+            putJsonObject("lines") {
+                put("begin", mutant.line)
+                put("end", mutant.line)
+            }
+        }
+        putJsonObject("remediation_points") {
+            put("cost", 50000)
+        }
+        put("severity", severity(result.status))
+        put("fingerprint", fingerprint)
+    }
+
+    private fun issueDescription(result: MutantResult): String {
+        val mutant = result.mutant
+        return when (result.status) {
+            MutantStatus.SURVIVED -> {
+                "Surviving mutation (${mutant.mutatorName}): replaced '${mutant.originalText}' with '${mutant.replacementText}'. " +
+                    "Verify test coverage for this condition."
+            }
+
+            MutantStatus.INFRASTRUCTURE_ERROR -> {
+                "Infrastructure error (${mutant.mutatorName}): ${result.failureMessage.orEmpty()}"
+            }
+
+            MutantStatus.RUNNER_ERROR -> {
+                "Runner error (${mutant.mutatorName}): ${result.failureMessage.orEmpty()}"
+            }
+
+            MutantStatus.TIMED_OUT -> {
+                "Timed out mutation (${mutant.mutatorName}): ${result.failureMessage.orEmpty()}"
+            }
+
+            MutantStatus.COMPILE_ERROR -> {
+                "Compilation error (${mutant.mutatorName}): ${result.failureMessage.orEmpty()}"
+            }
+
+            MutantStatus.BASELINE_ERROR -> {
+                "Baseline error (${mutant.mutatorName}): ${result.failureMessage.orEmpty()}"
+            }
+
+            MutantStatus.KILLED -> {
+                ""
+            }
+        }
+    }
+
+    private fun checkName(status: MutantStatus): String =
+        when (status) {
+            MutantStatus.SURVIVED -> "KronenbergMutationCheck"
+            MutantStatus.INFRASTRUCTURE_ERROR -> "KronenbergInfrastructureCheck"
+            MutantStatus.RUNNER_ERROR -> "KronenbergRunnerCheck"
+            else -> "Kronenberg${status.name}"
+        }
+
+    private fun severity(status: MutantStatus): String =
+        if (status == MutantStatus.INFRASTRUCTURE_ERROR || status == MutantStatus.RUNNER_ERROR) "critical" else "minor"
 }

@@ -54,5 +54,7 @@ class TestHarnessSynthesizerSpec {
         merged shouldContain "fun main() {"
         merged shouldContain "MyMathTest().testAdd()"
         merged shouldContain "Killed by MyMathTest.testAdd():"
+        merged shouldContain "catch (t: LinkageError)"
+        merged shouldContain "catch (t: VirtualMachineError)"
     }
 }

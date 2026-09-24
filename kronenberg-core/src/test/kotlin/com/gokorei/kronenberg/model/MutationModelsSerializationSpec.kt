@@ -62,6 +62,43 @@ class MutationModelsSerializationSpec {
     }
 
     @Test
+    fun `infrastructure outcomes are serialized and cannot pass an audit`() {
+        val mutant =
+            AstMutant(
+                id = "infra-1",
+                mutatorName = "RelationalBoundaryMutator",
+                category = MutatorCategory.RELATIONAL_BOUNDARY,
+                line = 1,
+                column = 1,
+                originalText = "<",
+                replacementText = "<=",
+                mutatedSource = "if (x <= 10) return true",
+            )
+        val report =
+            MutationReport(
+                totalMutants = 1,
+                killedCount = 0,
+                survivedCount = 0,
+                timeoutCount = 0,
+                compileErrorCount = 0,
+                mutationScore = 100.0,
+                results =
+                    listOf(
+                        MutantResult(
+                            mutant = mutant,
+                            status = MutantStatus.INFRASTRUCTURE_ERROR,
+                            executionTimeMs = 1L,
+                            failureMessage = "Missing entrypoint",
+                        ),
+                    ),
+            )
+
+        val serialized = json.encodeToString(report)
+        serialized shouldContain "INFRASTRUCTURE_ERROR"
+        json.decodeFromString<MutationReport>(serialized).isPassed shouldBe false
+    }
+
+    @Test
     fun `MutationConfig serialization preserves custom parameters`() {
         val config =
             MutationConfig(
