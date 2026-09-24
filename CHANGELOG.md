@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub Actions CodeQL security scanning workflow (`.github/workflows/codeql.yml`).
 - Automated GitHub Wiki synchronization workflow (`.github/workflows/wiki-sync.yml`).
 
+### Fixed
+- Fixed test-harness discovery and execution when source code defines a top-level `main`; source and test entry points are now handled independently without generating duplicate `main` declarations.
+
 ## [0.1.0] - 2026-09-12
 
 ### Added

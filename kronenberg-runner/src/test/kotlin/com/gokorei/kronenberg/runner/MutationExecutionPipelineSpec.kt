@@ -94,6 +94,25 @@ class MutationExecutionPipelineSpec {
     }
 
     @Test
+    fun `executes discovered tests and kills mutants when source defines main`() {
+        val source =
+            """
+            fun main() {}
+
+            fun add(a: Int, b: Int): Int = a + b
+            """.trimIndent()
+        val test = "fun testAdd() { check(add(2, 2) == 4) }"
+
+        runBlocking {
+            val report = pipeline.execute(source, test, MutationConfig())
+
+            report.baselineError shouldBe null
+            report.totalMutants shouldNotBe 0
+            report.killedCount shouldNotBe 0
+        }
+    }
+
+    @Test
     fun `auto-synthesizes main dispatcher for class-based test suites with JUnit5 annotations`() {
         val source =
             """

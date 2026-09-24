@@ -23,9 +23,21 @@ public data class ParsedTestCode(
     val packageDirective: String?,
     val imports: List<String>,
     val rawBody: String,
-    val hasMain: Boolean,
+    val testHasMain: Boolean,
+    val sourceHasMain: Boolean,
     val candidateTests: List<CandidateTestFunction>,
-)
+) {
+    public val hasMain: Boolean
+        get() = testHasMain || sourceHasMain
+
+    public constructor(
+        packageDirective: String?,
+        imports: List<String>,
+        rawBody: String,
+        hasMain: Boolean,
+        candidateTests: List<CandidateTestFunction>,
+    ) : this(packageDirective, imports, rawBody, hasMain, false, candidateTests)
+}
 
 /**
  * Test code parser and synthesized test runner harness generator.
@@ -38,7 +50,16 @@ public object TestHarnessSynthesizer {
         testCode: String,
         sourceCode: String,
     ): ParsedTestCode {
-        if (testCode.isBlank()) return ParsedTestCode(null, emptyList(), "", false, emptyList())
+        if (testCode.isBlank()) {
+            return ParsedTestCode(
+                packageDirective = null,
+                imports = emptyList(),
+                rawBody = "",
+                testHasMain = false,
+                sourceHasMain = false,
+                candidateTests = emptyList(),
+            )
+        }
         val testFile = K2SnippetFrontend.parsePsi(testCode)
         val sourceFile = if (sourceCode.isNotBlank()) K2SnippetFrontend.parsePsi(sourceCode) else null
 
@@ -48,44 +69,54 @@ public object TestHarnessSynthesizer {
 
         val testHasMain = testFile.declarations.filterIsInstance<KtNamedFunction>().any { it.name == "main" }
         val sourceHasMain = sourceFile?.declarations?.filterIsInstance<KtNamedFunction>()?.any { it.name == "main" } == true
-        val hasMain = testHasMain || sourceHasMain
 
         val candidateTests = mutableListOf<CandidateTestFunction>()
-        if (!hasMain) {
-            // 1. Top-level test functions
-            val topLevelTestFunctions =
-                testFile.declarations.filterIsInstance<KtNamedFunction>().filter { fn ->
+        val topLevelTestFunctions =
+            testFile.declarations.filterIsInstance<KtNamedFunction>().filter { fn ->
+                isTestFunctionCandidate(fn)
+            }
+
+        for (fn in topLevelTestFunctions) {
+            val fnName = fn.name ?: continue
+            val calledNames = CallGraphReachability.extractCalledFunctionNames(fn)
+            candidateTests.add(CandidateTestFunction(fnName, calledNames, className = null))
+        }
+
+        val testClasses =
+            testFile.declarations.filterIsInstance<KtClass>().filter { ktClass ->
+                !ktClass.isInterface() && !ktClass.isAnnotation() && !ktClass.isEnum()
+            }
+
+        for (ktClass in testClasses) {
+            val className = ktClass.name ?: continue
+            val memberFunctions =
+                ktClass.body?.functions.orEmpty().filter { fn ->
                     isTestFunctionCandidate(fn)
                 }
 
-            for (fn in topLevelTestFunctions) {
+            for (fn in memberFunctions) {
                 val fnName = fn.name ?: continue
                 val calledNames = CallGraphReachability.extractCalledFunctionNames(fn)
-                candidateTests.add(CandidateTestFunction(fnName, calledNames, className = null))
-            }
-
-            // 2. Class-based member test functions
-            val testClasses =
-                testFile.declarations.filterIsInstance<KtClass>().filter { ktClass ->
-                    !ktClass.isInterface() && !ktClass.isAnnotation() && !ktClass.isEnum()
-                }
-
-            for (ktClass in testClasses) {
-                val className = ktClass.name ?: continue
-                val memberFunctions =
-                    ktClass.body?.functions.orEmpty().filter { fn ->
-                        isTestFunctionCandidate(fn)
-                    }
-
-                for (fn in memberFunctions) {
-                    val fnName = fn.name ?: continue
-                    val calledNames = CallGraphReachability.extractCalledFunctionNames(fn)
-                    candidateTests.add(CandidateTestFunction(fnName, calledNames, className = className))
-                }
+                candidateTests.add(CandidateTestFunction(fnName, calledNames, className = className))
             }
         }
 
-        return ParsedTestCode(pkg, imports, rawBody, hasMain, candidateTests)
+        return ParsedTestCode(
+            packageDirective = pkg,
+            imports = imports,
+            rawBody = rawBody,
+            testHasMain = testHasMain,
+            sourceHasMain = sourceHasMain,
+            candidateTests = candidateTests,
+        )
+    }
+
+    private fun sourceBodyWithoutMain(file: KtFile): String {
+        val sourceMain = file.declarations.filterIsInstance<KtNamedFunction>().firstOrNull { it.name == "main" }
+        return file.declarations
+            .filterNot { it == sourceMain }
+            .joinToString("\n\n") { it.text }
+            .trim()
     }
 
     private fun isTestFunctionCandidate(fn: KtNamedFunction): Boolean {
@@ -106,62 +137,85 @@ public object TestHarnessSynthesizer {
         if (test.rawBody.isBlank()) return code
 
         val codeFile = K2SnippetFrontend.parsePsi(code)
-        val codeImports = codeFile.importDirectives.map { it.text }
-        val allImports = (codeImports + test.imports).distinct()
-        val selectedPackage = codeFile.packageDirective?.takeIf { it.text.isNotBlank() }?.text ?: test.packageDirective
-        val codeBody = stripPackageAndImports(code, codeFile)
-
-        val testBodyWithMain =
-            if (!test.hasMain && test.candidateTests.isNotEmpty()) {
-                val enclosingFn = if (mutant != null) CallGraphReachability.findEnclosingFunctionName(code, mutant.line) else null
-
-                // Call-graph pruning and ordering: prioritize tests that invoke the mutated function
-                val orderedTests =
-                    if (enclosingFn != null) {
-                        val relevant = test.candidateTests.filter { enclosingFn in it.calledFunctionNames }
-                        val others = test.candidateTests.filter { enclosingFn !in it.calledFunctionNames }
-                        relevant + others
-                    } else {
-                        test.candidateTests
-                    }
-
-                val sb = StringBuilder()
-                sb.appendLine(test.rawBody)
-                sb.appendLine()
-                sb.appendLine("fun main() {")
-                orderedTests.forEach { testFn ->
-                    val displayName =
-                        if (testFn.className != null) "${testFn.className}.${testFn.name}()" else "${testFn.name}()"
-                    val invocation =
-                        if (testFn.className != null) {
-                            "${testFn.className}().${testFn.name}()"
-                        } else {
-                            "${testFn.name}()"
-                        }
-                    sb.appendLine(
-                        "    try { $invocation } catch (t: Throwable) { throw AssertionError(\"Killed by $displayName: \" + t.message, t) }",
-                    )
-                }
-                sb.appendLine("}")
-                sb.toString()
-            } else {
-                test.rawBody
-            }
-
-        val sb = StringBuilder()
-        if (selectedPackage != null) {
-            sb.appendLine(selectedPackage)
-            sb.appendLine()
-        }
-        if (allImports.isNotEmpty()) {
-            allImports.forEach { sb.appendLine(it) }
-            sb.appendLine()
-        }
-        sb.appendLine(codeBody)
-        sb.appendLine()
-        sb.appendLine(testBodyWithMain)
-        return sb.toString().trim()
+        val shouldSynthesizeMain = !test.testHasMain && test.candidateTests.isNotEmpty()
+        val sourceHasMain = codeFile.declarations.filterIsInstance<KtNamedFunction>().any { it.name == "main" }
+        val removeSourceMain = sourceHasMain && (test.testHasMain || shouldSynthesizeMain)
+        val codeBody = mergedSourceBody(codeFile, removeSourceMain)
+        val testBodyWithMain = buildTestBody(code, test, mutant, shouldSynthesizeMain)
+        val imports = (codeFile.importDirectives.map { it.text } + test.imports).distinct()
+        val packageDirective = codeFile.packageDirective?.takeIf { it.text.isNotBlank() }?.text ?: test.packageDirective
+        return buildMergedCode(packageDirective, imports, codeBody, testBodyWithMain)
     }
+
+    private fun mergedSourceBody(
+        codeFile: KtFile,
+        removeSourceMain: Boolean,
+    ): String =
+        if (removeSourceMain) {
+            sourceBodyWithoutMain(codeFile)
+        } else {
+            stripPackageAndImports(codeFile.text, codeFile)
+        }
+
+    private fun buildTestBody(
+        code: String,
+        test: ParsedTestCode,
+        mutant: AstMutant?,
+        shouldSynthesizeMain: Boolean,
+    ): String {
+        if (!shouldSynthesizeMain) return test.rawBody
+        val orderedTests = orderedTests(code, test.candidateTests, mutant)
+        return buildString {
+            appendLine(test.rawBody)
+            appendLine()
+            appendLine("fun main() {")
+            orderedTests.forEach { testFn ->
+                val displayName =
+                    if (testFn.className != null) "${testFn.className}.${testFn.name}()" else "${testFn.name}()"
+                val invocation =
+                    if (testFn.className != null) {
+                        "${testFn.className}().${testFn.name}()"
+                    } else {
+                        "${testFn.name}()"
+                    }
+                appendLine(
+                    "    try { $invocation } catch (t: Throwable) { throw AssertionError(\"Killed by $displayName: \" + t.message, t) }",
+                )
+            }
+            appendLine("}")
+        }
+    }
+
+    private fun orderedTests(
+        code: String,
+        candidateTests: List<CandidateTestFunction>,
+        mutant: AstMutant?,
+    ): List<CandidateTestFunction> {
+        val enclosingFn = mutant?.let { CallGraphReachability.findEnclosingFunctionName(code, it.line) } ?: return candidateTests
+        val relevant = candidateTests.filter { enclosingFn in it.calledFunctionNames }
+        val others = candidateTests.filter { enclosingFn !in it.calledFunctionNames }
+        return relevant + others
+    }
+
+    private fun buildMergedCode(
+        packageDirective: String?,
+        imports: List<String>,
+        codeBody: String,
+        testBody: String,
+    ): String =
+        buildString {
+            if (packageDirective != null) {
+                appendLine(packageDirective)
+                appendLine()
+            }
+            if (imports.isNotEmpty()) {
+                imports.forEach { appendLine(it) }
+                appendLine()
+            }
+            appendLine(codeBody)
+            appendLine()
+            appendLine(testBody)
+        }.trim()
 
     /**
      * Strips package and import statements from source text to enable clean snippet concatenation.
