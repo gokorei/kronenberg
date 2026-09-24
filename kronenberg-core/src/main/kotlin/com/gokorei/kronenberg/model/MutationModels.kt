@@ -23,6 +23,12 @@ public enum class MutantStatus {
     BASELINE_ERROR,
 }
 
+@Serializable
+public enum class SnippetExecutionTrust {
+    TRUSTED_LOCAL,
+    UNTRUSTED,
+}
+
 /**
  * Functional category of an AST mutator rule.
  */
@@ -122,4 +128,28 @@ public data class MutationConfig(
     val targetLines: List<Int>? = null,
     val enableCache: Boolean = false,
     val extraClasspath: List<String> = emptyList(),
-)
+    val executionTrust: SnippetExecutionTrust = SnippetExecutionTrust.TRUSTED_LOCAL,
+) {
+    public constructor(
+        minScore: Double,
+        timeoutMultiplier: Double,
+        baselineTimeoutMs: Long,
+        higherOrderMutants: Boolean,
+        includeExtreme: Boolean,
+        maxMutants: Int?,
+        targetLines: List<Int>?,
+        enableCache: Boolean,
+        extraClasspath: List<String>,
+    ) : this(
+        minScore,
+        timeoutMultiplier,
+        baselineTimeoutMs,
+        higherOrderMutants,
+        includeExtreme,
+        maxMutants,
+        targetLines,
+        enableCache,
+        extraClasspath,
+        SnippetExecutionTrust.TRUSTED_LOCAL,
+    )
+}
