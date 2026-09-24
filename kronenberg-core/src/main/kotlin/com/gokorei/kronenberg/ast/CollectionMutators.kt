@@ -2,6 +2,7 @@ package com.gokorei.kronenberg.ast
 
 import com.gokorei.kronenberg.model.AstEdit
 import com.gokorei.kronenberg.model.MutatorCategory
+import org.jetbrains.kotlin.com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.psi.KtCallExpression
 
 /**
@@ -13,7 +14,7 @@ public class CollectionOperatorMutator : TypedAstMutator<KtCallExpression>(KtCal
     override val description: String =
         "Inverts collection methods (filter <-> filterNot, any <-> all, map <-> mapNotNull, sorted <-> sortedDescending)"
 
-    private val supportedMethods =
+    internal val supportedMethods =
         setOf(
             "filter",
             "filterNot",
@@ -45,32 +46,56 @@ public class CollectionOperatorMutator : TypedAstMutator<KtCallExpression>(KtCal
         context: MutationContext,
     ): List<AstEdit> {
         val callee = element.calleeExpression ?: return emptyList()
-        val replacements =
-            when (callee.text) {
-                "filter" -> listOf("filterNot" to "Inverted filter -> filterNot")
-                "filterNot" -> listOf("filter" to "Inverted filterNot -> filter")
-                "any" -> listOf("all" to "Inverted any -> all")
-                "all" -> listOf("any" to "Inverted all -> any")
-                "take" -> listOf("drop" to "Inverted take -> drop")
-                "drop" -> listOf("take" to "Inverted drop -> take")
-                "first" -> listOf("last" to "Inverted first -> last")
-                "last" -> listOf("first" to "Inverted last -> first")
-                "map" -> listOf("mapNotNull" to "Inverted map -> mapNotNull")
-                "mapNotNull" -> listOf("map" to "Inverted mapNotNull -> map")
-                "sorted" -> listOf("sortedDescending" to "Inverted sorted -> sortedDescending")
-                "sortedDescending" -> listOf("sorted" to "Inverted sortedDescending -> sorted")
-                "minOrNull" -> listOf("maxOrNull" to "Inverted minOrNull -> maxOrNull")
-                "maxOrNull" -> listOf("minOrNull" to "Inverted maxOrNull -> minOrNull")
-                "find" -> listOf("findLast" to "Inverted find -> findLast")
-                "findLast" -> listOf("find" to "Inverted findLast -> find")
-                "associate" -> listOf("associateBy" to "Inverted associate -> associateBy")
-                "associateBy" -> listOf("associate" to "Inverted associateBy -> associate")
-                else -> emptyList()
-            }
+        return mutateName(callee.text, callee, context)
+    }
 
-        return replacements.map { (rep, desc) ->
-            context.edit(callee, rep, desc, originalText = callee.text)
-        }
+    @Suppress("CyclomaticComplexMethod", "ReturnCount")
+    internal fun mutateResolved(
+        element: PsiElement,
+        context: MutationContext,
+        target: ResolvedSemanticTarget,
+    ): List<AstEdit> {
+        if (element !is KtCallExpression || target.name !in supportedMethods) return emptyList()
+        val callee = element.calleeExpression ?: return emptyList()
+        return mutateName(target.name, callee, context)
+    }
+
+    @Suppress("CyclomaticComplexMethod", "ReturnCount")
+    private fun mutateName(
+        name: String,
+        callee: org.jetbrains.kotlin.psi.KtExpression,
+        context: MutationContext,
+    ): List<AstEdit> {
+        val replacement =
+            when (name) {
+                "filter" -> "filterNot"
+                "filterNot" -> "filter"
+                "any" -> "all"
+                "all" -> "any"
+                "take" -> "drop"
+                "drop" -> "take"
+                "first" -> "last"
+                "last" -> "first"
+                "map" -> "mapNotNull"
+                "mapNotNull" -> "map"
+                "sorted" -> "sortedDescending"
+                "sortedDescending" -> "sorted"
+                "minOrNull" -> "maxOrNull"
+                "maxOrNull" -> "minOrNull"
+                "find" -> "findLast"
+                "findLast" -> "find"
+                "associate" -> "associateBy"
+                "associateBy" -> "associate"
+                else -> return emptyList()
+            }
+        return listOf(
+            context.edit(
+                target = callee,
+                replacement = replacement,
+                description = "Inverted $name -> $replacement",
+                originalText = callee.text,
+            ),
+        )
     }
 }
 
@@ -92,22 +117,28 @@ public class CoroutineFlowMutator : TypedAstMutator<KtCallExpression>(KtCallExpr
     override fun mutateTyped(
         element: KtCallExpression,
         context: MutationContext,
+    ): List<AstEdit> = mutateDelay(element, context)
+
+    @Suppress("CyclomaticComplexMethod", "ReturnCount")
+    internal fun mutateResolved(
+        element: PsiElement,
+        context: MutationContext,
+        target: ResolvedSemanticTarget,
     ): List<AstEdit> {
-        val callee = element.calleeExpression ?: return emptyList()
-        val calleeName = callee.text
+        if (element !is KtCallExpression || target.name != "delay") return emptyList()
+        return mutateDelay(element, context)
+    }
 
-        if (calleeName == "delay") {
-            val valueArgs = element.valueArgumentList ?: return emptyList()
-            if (valueArgs.arguments.isNotEmpty()) {
-                val arg = valueArgs.arguments.first()
-                if (arg.text.trim() != "0L" && arg.text.trim() != "0") {
-                    return listOf(
-                        context.edit(arg, "0L", "Mutated delay argument '${arg.text}' to '0L'"),
-                    )
-                }
-            }
-        }
-
-        return emptyList()
+    @Suppress("ReturnCount")
+    private fun mutateDelay(
+        element: KtCallExpression,
+        context: MutationContext,
+    ): List<AstEdit> {
+        val valueArgs = element.valueArgumentList ?: return emptyList()
+        val arg = valueArgs.arguments.firstOrNull() ?: return emptyList()
+        if (arg.text.trim() == "0L" || arg.text.trim() == "0") return emptyList()
+        return listOf(
+            context.edit(arg, "0L", "Mutated delay argument '${arg.text}' to '0L'"),
+        )
     }
 }

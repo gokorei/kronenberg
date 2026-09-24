@@ -1,6 +1,7 @@
 package com.gokorei.kronenberg.ast
 
 import com.gokorei.kronenberg.model.AstEdit
+import com.gokorei.kronenberg.model.AstMutant
 import com.gokorei.kronenberg.model.MutatorCategory
 import org.jetbrains.kotlin.com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.psi.KtElement
@@ -65,6 +66,30 @@ public fun computeLineAndColumn(
 /**
  * Service Provider Interface (SPI) for individual K2 PSI AST mutation rules.
  */
+public enum class MutantDiscardReason {
+    UNRESOLVED_TARGET,
+    NON_STANDARD_TARGET,
+    TYPE_INVALID_TRANSFORMATION,
+    VALIDATION_UNAVAILABLE,
+}
+
+public data class DiscardedMutant(
+    val mutatorName: String,
+    val category: MutatorCategory,
+    val line: Int,
+    val column: Int,
+    val originalText: String,
+    val replacementText: String,
+    val reason: MutantDiscardReason,
+    val resolvedTarget: String? = null,
+    val filePath: String? = null,
+)
+
+public data class MutantGenerationResult(
+    val mutants: List<AstMutant>,
+    val discarded: List<DiscardedMutant>,
+)
+
 public interface AstMutator {
     /** Unique identifier for this mutator rule. */
     public val name: String

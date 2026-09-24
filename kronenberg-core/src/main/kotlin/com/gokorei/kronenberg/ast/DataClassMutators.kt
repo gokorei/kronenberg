@@ -2,6 +2,7 @@ package com.gokorei.kronenberg.ast
 
 import com.gokorei.kronenberg.model.AstEdit
 import com.gokorei.kronenberg.model.MutatorCategory
+import org.jetbrains.kotlin.com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.psi.KtCallExpression
 import org.jetbrains.kotlin.psi.KtDestructuringDeclaration
 import org.jetbrains.kotlin.psi.KtValueArgumentList
@@ -24,14 +25,26 @@ public class DataClassCopyMutator : TypedAstMutator<KtCallExpression>(KtCallExpr
     override fun mutateTyped(
         element: KtCallExpression,
         context: MutationContext,
+    ): List<AstEdit> = mutateCopy(element, context)
+
+    internal fun mutateResolved(
+        element: PsiElement,
+        context: MutationContext,
+        target: ResolvedSemanticTarget,
+    ): List<AstEdit> {
+        if (element !is KtCallExpression || target.name != "copy") return emptyList()
+        return mutateCopy(element, context)
+    }
+
+    @Suppress("ReturnCount")
+    private fun mutateCopy(
+        element: KtCallExpression,
+        context: MutationContext,
     ): List<AstEdit> {
         val argList = element.valueArgumentList ?: return emptyList()
         val args = argList.arguments
         if (args.isEmpty()) return emptyList()
-
         val edits = mutableListOf<AstEdit>()
-
-        // 1. Strip all arguments
         edits.add(
             context.edit(
                 target = argList,
@@ -40,23 +53,20 @@ public class DataClassCopyMutator : TypedAstMutator<KtCallExpression>(KtCallExpr
                 originalText = argList.text,
             ),
         )
-
-        // 2. If multiple arguments, drop individual arguments one by one
         if (args.size > 1) {
             for (i in args.indices) {
                 val remainingArgs = args.filterIndexed { index, _ -> index != i }.joinToString(", ") { it.text }
-                val rep = "($remainingArgs)"
+                val replacement = "($remainingArgs)"
                 edits.add(
                     context.edit(
                         target = argList,
-                        replacement = rep,
+                        replacement = replacement,
                         description = "Dropped argument '${args[i].text}' from copy() call",
                         originalText = argList.text,
                     ),
                 )
             }
         }
-
         return edits
     }
 }
