@@ -2,6 +2,11 @@ package com.gokorei.kronenberg.cli
 
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.testing.test
+import com.gokorei.kronenberg.model.AstMutant
+import com.gokorei.kronenberg.model.MutantResult
+import com.gokorei.kronenberg.model.MutantStatus
+import com.gokorei.kronenberg.model.MutationReport
+import com.gokorei.kronenberg.model.MutatorCategory
 import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -344,6 +349,59 @@ class KronenbergCliSpec {
         } finally {
             srcFile.toFile().delete()
             testFile.toFile().delete()
+        }
+    }
+
+    @Test
+    fun `exports infrastructure and runner statuses through all report renderers`() {
+        val mutant =
+            AstMutant(
+                id = "infra-1",
+                mutatorName = "RelationalBoundaryMutator",
+                category = MutatorCategory.RELATIONAL_BOUNDARY,
+                line = 1,
+                column = 1,
+                originalText = "<",
+                replacementText = "<=",
+                mutatedSource = "if (x <= 10) return true",
+            )
+        val report =
+            MutationReport(
+                totalMutants = 2,
+                killedCount = 0,
+                survivedCount = 0,
+                timeoutCount = 0,
+                compileErrorCount = 0,
+                mutationScore = 100.0,
+                results =
+                    listOf(
+                        MutantResult(mutant, MutantStatus.INFRASTRUCTURE_ERROR, 1L, "missing entrypoint"),
+                        MutantResult(mutant.copy(id = "runner-1"), MutantStatus.RUNNER_ERROR, 1L, "runner closed"),
+                    ),
+            )
+        val htmlFile = createTempFile("status-report", ".html")
+        val xmlFile = createTempFile("status-report", ".xml")
+        val sarifFile = createTempFile("status-report", ".sarif")
+        val codeClimateFile = createTempFile("status-report", ".json")
+        try {
+            HtmlReportExporter.export(report, htmlFile)
+            JUnitXmlReportExporter.export(report, xmlFile)
+            SarifReportExporter.export(report, sarifFile)
+            CodeClimateReportExporter.export(report, codeClimateFile)
+
+            htmlFile.readText() shouldContain "INFRASTRUCTURE_ERROR"
+            htmlFile.readText() shouldContain "RUNNER_ERROR"
+            xmlFile.readText() shouldContain "InfrastructureError"
+            xmlFile.readText() shouldContain "RunnerError"
+            sarifFile.readText() shouldContain "INFRASTRUCTURE_ERROR"
+            sarifFile.readText() shouldContain "RUNNER_ERROR"
+            codeClimateFile.readText() shouldContain "KronenbergInfrastructureCheck"
+            codeClimateFile.readText() shouldContain "KronenbergRunnerCheck"
+        } finally {
+            htmlFile.toFile().delete()
+            xmlFile.toFile().delete()
+            sarifFile.toFile().delete()
+            codeClimateFile.toFile().delete()
         }
     }
 }

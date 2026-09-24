@@ -9,9 +9,9 @@ import java.lang.reflect.InvocationTargetException
 import java.net.URLClassLoader
 import java.nio.file.Path
 import java.util.concurrent.Callable
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 
@@ -91,6 +91,14 @@ public data class RunnerOutcome(
     val failureMessage: String? = null,
 )
 
+private class RunnerInfrastructureFailure(
+    override val cause: Throwable,
+) : RuntimeException(cause)
+
+private class TestExecutionFailure(
+    override val cause: Throwable,
+) : RuntimeException(cause)
+
 /**
  * In-process virtual-thread snippet execution sandbox contract.
  */
@@ -109,6 +117,7 @@ public interface FastSnippetRunner : AutoCloseable {
 /**
  * Default sandbox runner using isolated URLClassLoaders and Java 21 Virtual Threads.
  */
+@Suppress("TooManyFunctions")
 public class DefaultFastSnippetRunner(
     threadPoolSize: Int = 4,
 ) : FastSnippetRunner {
@@ -133,101 +142,205 @@ public class DefaultFastSnippetRunner(
     ): RunnerOutcome {
         val startNanos = System.nanoTime()
         val fullCp =
-            listOf(classesDir.toUri().toURL()) +
-                extraClasspath.filter { it.isNotBlank() }.map { File(it).toURI().toURL() }
+            runCatching {
+                listOf(classesDir.toUri().toURL()) +
+                    extraClasspath.filter { it.isNotBlank() }.map { File(it).toURI().toURL() }
+            }
+        if (fullCp.isFailure) {
+            val failure = fullCp.exceptionOrNull() ?: IllegalStateException("Classpath setup failed")
+            return failureOutcome(startNanos, statusForFailure(failure), failureMessage(failure), "")
+        }
 
         val capturedOut = ByteArrayOutputStream()
         val customPrintStream = PrintStream(capturedOut, true, Charsets.UTF_8.name())
+        val task = Callable { executeSnippet(classesDir, mainClass, fullCp.getOrThrow(), customPrintStream) }
 
-        val task =
-            Callable {
-                val classLoader =
-                    object : URLClassLoader(fullCp.toTypedArray(), this::class.java.classLoader) {
-                        override fun loadClass(
-                            name: String,
-                            resolve: Boolean,
-                        ): Class<*> {
-                            val classFile = classesDir.resolve(name.replace('.', '/') + ".class").toFile()
-                            if (classFile.exists()) {
-                                val loaded = findLoadedClass(name)
-                                if (loaded != null) return loaded
-                                return findClass(name)
-                            }
-                            return super.loadClass(name, resolve)
-                        }
-                    }
-                try {
-                    val clazz =
-                        try {
-                            classLoader.loadClass(mainClass)
-                        } catch (e: ClassNotFoundException) {
-                            val candidate =
-                                classesDir
-                                    .toFile()
-                                    .walkTopDown()
-                                    .firstOrNull { it.isFile && it.extension == "class" && !it.name.contains("$") }
-                            val rel =
-                                candidate
-                                    ?.relativeTo(classesDir.toFile())
-                                    ?.path
-                                    ?.removeSuffix(".class")
-                                    ?.replace('/', '.') ?: "SnippetKt"
-                            classLoader.loadClass(rel)
-                        }
+        val submitted = runCatching { executor.submit(task) }
+        val future = submitted.getOrNull()
+        return if (future == null) {
+            failureFromException(
+                startNanos,
+                submitted.exceptionOrNull() ?: IllegalStateException("Runner rejected execution"),
+                capturedOut,
+            )
+        } else {
+            val completed = runCatching { future.get(timeoutMs, TimeUnit.MILLISECONDS) }
+            val failure = completed.exceptionOrNull()
+            when {
+                failure == null -> {
+                    RunnerOutcome(
+                        status = MutantStatus.SURVIVED,
+                        executionTimeMs = elapsedMs(startNanos),
+                        stdout = capturedOut.toString(Charsets.UTF_8.name()).trim(),
+                    )
+                }
 
-                    val entryMethod =
-                        try {
-                            clazz.getMethod("main", Array<String>::class.java)
-                        } catch (_: NoSuchMethodException) {
-                            clazz.getMethod("main")
-                        }
+                failure is TimeoutException -> {
+                    future.cancel(true)
+                    RunnerOutcome(
+                        status = MutantStatus.TIMED_OUT,
+                        executionTimeMs = elapsedMs(startNanos),
+                        failureMessage = "Execution timed out after ${timeoutMs}ms",
+                    )
+                }
 
-                    val initialProps = java.util.Properties().apply { putAll(System.getProperties()) }
-                    try {
-                        ThreadLocalPrintStream.withCapture(customPrintStream) {
-                            val invokeArgs =
-                                if (entryMethod.parameterCount == 1) arrayOf<Any>(emptyArray<String>()) else emptyArray()
-                            entryMethod.invoke(null, *invokeArgs)
-                        }
-                    } finally {
-                        System.setProperties(initialProps)
-                    }
-                } finally {
-                    runCatching { classLoader.close() }
+                failure is InterruptedException -> {
+                    future.cancel(true)
+                    Thread.currentThread().interrupt()
+                    failureOutcome(
+                        startNanos = startNanos,
+                        status = MutantStatus.RUNNER_ERROR,
+                        message = "Runner interrupted while waiting for execution",
+                        stdout = capturedOut.toString(Charsets.UTF_8.name()).trim(),
+                    )
+                }
+
+                else -> {
+                    failureFromException(startNanos, failure, capturedOut)
                 }
             }
-
-        var future: Future<*>? = null
-        return try {
-            val f = executor.submit(task)
-            future = f
-            f.get(timeoutMs, TimeUnit.MILLISECONDS)
-            val durationMs = (System.nanoTime() - startNanos) / 1_000_000
-            val out = capturedOut.toString(Charsets.UTF_8.name()).trim()
-            RunnerOutcome(
-                status = MutantStatus.SURVIVED,
-                executionTimeMs = durationMs,
-                stdout = out,
-            )
-        } catch (e: TimeoutException) {
-            future?.cancel(true)
-            val durationMs = (System.nanoTime() - startNanos) / 1_000_000
-            RunnerOutcome(
-                status = MutantStatus.TIMED_OUT,
-                executionTimeMs = durationMs,
-                failureMessage = "Execution timed out after ${timeoutMs}ms",
-            )
-        } catch (e: Throwable) {
-            val durationMs = (System.nanoTime() - startNanos) / 1_000_000
-            val target = (e.cause as? InvocationTargetException)?.targetException ?: e.cause ?: e
-            val errorMsg = "${target.javaClass.simpleName}: ${target.message.orEmpty()}"
-            RunnerOutcome(
-                status = MutantStatus.KILLED,
-                executionTimeMs = durationMs,
-                failureMessage = errorMsg,
-            )
         }
     }
+
+    private fun executeSnippet(
+        classesDir: Path,
+        mainClass: String,
+        fullCp: List<java.net.URL>,
+        output: PrintStream,
+    ) {
+        val classLoader = createClassLoader(fullCp, classesDir)
+        val execution = runCatching { invokeSnippet(classLoader, mainClass, output) }
+        var failure = execution.exceptionOrNull()
+        val closeFailure = runCatching { classLoader.close() }.exceptionOrNull()
+        if (failure == null) {
+            failure = closeFailure
+        } else if (closeFailure != null) {
+            val primaryFailure = failure
+            primaryFailure.addSuppressed(closeFailure)
+        }
+        failure?.let { throw it }
+    }
+
+    private fun createClassLoader(
+        fullCp: List<java.net.URL>,
+        classesDir: Path,
+    ): URLClassLoader =
+        runCatching {
+            object : URLClassLoader(fullCp.toTypedArray(), this::class.java.classLoader) {
+                override fun loadClass(
+                    name: String,
+                    resolve: Boolean,
+                ): Class<*> {
+                    val classFile = classesDir.resolve(name.replace('.', '/') + ".class").toFile()
+                    if (classFile.exists()) {
+                        val loaded = findLoadedClass(name)
+                        if (loaded != null) return loaded
+                        return findClass(name)
+                    }
+                    return super.loadClass(name, resolve)
+                }
+            }
+        }.getOrElse { throw RunnerInfrastructureFailure(it) }
+
+    private fun invokeSnippet(
+        classLoader: URLClassLoader,
+        mainClass: String,
+        output: PrintStream,
+    ) {
+        val clazz = classLoader.loadClass(mainClass)
+        val entryMethod =
+            try {
+                clazz.getMethod("main", Array<String>::class.java)
+            } catch (_: NoSuchMethodException) {
+                clazz.getMethod("main")
+            }
+        val initialProps = java.util.Properties().apply { putAll(System.getProperties()) }
+        try {
+            ThreadLocalPrintStream.withCapture(output) {
+                val invokeArgs =
+                    if (entryMethod.parameterCount == 1) arrayOf<Any>(emptyArray<String>()) else emptyArray()
+                try {
+                    entryMethod.invoke(null, *invokeArgs)
+                } catch (e: InvocationTargetException) {
+                    throw invocationFailure(e)
+                }
+            }
+        } finally {
+            System.setProperties(initialProps)
+        }
+    }
+
+    private fun invocationFailure(failure: InvocationTargetException): Throwable {
+        val target = failure.targetException ?: return RunnerInfrastructureFailure(failure)
+        return if (isInfrastructureOrFatal(target)) target else TestExecutionFailure(target)
+    }
+
+    private fun isInfrastructureOrFatal(failure: Throwable): Boolean =
+        when (failure) {
+            is VirtualMachineError, is LinkageError -> true
+            is Error -> failure !is AssertionError
+            else -> false
+        }
+
+    private fun failureFromException(
+        startNanos: Long,
+        failure: Throwable,
+        capturedOut: ByteArrayOutputStream,
+    ): RunnerOutcome {
+        val target = unwrapFailure(failure)
+        return failureOutcome(
+            startNanos = startNanos,
+            status = statusForFailure(failure),
+            message = failureMessage(target),
+            stdout = capturedOut.toString(Charsets.UTF_8.name()).trim(),
+        )
+    }
+
+    private fun failureOutcome(
+        startNanos: Long,
+        status: MutantStatus,
+        message: String,
+        stdout: String,
+    ): RunnerOutcome =
+        RunnerOutcome(
+            status = status,
+            executionTimeMs = elapsedMs(startNanos),
+            stdout = stdout,
+            failureMessage = message,
+        )
+
+    private fun statusForFailure(failure: Throwable): MutantStatus {
+        val target = unwrapFailure(failure)
+        return when {
+            failure is TestExecutionFailure ||
+                (failure is ExecutionException && failure.cause is TestExecutionFailure) -> MutantStatus.KILLED
+
+            target is VirtualMachineError -> MutantStatus.RUNNER_ERROR
+
+            target is LinkageError ||
+                target is ClassNotFoundException ||
+                target is NoSuchMethodException ||
+                target is ReflectiveOperationException ||
+                target is SecurityException -> MutantStatus.INFRASTRUCTURE_ERROR
+
+            target is Error && target !is AssertionError -> MutantStatus.RUNNER_ERROR
+
+            else -> MutantStatus.RUNNER_ERROR
+        }
+    }
+
+    private fun unwrapFailure(failure: Throwable): Throwable =
+        when (failure) {
+            is TestExecutionFailure -> failure.cause
+            is RunnerInfrastructureFailure -> unwrapFailure(failure.cause)
+            is ExecutionException -> failure.cause?.let(::unwrapFailure) ?: failure
+            is InvocationTargetException -> failure.targetException ?: failure
+            else -> failure
+        }
+
+    private fun failureMessage(failure: Throwable): String = "${failure.javaClass.simpleName}: ${failure.message.orEmpty()}"
+
+    private fun elapsedMs(startNanos: Long): Long = (System.nanoTime() - startNanos) / 1_000_000
 
     override fun close() {
         executor.shutdownNow()

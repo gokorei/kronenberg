@@ -111,42 +111,7 @@ public object TestHarnessSynthesizer {
         val selectedPackage = codeFile.packageDirective?.takeIf { it.text.isNotBlank() }?.text ?: test.packageDirective
         val codeBody = stripPackageAndImports(code, codeFile)
 
-        val testBodyWithMain =
-            if (!test.hasMain && test.candidateTests.isNotEmpty()) {
-                val enclosingFn = if (mutant != null) CallGraphReachability.findEnclosingFunctionName(code, mutant.line) else null
-
-                // Call-graph pruning and ordering: prioritize tests that invoke the mutated function
-                val orderedTests =
-                    if (enclosingFn != null) {
-                        val relevant = test.candidateTests.filter { enclosingFn in it.calledFunctionNames }
-                        val others = test.candidateTests.filter { enclosingFn !in it.calledFunctionNames }
-                        relevant + others
-                    } else {
-                        test.candidateTests
-                    }
-
-                val sb = StringBuilder()
-                sb.appendLine(test.rawBody)
-                sb.appendLine()
-                sb.appendLine("fun main() {")
-                orderedTests.forEach { testFn ->
-                    val displayName =
-                        if (testFn.className != null) "${testFn.className}.${testFn.name}()" else "${testFn.name}()"
-                    val invocation =
-                        if (testFn.className != null) {
-                            "${testFn.className}().${testFn.name}()"
-                        } else {
-                            "${testFn.name}()"
-                        }
-                    sb.appendLine(
-                        "    try { $invocation } catch (t: Throwable) { throw AssertionError(\"Killed by $displayName: \" + t.message, t) }",
-                    )
-                }
-                sb.appendLine("}")
-                sb.toString()
-            } else {
-                test.rawBody
-            }
+        val testBodyWithMain = synthesizeTestBody(code, test, mutant)
 
         val sb = StringBuilder()
         if (selectedPackage != null) {
@@ -161,6 +126,59 @@ public object TestHarnessSynthesizer {
         sb.appendLine()
         sb.appendLine(testBodyWithMain)
         return sb.toString().trim()
+    }
+
+    private fun synthesizeTestBody(
+        code: String,
+        test: ParsedTestCode,
+        mutant: AstMutant?,
+    ): String {
+        if (test.hasMain || test.candidateTests.isEmpty()) return test.rawBody
+
+        val enclosingFn = mutant?.let { CallGraphReachability.findEnclosingFunctionName(code, it.line) }
+        val orderedTests =
+            if (enclosingFn == null) {
+                test.candidateTests
+            } else {
+                val relevant = test.candidateTests.filter { enclosingFn in it.calledFunctionNames }
+                val others = test.candidateTests.filter { enclosingFn !in it.calledFunctionNames }
+                relevant + others
+            }
+
+        val sb = StringBuilder()
+        sb.appendLine(test.rawBody)
+        sb.appendLine()
+        sb.appendLine("fun main() {")
+        orderedTests.forEach { testFn ->
+            val displayName =
+                if (testFn.className != null) "${testFn.className}.${testFn.name}()" else "${testFn.name}()"
+            val invocation =
+                if (testFn.className != null) {
+                    "${testFn.className}().${testFn.name}()"
+                } else {
+                    "${testFn.name}()"
+                }
+            appendInvocation(sb, invocation, displayName)
+        }
+        sb.appendLine("}")
+        return sb.toString()
+    }
+
+    private fun appendInvocation(
+        sb: StringBuilder,
+        invocation: String,
+        displayName: String,
+    ) {
+        sb.appendLine("    try { $invocation }")
+        sb.appendLine("    catch (t: LinkageError) { throw t }")
+        sb.appendLine("    catch (t: VirtualMachineError) { throw t }")
+        sb.appendLine(
+            "    catch (t: Error) { if (t !is AssertionError) throw t else " +
+                "throw AssertionError(\"Killed by $displayName: \" + t.message, t) }",
+        )
+        sb.appendLine(
+            "    catch (t: Throwable) { throw AssertionError(\"Killed by $displayName: \" + t.message, t) }",
+        )
     }
 
     /**
