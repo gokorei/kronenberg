@@ -6,6 +6,7 @@ import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtClassOrObject
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtNamedFunction
+import org.jetbrains.kotlin.psi.KtTreeVisitorVoid
 
 /**
  * Metadata representing a candidate test function discovered in test source code.
@@ -46,8 +47,8 @@ public object TestHarnessSynthesizer {
         val pkg = testFile.packageDirective?.takeIf { it.text.isNotBlank() }?.text
         val rawBody = stripPackageAndImports(testCode, testFile)
 
-        val testHasMain = testFile.declarations.filterIsInstance<KtNamedFunction>().any { it.name == "main" }
-        val sourceHasMain = sourceFile?.declarations?.filterIsInstance<KtNamedFunction>()?.any { it.name == "main" } == true
+        val testHasMain = containsMain(testFile)
+        val sourceHasMain = sourceFile?.let(::containsMain) == true
         val hasMain = testHasMain || sourceHasMain
 
         val candidateTests = mutableListOf<CandidateTestFunction>()
@@ -88,6 +89,19 @@ public object TestHarnessSynthesizer {
         return ParsedTestCode(pkg, imports, rawBody, hasMain, candidateTests)
     }
 
+    private fun containsMain(file: KtFile): Boolean {
+        var found = false
+        file.accept(
+            object : KtTreeVisitorVoid() {
+                override fun visitNamedFunction(function: KtNamedFunction) {
+                    if (function.name == "main") found = true
+                    super.visitNamedFunction(function)
+                }
+            },
+        )
+        return found
+    }
+
     private fun isTestFunctionCandidate(fn: KtNamedFunction): Boolean {
         val name = fn.name ?: ""
         val isTestNamed = name.startsWith("test", ignoreCase = true) || name.endsWith("test", ignoreCase = true)
@@ -111,42 +125,7 @@ public object TestHarnessSynthesizer {
         val selectedPackage = codeFile.packageDirective?.takeIf { it.text.isNotBlank() }?.text ?: test.packageDirective
         val codeBody = stripPackageAndImports(code, codeFile)
 
-        val testBodyWithMain =
-            if (!test.hasMain && test.candidateTests.isNotEmpty()) {
-                val enclosingFn = if (mutant != null) CallGraphReachability.findEnclosingFunctionName(code, mutant.line) else null
-
-                // Call-graph pruning and ordering: prioritize tests that invoke the mutated function
-                val orderedTests =
-                    if (enclosingFn != null) {
-                        val relevant = test.candidateTests.filter { enclosingFn in it.calledFunctionNames }
-                        val others = test.candidateTests.filter { enclosingFn !in it.calledFunctionNames }
-                        relevant + others
-                    } else {
-                        test.candidateTests
-                    }
-
-                val sb = StringBuilder()
-                sb.appendLine(test.rawBody)
-                sb.appendLine()
-                sb.appendLine("fun main() {")
-                orderedTests.forEach { testFn ->
-                    val displayName =
-                        if (testFn.className != null) "${testFn.className}.${testFn.name}()" else "${testFn.name}()"
-                    val invocation =
-                        if (testFn.className != null) {
-                            "${testFn.className}().${testFn.name}()"
-                        } else {
-                            "${testFn.name}()"
-                        }
-                    sb.appendLine(
-                        "    try { $invocation } catch (t: Throwable) { throw AssertionError(\"Killed by $displayName: \" + t.message, t) }",
-                    )
-                }
-                sb.appendLine("}")
-                sb.toString()
-            } else {
-                test.rawBody
-            }
+        val testBodyWithMain = synthesizeTestBody(code, test, mutant)
 
         val sb = StringBuilder()
         if (selectedPackage != null) {
@@ -161,6 +140,59 @@ public object TestHarnessSynthesizer {
         sb.appendLine()
         sb.appendLine(testBodyWithMain)
         return sb.toString().trim()
+    }
+
+    private fun synthesizeTestBody(
+        code: String,
+        test: ParsedTestCode,
+        mutant: AstMutant?,
+    ): String {
+        if (test.hasMain || test.candidateTests.isEmpty()) return test.rawBody
+
+        val enclosingFn = mutant?.let { CallGraphReachability.findEnclosingFunctionName(code, it.line) }
+        val orderedTests =
+            if (enclosingFn == null) {
+                test.candidateTests
+            } else {
+                val relevant = test.candidateTests.filter { enclosingFn in it.calledFunctionNames }
+                val others = test.candidateTests.filter { enclosingFn !in it.calledFunctionNames }
+                relevant + others
+            }
+
+        val sb = StringBuilder()
+        sb.appendLine(test.rawBody)
+        sb.appendLine()
+        sb.appendLine("fun main() {")
+        orderedTests.forEach { testFn ->
+            val displayName =
+                if (testFn.className != null) "${testFn.className}.${testFn.name}()" else "${testFn.name}()"
+            val invocation =
+                if (testFn.className != null) {
+                    "${testFn.className}().${testFn.name}()"
+                } else {
+                    "${testFn.name}()"
+                }
+            appendInvocation(sb, invocation, displayName)
+        }
+        sb.appendLine("}")
+        return sb.toString()
+    }
+
+    private fun appendInvocation(
+        sb: StringBuilder,
+        invocation: String,
+        displayName: String,
+    ) {
+        sb.appendLine("    try { $invocation }")
+        sb.appendLine("    catch (t: LinkageError) { throw t }")
+        sb.appendLine("    catch (t: VirtualMachineError) { throw t }")
+        sb.appendLine(
+            "    catch (t: Error) { if (t !is AssertionError) throw t else " +
+                "throw AssertionError(\"Killed by $displayName: \" + t.message, t) }",
+        )
+        sb.appendLine(
+            "    catch (t: Throwable) { throw AssertionError(\"Killed by $displayName: \" + t.message, t) }",
+        )
     }
 
     /**

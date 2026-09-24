@@ -88,7 +88,7 @@ class MutationExecutionPipelineSpec {
             report.killedCount shouldNotBe 0
             val killed = report.results.firstOrNull { it.status == MutantStatus.KILLED }
             killed.shouldNotBeNull()
-            killed!!.failureMessage.shouldNotBeNull()
+            killed.failureMessage.shouldNotBeNull()
             killed.failureMessage!! shouldContain "Killed by"
         }
     }
@@ -136,6 +136,31 @@ class MutationExecutionPipelineSpec {
     }
 
     @Test
+    fun `executes packaged source with synthetic harness main`() {
+        val source =
+            """
+            package audit.fixture
+
+            fun isPositive(value: Int): Boolean = value > 0
+            """.trimIndent()
+        val test =
+            """
+            fun testPositive() {
+                check(isPositive(1))
+                check(!isPositive(0))
+            }
+            """.trimIndent()
+
+        runBlocking {
+            val report = pipeline.execute(source, test, MutationConfig())
+
+            report.baselineError shouldBe null
+            report.totalMutants shouldNotBe 0
+            report.killedCount shouldNotBe 0
+        }
+    }
+
+    @Test
     fun `executes mutants concurrently and outputs deterministic results`() {
         val source =
             """
@@ -159,6 +184,73 @@ class MutationExecutionPipelineSpec {
             val report = pipeline.execute(source, test, MutationConfig(includeExtreme = true))
             report.totalMutants shouldNotBe 0
             report.mutationScore shouldBe (report.mutationScore)
+        }
+    }
+
+    @Test
+    fun `does not classify synthesized harness infrastructure errors as kills`() {
+        val source = "fun isPositive(x: Int): Boolean = x > 0"
+        val test = "fun testInfrastructure() { throw LinkageError(\"missing dependency\") }"
+
+        runBlocking {
+            val report = pipeline.execute(source, test, MutationConfig())
+            report.baselineError.shouldNotBeNull()
+            report.baselineError!! shouldContain "Baseline infrastructure error"
+            report.totalMutants shouldBe 0
+        }
+    }
+
+    @Test
+    fun `reports baseline infrastructure errors without counting them as kills`() {
+        val source = "fun increment(x: Int): Int = x + 1"
+        val failingBaselineTest = "fun main() { throw LinkageError(\"missing dependency\") }"
+
+        runBlocking {
+            val report = pipeline.execute(source, failingBaselineTest, MutationConfig())
+            report.baselineError.shouldNotBeNull()
+            report.baselineError!! shouldContain "Baseline infrastructure error"
+            report.totalMutants shouldBe 0
+        }
+    }
+
+    @Test
+    fun `excludes infrastructure outcomes from score and fails the report`() {
+        val fakeRunner =
+            object : FastSnippetRunner {
+                private var calls = 0
+
+                override fun run(
+                    classesDir: java.nio.file.Path,
+                    mainClass: String,
+                    timeoutMs: Long,
+                    extraClasspath: List<String>,
+                ): RunnerOutcome {
+                    calls++
+                    return RunnerOutcome(
+                        status = if (calls == 1) MutantStatus.SURVIVED else MutantStatus.INFRASTRUCTURE_ERROR,
+                        executionTimeMs = 1L,
+                        failureMessage = if (calls == 1) null else "missing entrypoint",
+                    )
+                }
+
+                override fun close() = Unit
+            }
+        val scopedPipeline = DefaultMutationExecutionPipeline(runner = fakeRunner)
+        try {
+            runBlocking {
+                val report =
+                    scopedPipeline.execute(
+                        sourceCode = "fun isPositive(x: Int): Boolean = x > 0",
+                        testCode = "fun testPositive() { check(isPositive(1)); check(!isPositive(0)) }",
+                    )
+                report.totalMutants shouldNotBe 0
+                report.killedCount shouldBe 0
+                report.infrastructureErrorCount shouldBe report.totalMutants
+                report.mutationScore shouldBe 100.0
+                report.isPassed shouldBe false
+            }
+        } finally {
+            scopedPipeline.close()
         }
     }
 

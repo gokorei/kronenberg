@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Automated AST mutator Markdown documentation generator (`MutatorDocGenerator`, Gradle task `generateMutatorDocs`).
+- Structured `INFRASTRUCTURE_ERROR` and `RUNNER_ERROR` mutant outcomes for missing entrypoints, linkage failures, closed runners, internal runner failures, and fatal VM errors.
 - Code-backed wiki documentation suite (`Home.md`, `Architecture-And-Sandboxing.md`, `CLI-And-Gradle-Plugin-Guide.md`, `Mutators-Reference.md`, `Release-Notes.md`).
 - Automated Keep a Changelog generator (`ChangelogGenerator`, Gradle task `generateChangelog`) directly parsing release notes.
 - Project version descriptor resource generator (`generateVersionResource`) and semantic version bump task (`bumpVersion`).
@@ -17,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Kover multi-module test coverage verification enforcing an 80% line coverage threshold (`koverVerify`).
 - GitHub Actions CodeQL security scanning workflow (`.github/workflows/codeql.yml`).
 - Automated GitHub Wiki synchronization workflow (`.github/workflows/wiki-sync.yml`).
+
+### Fixed
+- Infrastructure and runner failures no longer count as killed mutants or inflate mutation scores across CLI, Gradle, XML, SARIF, and Code Climate reports.
+- Compiled snippets now resolve deterministic package-qualified entrypoints across top-level, class, nested, object, and companion declarations, with structured missing and ambiguous entrypoint errors.
 
 ## [0.1.0] - 2026-09-12
 

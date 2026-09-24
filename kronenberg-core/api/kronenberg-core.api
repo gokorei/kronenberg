@@ -507,7 +507,9 @@ public final class com/gokorei/kronenberg/model/MutantStatus : java/lang/Enum {
 	public static final field BASELINE_ERROR Lcom/gokorei/kronenberg/model/MutantStatus;
 	public static final field COMPILE_ERROR Lcom/gokorei/kronenberg/model/MutantStatus;
 	public static final field Companion Lcom/gokorei/kronenberg/model/MutantStatus$Companion;
+	public static final field INFRASTRUCTURE_ERROR Lcom/gokorei/kronenberg/model/MutantStatus;
 	public static final field KILLED Lcom/gokorei/kronenberg/model/MutantStatus;
+	public static final field RUNNER_ERROR Lcom/gokorei/kronenberg/model/MutantStatus;
 	public static final field SURVIVED Lcom/gokorei/kronenberg/model/MutantStatus;
 	public static final field TIMED_OUT Lcom/gokorei/kronenberg/model/MutantStatus;
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
@@ -581,9 +583,11 @@ public final class com/gokorei/kronenberg/model/MutationReport {
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getBaselineError ()Ljava/lang/String;
 	public final fun getCompileErrorCount ()I
+	public final fun getInfrastructureErrorCount ()I
 	public final fun getKilledCount ()I
 	public final fun getMutationScore ()D
 	public final fun getResults ()Ljava/util/List;
+	public final fun getRunnerErrorCount ()I
 	public final fun getSurvivedCount ()I
 	public final fun getTimeoutCount ()I
 	public final fun getTotalMutants ()I
