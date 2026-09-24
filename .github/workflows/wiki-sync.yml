@@ -7,20 +7,23 @@ on:
       - 'docs/wiki/**'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   sync-wiki:
     name: Sync docs/wiki to GitHub Wiki
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
 
     steps:
       - name: Checkout Code Repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
 
       - name: Checkout Wiki Repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: ${{ github.repository }}.wiki
           token: ${{ secrets.GITHUB_TOKEN }}

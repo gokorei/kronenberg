@@ -33,6 +33,8 @@ cd kronenberg
 ./gradlew check test
 ```
 
+CI uses the fixed `ubuntu-24.04` and `macos-15` runner labels, Temurin Java 21, and the verified Gradle 9.7.1 wrapper.
+
 ---
 
 ## Contribution Workflow
