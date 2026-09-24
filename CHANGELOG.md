@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Mutation audits now fail closed when no mutants are generated, when results are incomplete, or when compile errors, timeouts, baseline failures, or surviving mutants are present; scoring and gate evaluation are centralized in core.
+- CLI and Gradle batch reports now retain per-file missing, ambiguous, skipped, and baseline-failure diagnostics so all-skipped, all-baseline-failure, and mixed batches fail closed.
 
 ## [0.1.0] - 2026-09-12
 

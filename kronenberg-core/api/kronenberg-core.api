@@ -469,6 +469,83 @@ public final class com/gokorei/kronenberg/model/AstMutant$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public final class com/gokorei/kronenberg/model/AuditFileDiagnostic {
+	public static final field Companion Lcom/gokorei/kronenberg/model/AuditFileDiagnostic$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/model/AuditFileStatus;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/model/AuditFileStatus;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lcom/gokorei/kronenberg/model/AuditFileStatus;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/model/AuditFileStatus;Ljava/lang/String;)Lcom/gokorei/kronenberg/model/AuditFileDiagnostic;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/model/AuditFileDiagnostic;Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/model/AuditFileStatus;Ljava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/model/AuditFileDiagnostic;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDiagnostic ()Ljava/lang/String;
+	public final fun getSourceFile ()Ljava/lang/String;
+	public final fun getStatus ()Lcom/gokorei/kronenberg/model/AuditFileStatus;
+	public final fun getTestFile ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/gokorei/kronenberg/model/AuditFileDiagnostic$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/gokorei/kronenberg/model/AuditFileDiagnostic$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/gokorei/kronenberg/model/AuditFileDiagnostic;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/gokorei/kronenberg/model/AuditFileDiagnostic;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/gokorei/kronenberg/model/AuditFileDiagnostic$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/gokorei/kronenberg/model/AuditFileOutcome {
+	public static final field Companion Lcom/gokorei/kronenberg/model/AuditFileOutcome$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/model/AuditFileStatus;Lcom/gokorei/kronenberg/model/MutationReport;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lcom/gokorei/kronenberg/model/AuditFileStatus;
+	public final fun component4 ()Lcom/gokorei/kronenberg/model/MutationReport;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/model/AuditFileStatus;Lcom/gokorei/kronenberg/model/MutationReport;Ljava/lang/String;)Lcom/gokorei/kronenberg/model/AuditFileOutcome;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/model/AuditFileOutcome;Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/model/AuditFileStatus;Lcom/gokorei/kronenberg/model/MutationReport;Ljava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/model/AuditFileOutcome;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDiagnostic ()Ljava/lang/String;
+	public final fun getReport ()Lcom/gokorei/kronenberg/model/MutationReport;
+	public final fun getSourceFile ()Ljava/lang/String;
+	public final fun getStatus ()Lcom/gokorei/kronenberg/model/AuditFileStatus;
+	public final fun getTestFile ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/gokorei/kronenberg/model/AuditFileOutcome$Companion {
+	public final fun audited (Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutationReport;)Lcom/gokorei/kronenberg/model/AuditFileOutcome;
+	public static synthetic fun audited$default (Lcom/gokorei/kronenberg/model/AuditFileOutcome$Companion;Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutationReport;ILjava/lang/Object;)Lcom/gokorei/kronenberg/model/AuditFileOutcome;
+	public final fun skipped (Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/model/AuditFileStatus;Ljava/lang/String;)Lcom/gokorei/kronenberg/model/AuditFileOutcome;
+	public static synthetic fun skipped$default (Lcom/gokorei/kronenberg/model/AuditFileOutcome$Companion;Ljava/lang/String;Ljava/lang/String;Lcom/gokorei/kronenberg/model/AuditFileStatus;Ljava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/model/AuditFileOutcome;
+}
+
+public final class com/gokorei/kronenberg/model/AuditFileStatus : java/lang/Enum {
+	public static final field AMBIGUOUS_TEST Lcom/gokorei/kronenberg/model/AuditFileStatus;
+	public static final field AUDITED Lcom/gokorei/kronenberg/model/AuditFileStatus;
+	public static final field BASELINE_ERROR Lcom/gokorei/kronenberg/model/AuditFileStatus;
+	public static final field Companion Lcom/gokorei/kronenberg/model/AuditFileStatus$Companion;
+	public static final field MISSING_TEST Lcom/gokorei/kronenberg/model/AuditFileStatus;
+	public static final field NO_CHANGED_LINES Lcom/gokorei/kronenberg/model/AuditFileStatus;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/gokorei/kronenberg/model/AuditFileStatus;
+	public static fun values ()[Lcom/gokorei/kronenberg/model/AuditFileStatus;
+}
+
+public final class com/gokorei/kronenberg/model/AuditFileStatus$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
 public final class com/gokorei/kronenberg/model/MutantResult {
 	public static final field Companion Lcom/gokorei/kronenberg/model/MutantResult$Companion;
 	public fun <init> (Lcom/gokorei/kronenberg/model/AstMutant;Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;)V
@@ -566,9 +643,10 @@ public final class com/gokorei/kronenberg/model/MutationConfig$Companion {
 
 public final class com/gokorei/kronenberg/model/MutationReport {
 	public static final field Companion Lcom/gokorei/kronenberg/model/MutationReport$Companion;
-	public fun <init> (IIIIIDLjava/util/List;Ljava/lang/String;)V
-	public synthetic fun <init> (IIIIIDLjava/util/List;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (IIIIIDLjava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)V
+	public synthetic fun <init> (IIIIIDLjava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()I
+	public final fun component10 ()Ljava/util/List;
 	public final fun component2 ()I
 	public final fun component3 ()I
 	public final fun component4 ()I
@@ -576,14 +654,17 @@ public final class com/gokorei/kronenberg/model/MutationReport {
 	public final fun component6 ()D
 	public final fun component7 ()Ljava/util/List;
 	public final fun component8 ()Ljava/lang/String;
-	public final fun copy (IIIIIDLjava/util/List;Ljava/lang/String;)Lcom/gokorei/kronenberg/model/MutationReport;
-	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/model/MutationReport;IIIIIDLjava/util/List;Ljava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/model/MutationReport;
+	public final fun component9 ()Ljava/lang/String;
+	public final fun copy (IIIIIDLjava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)Lcom/gokorei/kronenberg/model/MutationReport;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/model/MutationReport;IIIIIDLjava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lcom/gokorei/kronenberg/model/MutationReport;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getBaselineError ()Ljava/lang/String;
 	public final fun getCompileErrorCount ()I
+	public final fun getFileDiagnostics ()Ljava/util/List;
 	public final fun getKilledCount ()I
 	public final fun getMutationScore ()D
 	public final fun getResults ()Ljava/util/List;
+	public final fun getSourceFilePath ()Ljava/lang/String;
 	public final fun getSurvivedCount ()I
 	public final fun getTimeoutCount ()I
 	public final fun getTotalMutants ()I
@@ -627,10 +708,11 @@ public final class com/gokorei/kronenberg/model/MutationReportEvaluation {
 
 public final class com/gokorei/kronenberg/model/MutationReportEvaluator {
 	public static final field INSTANCE Lcom/gokorei/kronenberg/model/MutationReportEvaluator;
+	public final fun aggregate (Ljava/util/Collection;)Lcom/gokorei/kronenberg/model/MutationReport;
 	public final fun aggregate (Ljava/util/List;)Lcom/gokorei/kronenberg/model/MutationReport;
 	public final fun evaluate (Lcom/gokorei/kronenberg/model/MutationReport;)Lcom/gokorei/kronenberg/model/MutationReportEvaluation;
-	public final fun fromResults (Ljava/util/List;Ljava/lang/Integer;Ljava/lang/String;)Lcom/gokorei/kronenberg/model/MutationReport;
-	public static synthetic fun fromResults$default (Lcom/gokorei/kronenberg/model/MutationReportEvaluator;Ljava/util/List;Ljava/lang/Integer;Ljava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/model/MutationReport;
+	public final fun fromResults (Ljava/util/List;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/String;)Lcom/gokorei/kronenberg/model/MutationReport;
+	public static synthetic fun fromResults$default (Lcom/gokorei/kronenberg/model/MutationReportEvaluator;Ljava/util/List;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/model/MutationReport;
 	public final fun passes (Lcom/gokorei/kronenberg/model/MutationReport;D)Z
 }
 

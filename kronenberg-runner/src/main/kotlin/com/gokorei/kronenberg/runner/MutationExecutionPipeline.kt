@@ -52,6 +52,7 @@ public class DefaultMutationExecutionPipeline(
             return MutationReportEvaluator.fromResults(
                 results = emptyList(),
                 baselineError = "Code contains forbidden host-terminating calls (e.g. System.exit, exitProcess, Runtime.halt)",
+                sourceFilePath = sourceFilePath,
             )
         }
 
@@ -62,6 +63,7 @@ public class DefaultMutationExecutionPipeline(
             return MutationReportEvaluator.fromResults(
                 results = emptyList(),
                 baselineError = "Baseline compilation failed: $failMsg",
+                sourceFilePath = sourceFilePath,
             )
         }
 
@@ -80,6 +82,7 @@ public class DefaultMutationExecutionPipeline(
             return MutationReportEvaluator.fromResults(
                 results = emptyList(),
                 baselineError = "Baseline test failed before mutation: ${baselineOutcome.failureMessage}",
+                sourceFilePath = sourceFilePath,
             )
         }
 
@@ -87,6 +90,7 @@ public class DefaultMutationExecutionPipeline(
             return MutationReportEvaluator.fromResults(
                 results = emptyList(),
                 baselineError = "Baseline test execution timed out after ${config.baselineTimeoutMs}ms",
+                sourceFilePath = sourceFilePath,
             )
         }
 
@@ -98,7 +102,10 @@ public class DefaultMutationExecutionPipeline(
         // 2. Generate AST mutants
         val mutants = generator.generateMutants(trimmedSource, config, filePath = sourceFilePath)
         if (mutants.isEmpty()) {
-            return MutationReportEvaluator.fromResults(results = emptyList())
+            return MutationReportEvaluator.fromResults(
+                results = emptyList(),
+                sourceFilePath = sourceFilePath,
+            )
         }
 
         // 3. Execute mutants in parallel via coroutines
@@ -175,6 +182,7 @@ public class DefaultMutationExecutionPipeline(
         return MutationReportEvaluator.fromResults(
             results = results,
             totalMutants = mutants.size,
+            sourceFilePath = sourceFilePath,
         )
     }
 

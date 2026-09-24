@@ -12,6 +12,10 @@ import com.github.ajalt.clikt.parameters.types.double
 import com.github.ajalt.clikt.parameters.types.int
 import com.github.ajalt.clikt.parameters.types.long
 import com.github.ajalt.clikt.parameters.types.path
+import com.gokorei.kronenberg.model.AuditFileDiagnostic
+import com.gokorei.kronenberg.model.AuditFileOutcome
+import com.gokorei.kronenberg.model.AuditFileStatus
+import com.gokorei.kronenberg.model.MutantResult
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationConfig
 import com.gokorei.kronenberg.model.MutationReport
@@ -43,9 +47,10 @@ public object JUnitXmlReportExporter {
         targetFile: Path,
         testSuiteName: String = "Kronenberg Mutation Audit",
     ) {
-        val totalTests = report.totalMutants
+        val fileErrors = report.fileDiagnostics.filter { it.status != AuditFileStatus.AUDITED }
+        val totalTests = report.totalMutants + fileErrors.size
         val failures = report.survivedCount + report.timeoutCount
-        val errors = report.compileErrorCount
+        val errors = report.compileErrorCount + fileErrors.size
         val totalTimeSeconds = report.results.sumOf { it.executionTimeMs } / 1000.0
 
         val sb = StringBuilder()
@@ -54,48 +59,76 @@ public object JUnitXmlReportExporter {
             "<testsuite name=\"$testSuiteName\" tests=\"$totalTests\" failures=\"$failures\" errors=\"$errors\" time=\"$totalTimeSeconds\">",
         )
 
-        for (result in report.results) {
-            val mutant = result.mutant
-            val durationSec = result.executionTimeMs / 1000.0
-            val className = "com.gokorei.kronenberg.mutant.${mutant.category.name.lowercase()}"
-            val testName = "${mutant.mutatorName}_line${mutant.line}_col${mutant.column}_${mutant.id.take(8)}"
-
-            sb.appendLine("    <testcase classname=\"$className\" name=\"$testName\" time=\"$durationSec\">")
-            when (result.status) {
-                MutantStatus.SURVIVED -> {
-                    val msg = escapeXml("Mutant survived: replaced '${mutant.originalText}' with '${mutant.replacementText}'")
-                    val body =
-                        escapeXml(
-                            "Mutant ID: ${mutant.id}\nMutator: ${mutant.mutatorName}\nLocation: line ${mutant.line}, column ${mutant.column}\nOriginal:\n${mutant.originalText}\nMutated:\n${mutant.replacementText}",
-                        )
-                    sb.appendLine("        <failure message=\"$msg\" type=\"MutationSurvived\">$body</failure>")
-                }
-
-                MutantStatus.TIMED_OUT -> {
-                    val msg = escapeXml(result.failureMessage ?: "Mutant execution timed out")
-                    sb.appendLine("        <failure message=\"$msg\" type=\"Timeout\">$msg</failure>")
-                }
-
-                MutantStatus.COMPILE_ERROR -> {
-                    val msg = escapeXml(result.failureMessage ?: "Mutant failed to compile")
-                    sb.appendLine("        <error message=\"$msg\" type=\"CompileError\">$msg</error>")
-                }
-
-                MutantStatus.BASELINE_ERROR -> {
-                    val msg = escapeXml(result.failureMessage ?: "Baseline execution failed before mutation")
-                    sb.appendLine("        <error message=\"$msg\" type=\"BaselineError\">$msg</error>")
-                }
-
-                MutantStatus.KILLED -> {
-                    // Passing test case
-                }
-            }
-            sb.appendLine("    </testcase>")
-        }
+        report.results.forEach { appendMutantTestCase(sb, it) }
+        fileErrors.forEach { appendFileDiagnosticTestCase(sb, it) }
         sb.appendLine("</testsuite>")
 
         targetFile.parent?.let { Files.createDirectories(it) }
         Files.writeString(targetFile, sb.toString())
+    }
+
+    private fun appendMutantTestCase(
+        sb: StringBuilder,
+        result: MutantResult,
+    ) {
+        val mutant = result.mutant
+        val durationSec = result.executionTimeMs / 1000.0
+        val className = "com.gokorei.kronenberg.mutant.${mutant.category.name.lowercase()}"
+        val testName = "${mutant.mutatorName}_line${mutant.line}_col${mutant.column}_${mutant.id.take(8)}"
+
+        sb.appendLine("    <testcase classname=\"$className\" name=\"$testName\" time=\"$durationSec\">")
+        when (result.status) {
+            MutantStatus.SURVIVED -> {
+                val msg = escapeXml("Mutant survived: replaced '${mutant.originalText}' with '${mutant.replacementText}'")
+                val body =
+                    escapeXml(
+                        "Mutant ID: ${mutant.id}\nMutator: ${mutant.mutatorName}\n" +
+                            "Location: line ${mutant.line}, column ${mutant.column}\n" +
+                            "Original:\n${mutant.originalText}\nMutated:\n${mutant.replacementText}",
+                    )
+                sb.appendLine("        <failure message=\"$msg\" type=\"MutationSurvived\">$body</failure>")
+            }
+
+            MutantStatus.TIMED_OUT -> {
+                val msg = escapeXml(result.failureMessage ?: "Mutant execution timed out")
+                sb.appendLine("        <failure message=\"$msg\" type=\"Timeout\">$msg</failure>")
+            }
+
+            MutantStatus.COMPILE_ERROR -> {
+                val msg = escapeXml(result.failureMessage ?: "Mutant failed to compile")
+                sb.appendLine("        <error message=\"$msg\" type=\"CompileError\">$msg</error>")
+            }
+
+            MutantStatus.BASELINE_ERROR -> {
+                val msg = escapeXml(result.failureMessage ?: "Baseline execution failed before mutation")
+                sb.appendLine("        <error message=\"$msg\" type=\"BaselineError\">$msg</error>")
+            }
+
+            MutantStatus.KILLED -> {}
+        }
+        sb.appendLine("    </testcase>")
+    }
+
+    private fun appendFileDiagnosticTestCase(
+        sb: StringBuilder,
+        diagnostic: AuditFileDiagnostic,
+    ) {
+        val type =
+            when (diagnostic.status) {
+                AuditFileStatus.BASELINE_ERROR -> "BaselineError"
+                AuditFileStatus.NO_CHANGED_LINES -> "NoChangedLines"
+                AuditFileStatus.MISSING_TEST -> "MissingTest"
+                AuditFileStatus.AMBIGUOUS_TEST -> "AmbiguousTest"
+                AuditFileStatus.AUDITED -> return
+            }
+        val message = escapeXml("${diagnostic.sourceFile}: ${diagnostic.diagnostic ?: diagnostic.status.name}")
+        val sourceFile = escapeXml(diagnostic.sourceFile)
+        sb.appendLine(
+            "    <testcase classname=\"com.gokorei.kronenberg.file\" " +
+                "name=\"${sourceFile}_${diagnostic.status.name}\">",
+        )
+        sb.appendLine("        <error message=\"$message\" type=\"$type\">$message</error>")
+        sb.appendLine("    </testcase>")
     }
 
     private fun escapeXml(str: String): String =
@@ -349,10 +382,10 @@ public class AuditCommand :
         diffRef: String? = null,
         baseDir: Path? = null,
     ): MutationReport {
-        val reports = mutableListOf<MutationReport>()
-        var skippedSourceCount = 0
+        val outcomes = mutableListOf<AuditFileOutcome>()
 
         for (srcFile in srcFiles) {
+            val sourceFilePath = baseDir?.relativize(srcFile)?.toString() ?: srcFile.fileName.toString()
             val fileChangedLines =
                 if (staged || diffRef != null) {
                     GitDiffParser.extractChangedLines(srcFile, diffRef, staged)
@@ -362,72 +395,97 @@ public class AuditCommand :
             val hasNoChangedLines = (staged || diffRef != null) && fileChangedLines?.isEmpty() == true
 
             if (hasNoChangedLines) {
-                skippedSourceCount++
-            } else {
-                val fileConfig = baseConfig.copy(targetLines = fileChangedLines)
-                val baseName = srcFile.nameWithoutExtension
-                val matchingTestFile =
-                    if (tstDir != null && Files.isDirectory(tstDir)) {
-                        Files
-                            .walk(tstDir)
-                            .filter {
-                                it.isRegularFile() &&
-                                    (
-                                        it.nameWithoutExtension == "${baseName}Test" ||
-                                            it.nameWithoutExtension == "${baseName}Spec" ||
-                                            it.nameWithoutExtension == baseName
-                                    )
-                            }.findFirst()
-                            .orElse(null)
-                    } else {
-                        findAdjacentTestFile(srcFile)
-                    }
+                outcomes +=
+                    AuditFileOutcome.skipped(
+                        sourceFile = sourceFilePath,
+                        status = AuditFileStatus.NO_CHANGED_LINES,
+                        diagnostic = "Source file has no changed lines in the requested diff",
+                    )
+                continue
+            }
 
-                val testCode = matchingTestFile?.readText() ?: ""
-                if (testCode.isBlank()) {
-                    skippedSourceCount++
+            val fileConfig = baseConfig.copy(targetLines = fileChangedLines)
+            val baseName = srcFile.nameWithoutExtension
+            val matchingTestFiles =
+                if (tstDir != null && Files.isDirectory(tstDir)) {
+                    Files
+                        .walk(tstDir)
+                        .filter {
+                            it.isRegularFile() &&
+                                (
+                                    it.nameWithoutExtension == "${baseName}Test" ||
+                                        it.nameWithoutExtension == "${baseName}Spec" ||
+                                        it.nameWithoutExtension == baseName
+                                )
+                        }.toList()
+                        .sortedBy { it.fileName.toString() }
                 } else {
-                    val relPath = baseDir?.relativize(srcFile)?.toString() ?: srcFile.fileName.toString()
-                    reports +=
-                        runBlocking {
-                            pipeline.execute(
-                                sourceCode = srcFile.readText(),
-                                testCode = testCode,
-                                config = fileConfig,
-                                sourceFilePath = relPath,
+                    findAdjacentTestFiles(srcFile)
+                }
+
+            when (matchingTestFiles.size) {
+                0 -> {
+                    outcomes +=
+                        AuditFileOutcome.skipped(
+                            sourceFile = sourceFilePath,
+                            status = AuditFileStatus.MISSING_TEST,
+                            diagnostic = "No matching test file found",
+                        )
+                }
+
+                1 -> {
+                    val matchingTestFile = matchingTestFiles.single()
+                    val testCode = matchingTestFile.readText()
+                    if (testCode.isBlank()) {
+                        outcomes +=
+                            AuditFileOutcome.skipped(
+                                sourceFile = sourceFilePath,
+                                testFile = matchingTestFile.fileName.toString(),
+                                status = AuditFileStatus.MISSING_TEST,
+                                diagnostic = "Matching test file is empty: ${matchingTestFile.fileName}",
                             )
-                        }
+                    } else {
+                        val report =
+                            runBlocking {
+                                pipeline.execute(
+                                    sourceCode = srcFile.readText(),
+                                    testCode = testCode,
+                                    config = fileConfig,
+                                    sourceFilePath = sourceFilePath,
+                                )
+                            }
+                        outcomes +=
+                            AuditFileOutcome.audited(
+                                sourceFile = sourceFilePath,
+                                testFile = matchingTestFile.fileName.toString(),
+                                report = report,
+                            )
+                    }
+                }
+
+                else -> {
+                    val testFileNames = matchingTestFiles.map { it.fileName.toString() }
+                    outcomes +=
+                        AuditFileOutcome.skipped(
+                            sourceFile = sourceFilePath,
+                            testFile = testFileNames.joinToString(", "),
+                            status = AuditFileStatus.AMBIGUOUS_TEST,
+                            diagnostic = "Multiple matching test files found: ${testFileNames.joinToString(", ")}",
+                        )
                 }
             }
         }
 
-        val aggregate = MutationReportEvaluator.aggregate(reports)
-        val incompleteAuditError =
-            when {
-                reports.isEmpty() -> {
-                    "No source/test pairs were available to audit"
-                }
-
-                skippedSourceCount > 0 -> {
-                    "$skippedSourceCount source file(s) were not audited because no matching test or changed lines were found"
-                }
-
-                else -> {
-                    null
-                }
-            }
-        return incompleteAuditError?.let { aggregate.copy(baselineError = aggregate.baselineError ?: it) } ?: aggregate
+        return MutationReportEvaluator.aggregate(outcomes)
     }
 
-    private fun findAdjacentTestFile(srcFile: Path): Path? {
+    private fun findAdjacentTestFiles(srcFile: Path): List<Path> {
         val baseName = srcFile.nameWithoutExtension
-        val parent = srcFile.parent ?: return null
-        val candidates =
-            listOf(
-                parent.resolve("${baseName}Test.kt"),
-                parent.resolve("${baseName}Spec.kt"),
-            )
-        return candidates.firstOrNull { Files.isRegularFile(it) }
+        val parent = srcFile.parent ?: return emptyList()
+        return listOf(
+            parent.resolve("${baseName}Test.kt"),
+            parent.resolve("${baseName}Spec.kt"),
+        ).filter { Files.isRegularFile(it) }
     }
 
     private fun renderTerminalReport(report: MutationReport) {
@@ -447,9 +505,7 @@ public class AuditCommand :
         echo("   - Survived:    \u001B[31m${report.survivedCount}\u001B[0m")
         echo("   - Timed Out:   \u001B[33m${report.timeoutCount}\u001B[0m")
         echo("   - Compile Err: ${report.compileErrorCount}")
-        if (report.baselineError != null) {
-            echo("\n\u001B[31m🚨 BASELINE PRE-FLIGHT ERROR:\u001B[0m\n  ${report.baselineError}")
-        }
+        renderFileDiagnostics(report)
 
         val survived = report.results.filter { it.status == MutantStatus.SURVIVED }
         if (survived.isNotEmpty()) {
@@ -483,6 +539,19 @@ public class AuditCommand :
             }
         }
         echo("")
+    }
+
+    private fun renderFileDiagnostics(report: MutationReport) {
+        if (report.fileDiagnostics.isNotEmpty()) {
+            echo("\n\u001B[31mFile audit diagnostics:\u001B[0m")
+            report.fileDiagnostics.forEach { diagnostic ->
+                val testLabel = diagnostic.testFile?.let { " -> $it" } ?: ""
+                val message = diagnostic.diagnostic?.let { ": $it" } ?: ""
+                echo("  ${diagnostic.sourceFile}$testLabel [${diagnostic.status.name}]$message")
+            }
+        } else if (report.baselineError != null) {
+            echo("\n\u001B[31m🚨 BASELINE PRE-FLIGHT ERROR:\u001B[0m\n  ${report.baselineError}")
+        }
     }
 }
 

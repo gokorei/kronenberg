@@ -157,6 +157,102 @@ class KronenbergCliSpec {
     }
 
     @Test
+    fun `audit command reports missing mappings in aggregate outputs and fails closed`() {
+        val srcDir = createTempDirectory("missing-mapping-src")
+        val testDir = createTempDirectory("missing-mapping-test")
+        val htmlFile = createTempFile("missing-mapping", ".html")
+        val xmlFile = createTempFile("missing-mapping", ".xml")
+        try {
+            srcDir.resolve("First.kt").writeText("fun first(x: Int) = x + 1")
+            srcDir.resolve("Second.kt").writeText("fun second(x: Int) = x - 1")
+
+            val result =
+                KronenbergCli()
+                    .subcommands(AuditCommand())
+                    .test(
+                        "audit --source-dir $srcDir --test-dir $testDir --json --html-report $htmlFile --junit-xml $xmlFile",
+                    )
+
+            result.statusCode shouldBe 1
+            val report =
+                kotlinx.serialization.json.Json
+                    .decodeFromString<com.gokorei.kronenberg.model.MutationReport>(result.output)
+            report.fileDiagnostics.map { it.sourceFile }.toSet() shouldBe setOf("First.kt", "Second.kt")
+            report.fileDiagnostics.all { it.status == com.gokorei.kronenberg.model.AuditFileStatus.MISSING_TEST } shouldBe true
+            htmlFile.readText() shouldContain "First.kt"
+            htmlFile.readText() shouldContain "MISSING_TEST"
+            xmlFile.readText() shouldContain "Second.kt"
+            xmlFile.readText() shouldContain "MissingTest"
+        } finally {
+            srcDir.toFile().deleteRecursively()
+            testDir.toFile().deleteRecursively()
+            htmlFile.toFile().delete()
+            xmlFile.toFile().delete()
+        }
+    }
+
+    @Test
+    fun `audit command reports ambiguous mappings without auditing one arbitrarily`() {
+        val srcDir = createTempDirectory("ambiguous-mapping-src")
+        val testDir = createTempDirectory("ambiguous-mapping-test")
+        try {
+            srcDir.resolve("Calculator.kt").writeText("fun add(a: Int, b: Int) = a + b")
+            testDir.resolve("CalculatorTest.kt").writeText("fun main() { check(add(1, 2) == 3) }")
+            testDir.resolve("CalculatorSpec.kt").writeText("fun main() { check(add(1, 2) == 3) }")
+
+            val result =
+                KronenbergCli()
+                    .subcommands(AuditCommand())
+                    .test("audit --source-dir $srcDir --test-dir $testDir --json --threshold 0.0")
+
+            result.statusCode shouldBe 1
+            val report =
+                kotlinx.serialization.json.Json
+                    .decodeFromString<com.gokorei.kronenberg.model.MutationReport>(result.output)
+            report.fileDiagnostics shouldBe
+                listOf(
+                    com.gokorei.kronenberg.model.AuditFileDiagnostic(
+                        "Calculator.kt",
+                        "CalculatorSpec.kt, CalculatorTest.kt",
+                        com.gokorei.kronenberg.model.AuditFileStatus.AMBIGUOUS_TEST,
+                        "Multiple matching test files found: CalculatorSpec.kt, CalculatorTest.kt",
+                    ),
+                )
+        } finally {
+            srcDir.toFile().deleteRecursively()
+            testDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `audit command preserves baseline failures in a mixed batch and fails closed`() {
+        val srcDir = createTempDirectory("mixed-baseline-src")
+        val testDir = createTempDirectory("mixed-baseline-test")
+        try {
+            srcDir.resolve("Valid.kt").writeText("fun add(a: Int, b: Int) = a + b")
+            testDir.resolve("ValidTest.kt").writeText("fun main() { check(add(1, 2) == 3) }")
+            srcDir.resolve("Broken.kt").writeText("fun broken(): Int = 42")
+            testDir.resolve("BrokenTest.kt").writeText("fun main() { check(missingBaselineSymbol() == 42) }")
+
+            val result =
+                KronenbergCli()
+                    .subcommands(AuditCommand())
+                    .test("audit --source-dir $srcDir --test-dir $testDir --json --threshold 0.0")
+
+            result.statusCode shouldBe 1
+            val report =
+                kotlinx.serialization.json.Json
+                    .decodeFromString<com.gokorei.kronenberg.model.MutationReport>(result.output)
+            report.fileDiagnostics.single { it.sourceFile == "Broken.kt" }.status shouldBe
+                com.gokorei.kronenberg.model.AuditFileStatus.BASELINE_ERROR
+            report.baselineError.orEmpty() shouldContain "Broken.kt: Baseline compilation failed"
+        } finally {
+            srcDir.toFile().deleteRecursively()
+            testDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun `audit command preserves relative file paths in batch directory audit`() {
         val srcDir = createTempDirectory("batch-src-paths")
         val testDir = createTempDirectory("batch-test-paths")
