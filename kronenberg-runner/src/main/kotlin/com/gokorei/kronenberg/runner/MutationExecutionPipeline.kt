@@ -6,6 +6,7 @@ import com.gokorei.kronenberg.model.MutantResult
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationConfig
 import com.gokorei.kronenberg.model.MutationReport
+import com.gokorei.kronenberg.model.SnippetExecutionTrust
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -35,12 +36,16 @@ public class DefaultMutationExecutionPipeline(
     private val runner: FastSnippetRunner = DefaultFastSnippetRunner(),
     private val cache: MutationResultCache = DefaultMutationResultCache(),
 ) : MutationExecutionPipeline {
+    @Suppress("CyclomaticComplexMethod", "LongMethod", "ReturnCount")
     override suspend fun execute(
         sourceCode: String,
         testCode: String,
         config: MutationConfig,
         sourceFilePath: String?,
     ): MutationReport {
+        val rejection = untrustedExecutionReport(config.executionTrust)
+        if (rejection != null) return rejection
+
         val trimmedSource = sourceCode.trim()
         val trimmedTest = testCode.trim()
         val parsedTest = TestHarnessSynthesizer.parseTestCode(trimmedTest, trimmedSource)
@@ -230,4 +235,20 @@ public class DefaultMutationExecutionPipeline(
     override fun close() {
         runner.close()
     }
+}
+
+private fun untrustedExecutionReport(executionTrust: SnippetExecutionTrust): MutationReport? {
+    if (executionTrust != SnippetExecutionTrust.UNTRUSTED) return null
+    return MutationReport(
+        totalMutants = 0,
+        killedCount = 0,
+        survivedCount = 0,
+        timeoutCount = 0,
+        compileErrorCount = 0,
+        mutationScore = 0.0,
+        results = emptyList(),
+        baselineError =
+            "Untrusted project code execution is not supported. " +
+                "Kronenberg only executes trusted local code; run untrusted repositories in a separate disposable environment.",
+    )
 }

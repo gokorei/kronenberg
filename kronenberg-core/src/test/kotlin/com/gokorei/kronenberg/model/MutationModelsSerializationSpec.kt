@@ -80,5 +80,16 @@ class MutationModelsSerializationSpec {
         deserialized.timeoutMultiplier shouldBe 4.0
         deserialized.higherOrderMutants shouldBe true
         deserialized.maxMutants shouldBe 50
+        deserialized.executionTrust shouldBe SnippetExecutionTrust.TRUSTED_LOCAL
+    }
+
+    @Test
+    fun `MutationConfig serialization preserves explicit untrusted execution request`() {
+        val config = MutationConfig(executionTrust = SnippetExecutionTrust.UNTRUSTED)
+
+        val serialized = json.encodeToString(config)
+        val deserialized = json.decodeFromString<MutationConfig>(serialized)
+
+        deserialized.executionTrust shouldBe SnippetExecutionTrust.UNTRUSTED
     }
 }
