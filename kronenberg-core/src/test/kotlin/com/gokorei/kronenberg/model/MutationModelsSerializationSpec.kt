@@ -62,6 +62,41 @@ class MutationModelsSerializationSpec {
     }
 
     @Test
+    fun `serializes captured output and truncation diagnostics`() {
+        val mutant =
+            AstMutant(
+                id = "fom-2",
+                mutatorName = "OutputMutator",
+                category = MutatorCategory.RETURN_VALUE,
+                line = 1,
+                column = 1,
+                originalText = "1",
+                replacementText = "2",
+                mutatedSource = "fun value() = 2",
+            )
+        val result =
+            MutantResult(
+                mutant = mutant,
+                status = MutantStatus.SURVIVED,
+                executionTimeMs = 1L,
+                stdout = "bounded stdout",
+                stderr = "bounded stderr",
+                stdoutTruncated = true,
+                stderrTruncated = true,
+                stdoutDiscardedBytes = 12L,
+                stderrDiscardedBytes = 13L,
+            )
+
+        val serialized = json.encodeToString(result)
+        serialized shouldContain "\"stdout\": \"bounded stdout\""
+        serialized shouldContain "\"stderr\": \"bounded stderr\""
+        serialized shouldContain "\"stdoutTruncated\": true"
+        serialized shouldContain "\"stderrTruncated\": true"
+        serialized shouldContain "\"stdoutDiscardedBytes\": 12"
+        serialized shouldContain "\"stderrDiscardedBytes\": 13"
+    }
+
+    @Test
     fun `MutationConfig serialization preserves custom parameters`() {
         val config =
             MutationConfig(

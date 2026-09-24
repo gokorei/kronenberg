@@ -60,7 +60,14 @@ public object JUnitXmlReportExporter {
             val className = "com.gokorei.kronenberg.mutant.${mutant.category.name.lowercase()}"
             val testName = "${mutant.mutatorName}_line${mutant.line}_col${mutant.column}_${mutant.id.take(8)}"
 
-            sb.appendLine("    <testcase classname=\"$className\" name=\"$testName\" time=\"$durationSec\">")
+            val outputAttributes =
+                buildString {
+                    append(" stdout-truncated=\"${result.stdoutTruncated}\"")
+                    append(" stderr-truncated=\"${result.stderrTruncated}\"")
+                    append(" stdout-discarded-bytes=\"${result.stdoutDiscardedBytes}\"")
+                    append(" stderr-discarded-bytes=\"${result.stderrDiscardedBytes}\"")
+                }
+            sb.appendLine("    <testcase classname=\"$className\" name=\"$testName\" time=\"$durationSec\"$outputAttributes>")
             when (result.status) {
                 MutantStatus.SURVIVED -> {
                     val msg = escapeXml("Mutant survived: replaced '${mutant.originalText}' with '${mutant.replacementText}'")
@@ -452,6 +459,10 @@ public class AuditCommand :
         echo("   - Survived:    \u001B[31m${report.survivedCount}\u001B[0m")
         echo("   - Timed Out:   \u001B[33m${report.timeoutCount}\u001B[0m")
         echo("   - Compile Err: ${report.compileErrorCount}")
+        val truncatedOutputCount = report.results.count { it.stdoutTruncated || it.stderrTruncated }
+        if (truncatedOutputCount > 0) {
+            echo("   - Output Trunc: $truncatedOutputCount result(s)")
+        }
         if (report.baselineError != null) {
             echo("\n\u001B[31m🚨 BASELINE PRE-FLIGHT ERROR:\u001B[0m\n  ${report.baselineError}")
         }

@@ -188,6 +188,12 @@ public class DefaultMutationExecutionPipeline(
                                                 status = outcome.status,
                                                 executionTimeMs = outcome.executionTimeMs,
                                                 failureMessage = outcome.failureMessage,
+                                                stdout = outcome.stdout,
+                                                stderr = outcome.stderr,
+                                                stdoutTruncated = outcome.stdoutTruncated,
+                                                stderrTruncated = outcome.stderrTruncated,
+                                                stdoutDiscardedBytes = outcome.stdoutDiscardedBytes,
+                                                stderrDiscardedBytes = outcome.stderrDiscardedBytes,
                                             )
                                         } finally {
                                             compiler.cleanup(compiledMutant)

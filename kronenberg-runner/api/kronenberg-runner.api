@@ -73,8 +73,8 @@ public final class com/gokorei/kronenberg/runner/CompilerDiagnostic {
 
 public final class com/gokorei/kronenberg/runner/DefaultFastSnippetRunner : com/gokorei/kronenberg/runner/FastSnippetRunner {
 	public fun <init> ()V
-	public fun <init> (I)V
-	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (II)V
+	public synthetic fun <init> (IIILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun close ()V
 	public fun run (Ljava/nio/file/Path;Ljava/lang/String;JLjava/util/List;)Lcom/gokorei/kronenberg/runner/RunnerOutcome;
 }
@@ -171,21 +171,29 @@ public final class com/gokorei/kronenberg/runner/ProposedTest {
 }
 
 public final class com/gokorei/kronenberg/runner/RunnerOutcome {
-	public fun <init> (Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
-	public synthetic fun <init> (Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;Ljava/lang/String;ZZJJLjava/lang/String;)V
+	public synthetic fun <init> (Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;Ljava/lang/String;ZZJJLjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Lcom/gokorei/kronenberg/model/MutantStatus;
 	public final fun component2 ()J
 	public final fun component3 ()Ljava/lang/String;
 	public final fun component4 ()Ljava/lang/String;
-	public final fun component5 ()Ljava/lang/String;
-	public final fun copy (Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/gokorei/kronenberg/runner/RunnerOutcome;
-	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/runner/RunnerOutcome;Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/RunnerOutcome;
+	public final fun component5 ()Z
+	public final fun component6 ()Z
+	public final fun component7 ()J
+	public final fun component8 ()J
+	public final fun component9 ()Ljava/lang/String;
+	public final fun copy (Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;Ljava/lang/String;ZZJJLjava/lang/String;)Lcom/gokorei/kronenberg/runner/RunnerOutcome;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/runner/RunnerOutcome;Lcom/gokorei/kronenberg/model/MutantStatus;JLjava/lang/String;Ljava/lang/String;ZZJJLjava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/RunnerOutcome;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getExecutionTimeMs ()J
 	public final fun getFailureMessage ()Ljava/lang/String;
 	public final fun getStatus ()Lcom/gokorei/kronenberg/model/MutantStatus;
 	public final fun getStderr ()Ljava/lang/String;
+	public final fun getStderrDiscardedBytes ()J
+	public final fun getStderrTruncated ()Z
 	public final fun getStdout ()Ljava/lang/String;
+	public final fun getStdoutDiscardedBytes ()J
+	public final fun getStdoutTruncated ()Z
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -229,11 +237,13 @@ public final class com/gokorei/kronenberg/runner/TestStyle : java/lang/Enum {
 public final class com/gokorei/kronenberg/runner/ThreadLocalPrintStream : java/io/PrintStream {
 	public static final field Companion Lcom/gokorei/kronenberg/runner/ThreadLocalPrintStream$Companion;
 	public fun <init> (Ljava/io/PrintStream;)V
+	public synthetic fun <init> (Ljava/io/PrintStream;ZLkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun close ()V
 }
 
 public final class com/gokorei/kronenberg/runner/ThreadLocalPrintStream$Companion {
 	public final fun install ()V
+	public final fun withCapture (Ljava/io/PrintStream;Ljava/io/PrintStream;Lkotlin/jvm/functions/Function0;)Ljava/lang/Object;
 	public final fun withCapture (Ljava/io/PrintStream;Lkotlin/jvm/functions/Function0;)Ljava/lang/Object;
 }
 
