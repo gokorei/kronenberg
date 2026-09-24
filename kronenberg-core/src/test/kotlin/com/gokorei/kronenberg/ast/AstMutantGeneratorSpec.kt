@@ -2,6 +2,7 @@ package com.gokorei.kronenberg.ast
 
 import com.gokorei.kronenberg.model.MutationConfig
 import io.kotest.matchers.collections.shouldHaveAtLeastSize
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
@@ -87,6 +88,51 @@ class AstMutantGeneratorSpec {
         returnMutants.any { it.replacementText == "false" } shouldBe false
         returnMutants.any { it.replacementText == "0" } shouldBe false
         returnMutants.any { it.replacementText == "\"\"" } shouldBe true
+    }
+
+    @Test
+    fun `applies maxMutants while visiting large source surfaces`() {
+        val source =
+            buildString {
+                repeat(250) { index ->
+                    appendLine("fun calculate$index(value: Int): Int = value + $index")
+                }
+            }
+
+        val result = generator.generateMutantsWithMetrics(source, MutationConfig(maxMutants = 1))
+
+        result.mutants shouldHaveSize 1
+        result.candidateCount shouldBe 1
+        result.discardedCount shouldBe 0
+    }
+
+    @Test
+    fun `keeps generated mutants within the report result limit`() {
+        val source =
+            buildString {
+                repeat(50) { index ->
+                    appendLine("fun calculate$index(value: Int): Int = value + $index")
+                }
+            }
+
+        val result = generator.generateMutantsWithMetrics(source, MutationConfig(maxReportResults = 2))
+
+        result.mutants shouldHaveSize 2
+    }
+
+    @Test
+    fun `precomputes source line and enclosing function metadata`() {
+        val source =
+            """
+            fun outer(value: Int): Int {
+                return value + 1
+            }
+            """.trimIndent()
+        val file = K2SnippetFrontend.parsePsi(source)
+        val metadata = buildSourceMetadata(source, file)
+
+        metadata.lineAndColumn(source.indexOf("value + 1")) shouldBe Pair(2, 12)
+        metadata.enclosingFunctionName(2) shouldBe "outer"
     }
 
     @Test

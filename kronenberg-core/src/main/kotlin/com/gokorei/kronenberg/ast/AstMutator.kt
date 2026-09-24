@@ -5,8 +5,74 @@ import com.gokorei.kronenberg.model.MutatorCategory
 import org.jetbrains.kotlin.com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.KtNamedFunction
+import org.jetbrains.kotlin.psi.KtTreeVisitorVoid
 import kotlin.reflect.KClass
 import kotlin.reflect.cast
+
+internal data class EnclosingFunctionRange(
+    val name: String,
+    val startLine: Int,
+    val endLine: Int,
+)
+
+public class SourceMetadata internal constructor(
+    private val lineStarts: IntArray,
+    private val enclosingFunctions: List<EnclosingFunctionRange>,
+) {
+    public fun lineAndColumn(offset: Int): Pair<Int, Int> {
+        val safeOffset = offset.coerceIn(0, lineStarts.last())
+        var low = 0
+        var high = lineStarts.lastIndex
+        while (low <= high) {
+            val middle = (low + high) ushr 1
+            if (lineStarts[middle] <= safeOffset) {
+                low = middle + 1
+            } else {
+                high = middle - 1
+            }
+        }
+        val lineIndex = high.coerceAtLeast(0)
+        return Pair(lineIndex + 1, safeOffset - lineStarts[lineIndex] + 1)
+    }
+
+    public fun enclosingFunctionName(line: Int): String? =
+        enclosingFunctions
+            .asSequence()
+            .filter { line in it.startLine..it.endLine }
+            .minByOrNull { it.endLine - it.startLine }
+            ?.name
+}
+
+public fun buildSourceMetadata(
+    sourceCode: String,
+    file: KtFile,
+): SourceMetadata {
+    val lineStarts = mutableListOf(0)
+    sourceCode.forEachIndexed { index, character ->
+        if (character == '\n') lineStarts.add(index + 1)
+    }
+    val ranges = mutableListOf<EnclosingFunctionRange>()
+    val metadata =
+        SourceMetadata(
+            lineStarts = lineStarts.toIntArray(),
+            enclosingFunctions = emptyList(),
+        )
+    file.accept(
+        object : KtTreeVisitorVoid() {
+            override fun visitNamedFunction(function: KtNamedFunction) {
+                val name = function.name
+                if (name != null) {
+                    val startLine = metadata.lineAndColumn(function.textRange.startOffset).first
+                    val endLine = metadata.lineAndColumn(function.textRange.endOffset).first
+                    ranges.add(EnclosingFunctionRange(name, startLine, endLine))
+                }
+                super.visitNamedFunction(function)
+            }
+        },
+    )
+    return SourceMetadata(lineStarts.toIntArray(), ranges)
+}
 
 /**
  * Context provided to AST mutators during PSI traversal.
@@ -15,8 +81,15 @@ public data class MutationContext(
     val code: String,
     val file: KtFile,
     val filePath: String? = null,
+    val metadata: SourceMetadata = buildSourceMetadata(code, file),
 ) {
-    public fun lineAndCol(offset: Int): Pair<Int, Int> = computeLineAndColumn(code, offset)
+    public constructor(
+        code: String,
+        file: KtFile,
+        filePath: String?,
+    ) : this(code, file, filePath, buildSourceMetadata(code, file))
+
+    public fun lineAndCol(offset: Int): Pair<Int, Int> = metadata.lineAndColumn(offset)
 
     /**
      * Ergonomic factory method creating an [AstEdit] directly from a target [PsiElement].

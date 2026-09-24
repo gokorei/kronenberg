@@ -134,19 +134,23 @@ public abstract interface class com/gokorei/kronenberg/runner/MutationResultCach
 
 public final class com/gokorei/kronenberg/runner/ParsedTestCode {
 	public fun <init> (Ljava/lang/String;Ljava/util/List;Ljava/lang/String;ZLjava/util/List;)V
+	public fun <init> (Ljava/lang/String;Ljava/util/List;Ljava/lang/String;ZLjava/util/List;Lcom/gokorei/kronenberg/ast/SourceMetadata;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;Ljava/lang/String;ZLjava/util/List;Lcom/gokorei/kronenberg/ast/SourceMetadata;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/util/List;
 	public final fun component3 ()Ljava/lang/String;
 	public final fun component4 ()Z
 	public final fun component5 ()Ljava/util/List;
-	public final fun copy (Ljava/lang/String;Ljava/util/List;Ljava/lang/String;ZLjava/util/List;)Lcom/gokorei/kronenberg/runner/ParsedTestCode;
-	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/runner/ParsedTestCode;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;ZLjava/util/List;ILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/ParsedTestCode;
+	public final fun component6 ()Lcom/gokorei/kronenberg/ast/SourceMetadata;
+	public final fun copy (Ljava/lang/String;Ljava/util/List;Ljava/lang/String;ZLjava/util/List;Lcom/gokorei/kronenberg/ast/SourceMetadata;)Lcom/gokorei/kronenberg/runner/ParsedTestCode;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/runner/ParsedTestCode;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;ZLjava/util/List;Lcom/gokorei/kronenberg/ast/SourceMetadata;ILjava/lang/Object;)Lcom/gokorei/kronenberg/runner/ParsedTestCode;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getCandidateTests ()Ljava/util/List;
 	public final fun getHasMain ()Z
 	public final fun getImports ()Ljava/util/List;
 	public final fun getPackageDirective ()Ljava/lang/String;
 	public final fun getRawBody ()Ljava/lang/String;
+	public final fun getSourceMetadata ()Lcom/gokorei/kronenberg/ast/SourceMetadata;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }

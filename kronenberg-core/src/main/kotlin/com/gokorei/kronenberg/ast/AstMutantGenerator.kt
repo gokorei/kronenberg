@@ -19,11 +19,8 @@ import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtPsiFactory
 import org.jetbrains.kotlin.psi.KtTreeVisitorVoid
-import java.util.UUID
+import java.security.MessageDigest
 
-/**
- * Embedded K2 PSI Frontend parser for Kotlin source text.
- */
 public object K2SnippetFrontend {
     @Volatile
     private var rootDisposable: Disposable = Disposer.newDisposable("K2SnippetFrontend.root")
@@ -61,33 +58,103 @@ public object K2SnippetFrontend {
     }
 }
 
-/**
- * Generator that scans a Kotlin file AST with registered mutators and produces mutants.
- */
+public data class MutantGenerationResult(
+    val mutants: List<AstMutant>,
+    val candidateCount: Int,
+    val discardedCount: Int,
+)
+
+@Suppress("LongMethod", "CyclomaticComplexMethod", "NestedBlockDepth", "ReturnCount", "LoopWithTooManyJumpStatements", "MagicNumber")
 public class AstMutantGenerator(
     private val registry: MutatorRegistry = MutatorRegistry.default(),
 ) {
-    /**
-     * Generates all AST mutants for the provided Kotlin source code string.
-     */
     public fun generateMutants(
         sourceCode: String,
         config: MutationConfig = MutationConfig(),
         filePath: String? = null,
-    ): List<AstMutant> {
-        if (sourceCode.isBlank()) return emptyList()
+    ): List<AstMutant> = generateMutantsWithMetrics(sourceCode, config, filePath).mutants
+
+    public fun generateMutantsWithMetrics(
+        sourceCode: String,
+        config: MutationConfig = MutationConfig(),
+        filePath: String? = null,
+    ): MutantGenerationResult {
+        if (sourceCode.isBlank()) return MutantGenerationResult(emptyList(), 0, 0)
+        val limit = effectiveLimit(config)
+        if (limit == 0) return MutantGenerationResult(emptyList(), 0, 0)
+
         val file = K2SnippetFrontend.parsePsi(sourceCode)
-        val context = MutationContext(sourceCode, file, filePath = filePath)
+        val metadata = buildSourceMetadata(sourceCode, file)
+        val context = MutationContext(sourceCode, file, filePath = filePath, metadata = metadata)
         val activeMutators = registry.mutators(config.includeExtreme)
+        val targetLines = config.targetLines?.toSet()
+        val mutants = mutableListOf<AstMutant>()
         val edits = mutableListOf<Pair<AstMutator, AstEdit>>()
+        val seenSources = mutableSetOf<String>()
+        var candidateCount = 0
+        var discardedCount = 0
+
+        fun reachedLimit(): Boolean = limit != null && mutants.size >= limit
+
+        fun addFirstOrderMutant(
+            mutator: AstMutator,
+            edit: AstEdit,
+        ) {
+            candidateCount++
+            if (targetLines != null && edit.line !in targetLines) {
+                discardedCount++
+                return
+            }
+            if (reachedLimit()) {
+                discardedCount++
+                return
+            }
+            val mutatedSource = replaceRange(sourceCode, edit.startOffset, edit.endOffset, edit.replacement)
+            if (!seenSources.add(mutatedSource)) {
+                discardedCount++
+                return
+            }
+            if (reachedLimit()) {
+                discardedCount++
+                return
+            }
+            mutants.add(
+                AstMutant(
+                    id =
+                        stableMutantId(
+                            "fom",
+                            listOf(
+                                mutator.name,
+                                edit.line.toString(),
+                                edit.column.toString(),
+                                edit.originalText,
+                                edit.replacement,
+                                mutatedSource,
+                            ),
+                        ),
+                    mutatorName = mutator.name,
+                    category = mutator.category,
+                    line = edit.line,
+                    column = edit.column,
+                    originalText = edit.originalText,
+                    replacementText = edit.replacement,
+                    mutatedSource = mutatedSource,
+                    filePath = filePath ?: edit.filePath,
+                ),
+            )
+            edits.add(Pair(mutator, edit))
+        }
 
         file.accept(
             object : KtTreeVisitorVoid() {
                 override fun visitElement(element: PsiElement) {
+                    if (reachedLimit()) return
                     for (mutator in activeMutators) {
+                        if (reachedLimit()) return
                         if (mutator.canMutate(element)) {
                             for (edit in mutator.mutate(element, context)) {
-                                edits.add(Pair(mutator, edit))
+                                if (reachedLimit()) return
+                                addFirstOrderMutant(mutator, edit)
                             }
                         }
                     }
@@ -96,77 +163,83 @@ public class AstMutantGenerator(
             },
         )
 
-        val mutants = mutableListOf<AstMutant>()
-
-        // 1. First-Order Mutants (FOM)
-        edits.forEachIndexed { index, (mutator, edit) ->
-            val mutatedSource = replaceRange(sourceCode, edit.startOffset, edit.endOffset, edit.replacement)
-            val lineCol = computeLineAndColumn(sourceCode, edit.startOffset)
-            mutants.add(
-                AstMutant(
-                    id = "mutant-fom-${index + 1}-${UUID.randomUUID().toString().take(6)}",
-                    mutatorName = mutator.name,
-                    category = mutator.category,
-                    line = lineCol.first,
-                    column = lineCol.second,
-                    originalText = edit.originalText,
-                    replacementText = edit.replacement,
-                    mutatedSource = mutatedSource,
-                    filePath = filePath ?: edit.filePath,
-                ),
-            )
-        }
-
-        // 2. Higher-Order Mutants (HOM)
-        if (config.higherOrderMutants && edits.size >= 2) {
-            val maxSampled = 20
+        if (config.higherOrderMutants && !reachedLimit() && edits.size >= 2) {
             val sampledPairs = mutableListOf<Pair<Pair<AstMutator, AstEdit>, Pair<AstMutator, AstEdit>>>()
             val totalEdits = edits.size
             val stride = (totalEdits / 10).coerceAtLeast(1)
 
             outer@ for (i in 0 until totalEdits step stride) {
                 for (j in (i + 1) until totalEdits) {
-                    val e1 = edits[i].second
-                    val e2 = edits[j].second
-                    if (e1.endOffset <= e2.startOffset || e2.endOffset <= e1.startOffset) {
+                    val first = edits[i].second
+                    val second = edits[j].second
+                    if (first.endOffset <= second.startOffset || second.endOffset <= first.startOffset) {
                         sampledPairs.add(Pair(edits[i], edits[j]))
-                        if (sampledPairs.size >= maxSampled) break@outer
+                        if (sampledPairs.size >= 20 || reachedLimit()) break@outer
                     }
                 }
             }
 
-            sampledPairs.forEachIndexed { idx, (p1, p2) ->
-                val sorted = listOf(p1.second, p2.second).sortedByDescending { it.startOffset }
-                var src = sourceCode
-                for (e in sorted) {
-                    src = replaceRange(src, e.startOffset, e.endOffset, e.replacement)
+            for ((first, second) in sampledPairs) {
+                if (reachedLimit()) break
+                candidateCount++
+                if (targetLines != null && first.second.line !in targetLines) {
+                    discardedCount++
+                    continue
                 }
-
+                val sorted = listOf(first.second, second.second).sortedByDescending { it.startOffset }
+                var mutatedSource = sourceCode
+                for (edit in sorted) {
+                    mutatedSource = replaceRange(mutatedSource, edit.startOffset, edit.endOffset, edit.replacement)
+                }
+                if (!seenSources.add(mutatedSource)) {
+                    discardedCount++
+                    continue
+                }
+                if (reachedLimit()) {
+                    discardedCount++
+                    continue
+                }
                 mutants.add(
                     AstMutant(
-                        id = "mutant-hom-${idx + 1}-${UUID.randomUUID().toString().take(6)}",
+                        id =
+                            stableMutantId(
+                                "hom",
+                                listOf(
+                                    first.second.line.toString(),
+                                    first.second.column.toString(),
+                                    first.second.originalText,
+                                    second.second.originalText,
+                                    mutatedSource,
+                                ),
+                            ),
                         mutatorName = "CompoundHigherOrderMutator",
                         category = MutatorCategory.EXTREME,
-                        line = p1.second.line,
-                        column = p1.second.column,
-                        originalText = "${p1.second.originalText} & ${p2.second.originalText}",
-                        replacementText = "${p1.second.replacement} & ${p2.second.replacement}",
-                        mutatedSource = src,
-                        filePath = filePath ?: p1.second.filePath,
+                        line = first.second.line,
+                        column = first.second.column,
+                        originalText = "${first.second.originalText} & ${second.second.originalText}",
+                        replacementText = "${first.second.replacement} & ${second.second.replacement}",
+                        mutatedSource = mutatedSource,
+                        filePath = filePath ?: first.second.filePath,
                     ),
                 )
             }
         }
 
-        val filteredMutants =
-            if (config.targetLines != null) {
-                mutants.filter { it.line in config.targetLines }
-            } else {
-                mutants
-            }
+        return MutantGenerationResult(mutants, candidateCount, discardedCount)
+    }
 
-        val result = filteredMutants.distinctBy { it.mutatedSource }
-        return if (config.maxMutants != null) result.take(config.maxMutants) else result
+    private fun effectiveLimit(config: MutationConfig): Int? =
+        listOfNotNull(config.maxMutants, config.maxReportResults)
+            .minOrNull()
+            ?.coerceAtLeast(0)
+
+    private fun stableMutantId(
+        kind: String,
+        identity: List<String>,
+    ): String {
+        val payload = (listOf("kronenberg-mutant-id-v1", kind) + identity).joinToString("\u0000") { "${it.length}:$it" }
+        val hash = MessageDigest.getInstance("SHA-256").digest(payload.toByteArray(Charsets.UTF_8))
+        return "mutant-$kind-${hash.joinToString("") { "%02x".format(it) }.take(24)}"
     }
 
     private fun replaceRange(

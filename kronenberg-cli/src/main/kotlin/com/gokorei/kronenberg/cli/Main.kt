@@ -28,6 +28,11 @@ import kotlin.io.path.isRegularFile
 import kotlin.io.path.nameWithoutExtension
 import kotlin.io.path.readText
 
+private const val DEFAULT_MAX_INPUT_CHARACTERS: Int = 500_000
+private const val DEFAULT_MAX_REPORT_RESULTS: Int = 10_000
+private const val DEFAULT_COMPILE_CONCURRENCY: Int = 2
+private const val DEFAULT_EXECUTION_CONCURRENCY: Int = 4
+
 private val jsonSerializer =
     Json {
         prettyPrint = true
@@ -175,6 +180,26 @@ public class AuditCommand :
         help = "Maximum number of mutants to evaluate",
     ).int()
 
+    private val maxInputCharacters: Int by option(
+        "--max-input-characters",
+        help = "Maximum source or test input size in characters",
+    ).int().default(DEFAULT_MAX_INPUT_CHARACTERS)
+
+    private val maxReportResults: Int by option(
+        "--max-report-results",
+        help = "Maximum number of generated mutants retained in a report",
+    ).int().default(DEFAULT_MAX_REPORT_RESULTS)
+
+    private val compileConcurrency: Int by option(
+        "--compile-concurrency",
+        help = "Maximum concurrent in-process compilations",
+    ).int().default(DEFAULT_COMPILE_CONCURRENCY)
+
+    private val executionConcurrency: Int by option(
+        "--execution-concurrency",
+        help = "Maximum concurrent mutant executions",
+    ).int().default(DEFAULT_EXECUTION_CONCURRENCY)
+
     private val diff: String? by option(
         "--diff",
         help = "Git ref to diff against for incremental mutation testing (e.g. HEAD~1, origin/main)",
@@ -261,6 +286,10 @@ public class AuditCommand :
                 targetLines = changedLines,
                 enableCache = cache,
                 extraClasspath = extraClasspathList,
+                maxInputCharacters = maxInputCharacters,
+                maxReportResults = maxReportResults,
+                maxCompileConcurrency = compileConcurrency,
+                maxExecutionConcurrency = executionConcurrency,
             )
 
         val report: MutationReport =
@@ -340,6 +369,7 @@ public class AuditCommand :
         return auditFiles(pipeline, srcFiles, tstDir ?: srcDir, config, staged, diffRef, baseDir = srcDir)
     }
 
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "LoopWithTooManyJumpStatements")
     private fun auditFiles(
         pipeline: DefaultMutationExecutionPipeline,
         srcFiles: List<Path>,
@@ -355,8 +385,13 @@ public class AuditCommand :
         var survivedCount = 0
         var timeoutCount = 0
         var compileErrorCount = 0
+        var metrics =
+            com.gokorei.kronenberg.model
+                .MutationMetrics()
+        var remainingReportResults = baseConfig.maxReportResults
 
         for (srcFile in srcFiles) {
+            if (remainingReportResults <= 0) break
             val fileChangedLines =
                 if (staged || diffRef != null) {
                     GitDiffParser.extractChangedLines(srcFile, diffRef, staged)
@@ -369,7 +404,12 @@ public class AuditCommand :
                 continue
             }
 
-            val fileConfig = baseConfig.copy(targetLines = fileChangedLines)
+            val fileConfig =
+                baseConfig.copy(
+                    targetLines = fileChangedLines,
+                    maxMutants = baseConfig.maxMutants?.coerceAtMost(remainingReportResults),
+                    maxReportResults = remainingReportResults,
+                )
             val baseName = srcFile.nameWithoutExtension
             val matchingTestFile =
                 if (tstDir != null && Files.isDirectory(tstDir)) {
@@ -406,7 +446,9 @@ public class AuditCommand :
                 survivedCount += fileReport.survivedCount
                 timeoutCount += fileReport.timeoutCount
                 compileErrorCount += fileReport.compileErrorCount
-                allResults.addAll(fileReport.results)
+                metrics += fileReport.metrics
+                allResults.addAll(fileReport.results.take(remainingReportResults))
+                remainingReportResults = (remainingReportResults - fileReport.totalMutants).coerceAtLeast(0)
             }
         }
 
@@ -426,6 +468,7 @@ public class AuditCommand :
             compileErrorCount = compileErrorCount,
             mutationScore = (score * 10.0).toInt() / 10.0,
             results = allResults,
+            metrics = metrics,
         )
     }
 
@@ -452,6 +495,14 @@ public class AuditCommand :
         echo("   - Survived:    \u001B[31m${report.survivedCount}\u001B[0m")
         echo("   - Timed Out:   \u001B[33m${report.timeoutCount}\u001B[0m")
         echo("   - Compile Err: ${report.compileErrorCount}")
+        echo(" Candidates:     ${report.metrics.candidates}")
+        echo(" Discarded:      ${report.metrics.discarded}")
+        echo(" Cache Hits:     ${report.metrics.cacheHits}")
+        echo(" Cache Misses:   ${report.metrics.cacheMisses}")
+        report.metrics.phaseMetrics.forEach { phase ->
+            echo(" Phase ${phase.phase}: ${phase.durationMs}ms, candidates=${phase.candidates}")
+            echo("   discarded=${phase.discarded}, cache=${phase.cacheHits}/${phase.cacheMisses}")
+        }
         if (report.baselineError != null) {
             echo("\n\u001B[31m🚨 BASELINE PRE-FLIGHT ERROR:\u001B[0m\n  ${report.baselineError}")
         }

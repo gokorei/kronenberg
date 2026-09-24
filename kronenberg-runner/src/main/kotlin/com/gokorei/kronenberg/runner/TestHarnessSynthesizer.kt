@@ -1,6 +1,8 @@
 package com.gokorei.kronenberg.runner
 
 import com.gokorei.kronenberg.ast.K2SnippetFrontend
+import com.gokorei.kronenberg.ast.SourceMetadata
+import com.gokorei.kronenberg.ast.buildSourceMetadata
 import com.gokorei.kronenberg.model.AstMutant
 import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtClassOrObject
@@ -25,7 +27,16 @@ public data class ParsedTestCode(
     val rawBody: String,
     val hasMain: Boolean,
     val candidateTests: List<CandidateTestFunction>,
-)
+    val sourceMetadata: SourceMetadata? = null,
+) {
+    public constructor(
+        packageDirective: String?,
+        imports: List<String>,
+        rawBody: String,
+        hasMain: Boolean,
+        candidateTests: List<CandidateTestFunction>,
+    ) : this(packageDirective, imports, rawBody, hasMain, candidateTests, null)
+}
 
 /**
  * Test code parser and synthesized test runner harness generator.
@@ -41,6 +52,7 @@ public object TestHarnessSynthesizer {
         if (testCode.isBlank()) return ParsedTestCode(null, emptyList(), "", false, emptyList())
         val testFile = K2SnippetFrontend.parsePsi(testCode)
         val sourceFile = if (sourceCode.isNotBlank()) K2SnippetFrontend.parsePsi(sourceCode) else null
+        val sourceMetadata = sourceFile?.let { buildSourceMetadata(sourceCode, it) }
 
         val imports = testFile.importDirectives.map { it.text }
         val pkg = testFile.packageDirective?.takeIf { it.text.isNotBlank() }?.text
@@ -85,7 +97,7 @@ public object TestHarnessSynthesizer {
             }
         }
 
-        return ParsedTestCode(pkg, imports, rawBody, hasMain, candidateTests)
+        return ParsedTestCode(pkg, imports, rawBody, hasMain, candidateTests, sourceMetadata)
     }
 
     private fun isTestFunctionCandidate(fn: KtNamedFunction): Boolean {
@@ -102,6 +114,13 @@ public object TestHarnessSynthesizer {
         code: String,
         test: ParsedTestCode,
         mutant: AstMutant?,
+    ): String = mergeSourceWithParsedTest(code, test, mutant, test.sourceMetadata)
+
+    internal fun mergeSourceWithParsedTest(
+        code: String,
+        test: ParsedTestCode,
+        mutant: AstMutant?,
+        sourceMetadata: SourceMetadata?,
     ): String {
         if (test.rawBody.isBlank()) return code
 
@@ -113,7 +132,7 @@ public object TestHarnessSynthesizer {
 
         val testBodyWithMain =
             if (!test.hasMain && test.candidateTests.isNotEmpty()) {
-                val enclosingFn = if (mutant != null) CallGraphReachability.findEnclosingFunctionName(code, mutant.line) else null
+                val enclosingFn = if (mutant != null) sourceMetadata?.enclosingFunctionName(mutant.line) else null
 
                 // Call-graph pruning and ordering: prioritize tests that invoke the mutated function
                 val orderedTests =

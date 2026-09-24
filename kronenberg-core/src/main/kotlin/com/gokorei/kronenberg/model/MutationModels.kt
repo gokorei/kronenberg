@@ -91,9 +91,51 @@ public data class MutantResult(
     val failureMessage: String? = null,
 )
 
-/**
- * Aggregated mutation audit report across all evaluated mutants.
- */
+@Serializable
+public data class MutationPhaseMetrics(
+    val phase: String,
+    val durationMs: Long,
+    val candidates: Int = 0,
+    val discarded: Int = 0,
+    val cacheHits: Int = 0,
+    val cacheMisses: Int = 0,
+)
+
+@Serializable
+public data class MutationMetrics(
+    val candidates: Int = 0,
+    val discarded: Int = 0,
+    val cacheHits: Int = 0,
+    val cacheMisses: Int = 0,
+    val phaseMetrics: List<MutationPhaseMetrics> = emptyList(),
+) {
+    public val phaseDurationsMs: Map<String, Long>
+        get() = phaseMetrics.associate { it.phase to it.durationMs }
+
+    public operator fun plus(other: MutationMetrics): MutationMetrics {
+        val phases =
+            (phaseMetrics + other.phaseMetrics)
+                .groupBy { it.phase }
+                .map { (phase, values) ->
+                    MutationPhaseMetrics(
+                        phase = phase,
+                        durationMs = values.sumOf { it.durationMs },
+                        candidates = values.sumOf { it.candidates },
+                        discarded = values.sumOf { it.discarded },
+                        cacheHits = values.sumOf { it.cacheHits },
+                        cacheMisses = values.sumOf { it.cacheMisses },
+                    )
+                }
+        return MutationMetrics(
+            candidates = candidates + other.candidates,
+            discarded = discarded + other.discarded,
+            cacheHits = cacheHits + other.cacheHits,
+            cacheMisses = cacheMisses + other.cacheMisses,
+            phaseMetrics = phases,
+        )
+    }
+}
+
 @Serializable
 public data class MutationReport(
     val totalMutants: Int,
@@ -104,7 +146,29 @@ public data class MutationReport(
     val mutationScore: Double,
     val results: List<MutantResult> = emptyList(),
     val baselineError: String? = null,
+    val metrics: MutationMetrics = MutationMetrics(),
 ) {
+    public constructor(
+        totalMutants: Int,
+        killedCount: Int,
+        survivedCount: Int,
+        timeoutCount: Int,
+        compileErrorCount: Int,
+        mutationScore: Double,
+        results: List<MutantResult>,
+        baselineError: String?,
+    ) : this(
+        totalMutants,
+        killedCount,
+        survivedCount,
+        timeoutCount,
+        compileErrorCount,
+        mutationScore,
+        results,
+        baselineError,
+        MutationMetrics(),
+    )
+
     public val isPassed: Boolean get() = survivedCount == 0 && baselineError == null
 }
 
@@ -122,4 +186,34 @@ public data class MutationConfig(
     val targetLines: List<Int>? = null,
     val enableCache: Boolean = false,
     val extraClasspath: List<String> = emptyList(),
-)
+    val maxInputCharacters: Int = 500_000,
+    val maxReportResults: Int = 10_000,
+    val maxCompileConcurrency: Int = 2,
+    val maxExecutionConcurrency: Int = 4,
+) {
+    public constructor(
+        minScore: Double,
+        timeoutMultiplier: Double,
+        baselineTimeoutMs: Long,
+        higherOrderMutants: Boolean,
+        includeExtreme: Boolean,
+        maxMutants: Int?,
+        targetLines: List<Int>?,
+        enableCache: Boolean,
+        extraClasspath: List<String>,
+    ) : this(
+        minScore = minScore,
+        timeoutMultiplier = timeoutMultiplier,
+        baselineTimeoutMs = baselineTimeoutMs,
+        higherOrderMutants = higherOrderMutants,
+        includeExtreme = includeExtreme,
+        maxMutants = maxMutants,
+        targetLines = targetLines,
+        enableCache = enableCache,
+        extraClasspath = extraClasspath,
+        maxInputCharacters = 500_000,
+        maxReportResults = 10_000,
+        maxCompileConcurrency = 2,
+        maxExecutionConcurrency = 4,
+    )
+}

@@ -1,23 +1,22 @@
 package com.gokorei.kronenberg.runner
 
 import com.gokorei.kronenberg.ast.AstMutantGenerator
-import com.gokorei.kronenberg.model.AstMutant
 import com.gokorei.kronenberg.model.MutantResult
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationConfig
+import com.gokorei.kronenberg.model.MutationMetrics
+import com.gokorei.kronenberg.model.MutationPhaseMetrics
 import com.gokorei.kronenberg.model.MutationReport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import java.util.concurrent.atomic.AtomicInteger
 
-/**
- * High-level orchestration pipeline for executing in-process AST mutation test suites.
- */
+private const val NANOS_PER_MILLISECOND: Long = 1_000_000L
+
 public interface MutationExecutionPipeline : AutoCloseable {
-    /**
-     * Executes mutation testing against given source code and test code strings.
-     */
     public suspend fun execute(
         sourceCode: String,
         testCode: String,
@@ -26,9 +25,7 @@ public interface MutationExecutionPipeline : AutoCloseable {
     ): MutationReport
 }
 
-/**
- * Default implementation of the in-process mutation execution pipeline with coroutine parallelism.
- */
+@Suppress("CyclomaticComplexMethod", "TooGenericExceptionCaught")
 public class DefaultMutationExecutionPipeline(
     private val generator: AstMutantGenerator = AstMutantGenerator(),
     private val compiler: SnippetCompiler = DefaultSnippetCompiler(),
@@ -41,113 +38,217 @@ public class DefaultMutationExecutionPipeline(
         config: MutationConfig,
         sourceFilePath: String?,
     ): MutationReport {
+        val phaseMetrics = mutableListOf<MutationPhaseMetrics>()
+        var candidates = 0
+        var discarded = 0
+        var cacheHits = 0
+        var cacheMisses = 0
+
+        fun addPhase(
+            phase: String,
+            startedAt: Long,
+            phaseCandidates: Int = 0,
+            phaseDiscarded: Int = 0,
+            phaseCacheHits: Int = 0,
+            phaseCacheMisses: Int = 0,
+        ) {
+            phaseMetrics.add(
+                MutationPhaseMetrics(
+                    phase = phase,
+                    durationMs = elapsedMs(startedAt),
+                    candidates = phaseCandidates,
+                    discarded = phaseDiscarded,
+                    cacheHits = phaseCacheHits,
+                    cacheMisses = phaseCacheMisses,
+                ),
+            )
+        }
+
+        fun metrics(): MutationMetrics =
+            MutationMetrics(
+                candidates = candidates,
+                discarded = discarded,
+                cacheHits = cacheHits,
+                cacheMisses = cacheMisses,
+                phaseMetrics = phaseMetrics.toList(),
+            )
+
+        fun report(
+            totalMutants: Int,
+            killedCount: Int,
+            survivedCount: Int,
+            timeoutCount: Int,
+            compileErrorCount: Int,
+            score: Double,
+            results: List<MutantResult> = emptyList(),
+            baselineError: String? = null,
+        ): MutationReport =
+            MutationReport(
+                totalMutants = totalMutants,
+                killedCount = killedCount,
+                survivedCount = survivedCount,
+                timeoutCount = timeoutCount,
+                compileErrorCount = compileErrorCount,
+                mutationScore = score,
+                results = results,
+                baselineError = baselineError,
+                metrics = metrics(),
+            )
+
+        val inputStartedAt = System.nanoTime()
+        val configurationError = validateConfig(config)
+        if (configurationError != null) {
+            addPhase("configuration", inputStartedAt)
+            return report(0, 0, 0, 0, 0, 0.0, baselineError = configurationError)
+        }
+        if (sourceCode.length > config.maxInputCharacters || testCode.length > config.maxInputCharacters) {
+            addPhase("input", inputStartedAt)
+            return report(
+                0,
+                0,
+                0,
+                0,
+                0,
+                0.0,
+                baselineError = "Input exceeds maxInputCharacters=${config.maxInputCharacters}",
+            )
+        }
+
         val trimmedSource = sourceCode.trim()
         val trimmedTest = testCode.trim()
+        val baselineStartedAt = System.nanoTime()
         val parsedTest = TestHarnessSynthesizer.parseTestCode(trimmedTest, trimmedSource)
-        val baselineCombined = TestHarnessSynthesizer.mergeSourceWithParsedTest(trimmedSource, parsedTest, null)
+        val baselineCombined =
+            TestHarnessSynthesizer.mergeSourceWithParsedTest(
+                trimmedSource,
+                parsedTest,
+                null,
+                parsedTest.sourceMetadata,
+            )
 
-        // 0. Safety pre-flight check
         if (SnippetAstSafetyChecker.containsHostTerminatingCalls(baselineCombined)) {
-            return MutationReport(
-                totalMutants = 0,
-                killedCount = 0,
-                survivedCount = 0,
-                timeoutCount = 0,
-                compileErrorCount = 0,
-                mutationScore = 0.0,
-                results = emptyList(),
+            addPhase("baseline", baselineStartedAt)
+            return report(
+                0,
+                0,
+                0,
+                0,
+                0,
+                0.0,
                 baselineError = "Code contains forbidden host-terminating calls (e.g. System.exit, exitProcess, Runtime.halt)",
             )
         }
 
-        // 1. Verify baseline code and tests
-        val baselineCompile = compiler.compile(baselineCombined, extraClasspath = config.extraClasspath)
+        val compileSemaphore = Semaphore(config.maxCompileConcurrency)
+        val executionSemaphore = Semaphore(config.maxExecutionConcurrency)
+        val baselineCompile =
+            try {
+                withPermit(compileSemaphore) {
+                    compiler.compile(baselineCombined, extraClasspath = config.extraClasspath)
+                }
+            } catch (exception: Throwable) {
+                addPhase("baseline", baselineStartedAt)
+                return report(
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0.0,
+                    baselineError = "Baseline compilation failed: ${exception.message ?: exception.javaClass.simpleName}",
+                )
+            }
+
         if (baselineCompile !is CompileResult.Compiled) {
-            val failMsg = (baselineCompile as? CompileResult.Failed)?.message ?: "Baseline compilation failed"
-            return MutationReport(
-                totalMutants = 0,
-                killedCount = 0,
-                survivedCount = 0,
-                timeoutCount = 0,
-                compileErrorCount = 0,
-                mutationScore = 0.0,
-                results = emptyList(),
-                baselineError = "Baseline compilation failed: $failMsg",
-            )
+            addPhase("baseline", baselineStartedAt)
+            val message = (baselineCompile as? CompileResult.Failed)?.message ?: "Baseline compilation failed"
+            return report(0, 0, 0, 0, 0, 0.0, baselineError = "Baseline compilation failed: $message")
         }
 
         val baselineOutcome =
             try {
-                runner.run(
-                    baselineCompile.outDir,
-                    timeoutMs = config.baselineTimeoutMs,
-                    extraClasspath = config.extraClasspath,
+                withPermit(executionSemaphore) {
+                    runner.run(
+                        baselineCompile.outDir,
+                        timeoutMs = config.baselineTimeoutMs,
+                        extraClasspath = config.extraClasspath,
+                    )
+                }
+            } catch (exception: Throwable) {
+                addPhase("baseline", baselineStartedAt)
+                return report(
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0.0,
+                    baselineError = "Baseline execution failed: ${exception.message ?: exception.javaClass.simpleName}",
                 )
             } finally {
                 compiler.cleanup(baselineCompile)
             }
 
         if (baselineOutcome.status == MutantStatus.KILLED) {
-            return MutationReport(
-                totalMutants = 0,
-                killedCount = 0,
-                survivedCount = 0,
-                timeoutCount = 0,
-                compileErrorCount = 0,
-                mutationScore = 0.0,
-                results = emptyList(),
+            addPhase("baseline", baselineStartedAt)
+            return report(
+                0,
+                0,
+                0,
+                0,
+                0,
+                0.0,
                 baselineError = "Baseline test failed before mutation: ${baselineOutcome.failureMessage}",
             )
         }
-
         if (baselineOutcome.status == MutantStatus.TIMED_OUT) {
-            return MutationReport(
-                totalMutants = 0,
-                killedCount = 0,
-                survivedCount = 0,
-                timeoutCount = 0,
-                compileErrorCount = 0,
-                mutationScore = 0.0,
-                results = emptyList(),
+            addPhase("baseline", baselineStartedAt)
+            return report(
+                0,
+                0,
+                0,
+                0,
+                0,
+                0.0,
                 baselineError = "Baseline test execution timed out after ${config.baselineTimeoutMs}ms",
             )
         }
 
+        addPhase("baseline", baselineStartedAt)
         val calibratedTimeoutMs =
             (maxOf(baselineOutcome.executionTimeMs, 10L) * config.timeoutMultiplier)
                 .toLong()
                 .coerceIn(50L, 10_000L)
-
-        // 2. Generate AST mutants
-        val mutants = generator.generateMutants(trimmedSource, config, filePath = sourceFilePath)
-        if (mutants.isEmpty()) {
-            return MutationReport(
-                totalMutants = 0,
-                killedCount = 0,
-                survivedCount = 0,
-                timeoutCount = 0,
-                compileErrorCount = 0,
-                mutationScore = 100.0,
-                results = emptyList(),
-            )
+        val generationStartedAt = System.nanoTime()
+        val generation = generator.generateMutantsWithMetrics(trimmedSource, config, filePath = sourceFilePath)
+        candidates = generation.candidateCount
+        discarded = generation.discardedCount
+        addPhase("generation", generationStartedAt, candidates, discarded)
+        if (generation.mutants.isEmpty()) {
+            return report(0, 0, 0, 0, 0, 100.0)
         }
 
-        // 3. Execute mutants in parallel via coroutines
+        val executionStartedAt = System.nanoTime()
+        val hits = AtomicInteger()
+        val misses = AtomicInteger()
         val results: List<MutantResult> =
             coroutineScope {
-                mutants
+                generation.mutants
                     .map { mutant ->
                         async(Dispatchers.Default) {
                             val cacheKey =
                                 if (config.enableCache) {
-                                    cache.computeKey(mutant.mutatedSource, testCode, mutant.id)
+                                    cache.computeKey(mutant.mutatedSource, trimmedTest, mutant.id)
                                 } else {
                                     null
                                 }
-
                             if (cacheKey != null) {
-                                val cachedResult = cache.get(cacheKey)
-                                if (cachedResult != null) return@async cachedResult
+                                val cached = cache.get(cacheKey)
+                                if (cached != null) {
+                                    hits.incrementAndGet()
+                                    return@async cached.copy(mutant = mutant)
+                                }
+                                misses.incrementAndGet()
                             }
 
                             val combinedMutantCode =
@@ -155,9 +256,9 @@ public class DefaultMutationExecutionPipeline(
                                     mutant.mutatedSource,
                                     parsedTest,
                                     mutant,
+                                    parsedTest.sourceMetadata,
                                 )
-
-                            val evalResult =
+                            val result =
                                 if (SnippetAstSafetyChecker.containsHostTerminatingCalls(combinedMutantCode)) {
                                     MutantResult(
                                         mutant = mutant,
@@ -166,23 +267,27 @@ public class DefaultMutationExecutionPipeline(
                                         failureMessage = "Blocked dangerous mutant containing host-terminating call",
                                     )
                                 } else {
-                                    val compiledMutant = compiler.compile(combinedMutantCode, extraClasspath = config.extraClasspath)
-
-                                    if (compiledMutant !is CompileResult.Compiled) {
+                                    val compiled =
+                                        withPermit(compileSemaphore) {
+                                            compiler.compile(combinedMutantCode, extraClasspath = config.extraClasspath)
+                                        }
+                                    if (compiled !is CompileResult.Compiled) {
                                         MutantResult(
                                             mutant = mutant,
                                             status = MutantStatus.COMPILE_ERROR,
                                             executionTimeMs = 0L,
-                                            failureMessage = (compiledMutant as? CompileResult.Failed)?.message,
+                                            failureMessage = (compiled as? CompileResult.Failed)?.message,
                                         )
                                     } else {
                                         try {
                                             val outcome =
-                                                runner.run(
-                                                    compiledMutant.outDir,
-                                                    timeoutMs = calibratedTimeoutMs,
-                                                    extraClasspath = config.extraClasspath,
-                                                )
+                                                withPermit(executionSemaphore) {
+                                                    runner.run(
+                                                        compiled.outDir,
+                                                        timeoutMs = calibratedTimeoutMs,
+                                                        extraClasspath = config.extraClasspath,
+                                                    )
+                                                }
                                             MutantResult(
                                                 mutant = mutant,
                                                 status = outcome.status,
@@ -190,24 +295,23 @@ public class DefaultMutationExecutionPipeline(
                                                 failureMessage = outcome.failureMessage,
                                             )
                                         } finally {
-                                            compiler.cleanup(compiledMutant)
+                                            compiler.cleanup(compiled)
                                         }
                                     }
                                 }
-
-                            if (cacheKey != null) {
-                                cache.put(cacheKey, evalResult)
-                            }
-                            evalResult
+                            if (cacheKey != null) cache.put(cacheKey, result)
+                            result
                         }
                     }.awaitAll()
             }
+        cacheHits = hits.get()
+        cacheMisses = misses.get()
+        addPhase("execution", executionStartedAt, generation.mutants.size, 0, cacheHits, cacheMisses)
 
         val killedCount = results.count { it.status == MutantStatus.KILLED }
         val survivedCount = results.count { it.status == MutantStatus.SURVIVED }
         val timeoutCount = results.count { it.status == MutantStatus.TIMED_OUT }
         val compileErrorCount = results.count { it.status == MutantStatus.COMPILE_ERROR }
-
         val totalEffective = killedCount + survivedCount + timeoutCount
         val score =
             if (totalEffective > 0) {
@@ -215,14 +319,13 @@ public class DefaultMutationExecutionPipeline(
             } else {
                 100.0
             }
-
-        return MutationReport(
-            totalMutants = mutants.size,
+        return report(
+            totalMutants = generation.mutants.size,
             killedCount = killedCount,
             survivedCount = survivedCount,
             timeoutCount = timeoutCount,
             compileErrorCount = compileErrorCount,
-            mutationScore = (score * 10.0).toInt() / 10.0,
+            score = (score * 10.0).toInt() / 10.0,
             results = results,
         )
     }
@@ -231,3 +334,26 @@ public class DefaultMutationExecutionPipeline(
         runner.close()
     }
 }
+
+private fun validateConfig(config: MutationConfig): String? =
+    when {
+        config.maxInputCharacters < 1 -> "maxInputCharacters must be at least 1"
+        config.maxReportResults < 0 -> "maxReportResults must not be negative"
+        config.maxCompileConcurrency < 1 -> "maxCompileConcurrency must be at least 1"
+        config.maxExecutionConcurrency < 1 -> "maxExecutionConcurrency must be at least 1"
+        else -> null
+    }
+
+private suspend fun <T> withPermit(
+    semaphore: Semaphore,
+    block: suspend () -> T,
+): T {
+    semaphore.acquire()
+    return try {
+        block()
+    } finally {
+        semaphore.release()
+    }
+}
+
+private fun elapsedMs(startedAt: Long): Long = (System.nanoTime() - startedAt) / NANOS_PER_MILLISECOND

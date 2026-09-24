@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub Actions CodeQL security scanning workflow (`.github/workflows/codeql.yml`).
 - Automated GitHub Wiki synchronization workflow (`.github/workflows/wiki-sync.yml`).
 
+### Changed
+- Bounded AST generation and report retention with `maxMutants`, `maxInputCharacters`, and `maxReportResults` limits.
+- Added independent compile and execution concurrency limits to mutation pipelines and CLI options.
+- Reused precomputed line and enclosing-function metadata across mutation generation and test-harness synthesis.
+- Exposed candidate, discarded, cache, and phase metrics in mutation reports and terminal output.
+
 ## [0.1.0] - 2026-09-12
 
 ### Added

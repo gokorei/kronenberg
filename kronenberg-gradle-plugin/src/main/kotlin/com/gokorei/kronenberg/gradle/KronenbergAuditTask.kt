@@ -74,6 +74,7 @@ public abstract class KronenbergAuditTask
             description = "Runs in-process K2 AST mutation testing on Kotlin code."
         }
 
+        @Suppress("LongMethod", "LoopWithTooManyJumpStatements")
         @TaskAction
         public fun audit() {
             val srcList = sourceFiles.files.filter { it.extension == "kt" }
@@ -105,8 +106,13 @@ public abstract class KronenbergAuditTask
             var survivedCount = 0
             var timeoutCount = 0
             var compileErrorCount = 0
+            var metrics =
+                com.gokorei.kronenberg.model
+                    .MutationMetrics()
+            var remainingReportResults = config.maxReportResults
 
             for (srcFile in srcList) {
+                if (remainingReportResults <= 0) break
                 val baseName = srcFile.nameWithoutExtension
                 val matchingTestFile =
                     tstList.firstOrNull {
@@ -125,7 +131,11 @@ public abstract class KronenbergAuditTask
                         pipeline.execute(
                             sourceCode = srcFile.readText(),
                             testCode = testCode,
-                            config = config,
+                            config =
+                                config.copy(
+                                    maxMutants = config.maxMutants?.coerceAtMost(remainingReportResults),
+                                    maxReportResults = remainingReportResults,
+                                ),
                             sourceFilePath = srcFile.name,
                         )
                     }
@@ -135,7 +145,9 @@ public abstract class KronenbergAuditTask
                 survivedCount += fileReport.survivedCount
                 timeoutCount += fileReport.timeoutCount
                 compileErrorCount += fileReport.compileErrorCount
-                allResults.addAll(fileReport.results)
+                metrics += fileReport.metrics
+                allResults.addAll(fileReport.results.take(remainingReportResults))
+                remainingReportResults = (remainingReportResults - fileReport.totalMutants).coerceAtLeast(0)
             }
 
             val totalEffective = killedCount + survivedCount + timeoutCount
@@ -155,6 +167,7 @@ public abstract class KronenbergAuditTask
                     compileErrorCount = compileErrorCount,
                     mutationScore = (score * 10.0).toInt() / 10.0,
                     results = allResults,
+                    metrics = metrics,
                 )
 
             val outDir = reportsDir.get().asFile.toPath()
