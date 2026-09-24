@@ -36,7 +36,7 @@ public class CollectionOperatorMutator : TypedAstMutator<KtCallExpression>(KtCal
         )
 
     override fun canMutateTyped(element: KtCallExpression): Boolean {
-        val calleeName = element.calleeExpression?.text
+        val calleeName = element.typedCalleeName()
         return calleeName in supportedMethods
     }
 
@@ -46,7 +46,7 @@ public class CollectionOperatorMutator : TypedAstMutator<KtCallExpression>(KtCal
     ): List<AstEdit> {
         val callee = element.calleeExpression ?: return emptyList()
         val replacements =
-            when (callee.text) {
+            when (element.typedCalleeName()) {
                 "filter" -> listOf("filterNot" to "Inverted filter -> filterNot")
                 "filterNot" -> listOf("filter" to "Inverted filterNot -> filter")
                 "any" -> listOf("all" to "Inverted any -> all")
@@ -85,7 +85,7 @@ public class CoroutineFlowMutator : TypedAstMutator<KtCallExpression>(KtCallExpr
     private val supportedFlowMethods = setOf("filter", "filterNot", "first", "last")
 
     override fun canMutateTyped(element: KtCallExpression): Boolean {
-        val callee = element.calleeExpression?.text ?: return false
+        val callee = element.typedCalleeName() ?: return false
         return callee == "delay" || callee in supportedFlowMethods
     }
 
@@ -93,16 +93,15 @@ public class CoroutineFlowMutator : TypedAstMutator<KtCallExpression>(KtCallExpr
         element: KtCallExpression,
         context: MutationContext,
     ): List<AstEdit> {
-        val callee = element.calleeExpression ?: return emptyList()
-        val calleeName = callee.text
+        val calleeName = element.typedCalleeName() ?: return emptyList()
 
         if (calleeName == "delay") {
             val valueArgs = element.valueArgumentList ?: return emptyList()
             if (valueArgs.arguments.isNotEmpty()) {
-                val arg = valueArgs.arguments.first()
-                if (arg.text.trim() != "0L" && arg.text.trim() != "0") {
+                val argument = valueArgs.arguments.first().getArgumentExpression() ?: return emptyList()
+                if (!argument.isZeroIntegerLiteral()) {
                     return listOf(
-                        context.edit(arg, "0L", "Mutated delay argument '${arg.text}' to '0L'"),
+                        context.edit(argument, "0L", "Mutated delay argument '${argument.text}' to '0L'"),
                     )
                 }
             }

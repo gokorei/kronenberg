@@ -1,9 +1,59 @@
 package com.gokorei.kronenberg.runner
 
 import com.gokorei.kronenberg.ast.K2SnippetFrontend
+import org.jetbrains.kotlin.com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.psi.KtCallExpression
 import org.jetbrains.kotlin.psi.KtDotQualifiedExpression
+import org.jetbrains.kotlin.psi.KtExpression
+import org.jetbrains.kotlin.psi.KtNameReferenceExpression
 import org.jetbrains.kotlin.psi.KtTreeVisitorVoid
+
+private fun KtCallExpression.calleeName(): String? = (calleeExpression as? KtNameReferenceExpression)?.getReferencedName()
+
+private fun KtExpression.receiverName(): String? = (this as? KtNameReferenceExpression)?.getReferencedName()
+
+private fun KtExpression.isSystemClass(): Boolean = receiverName() == "System" || qualifiedName() == "java.lang.System"
+
+private fun KtExpression.qualifiedName(): String? =
+    when (this) {
+        is KtNameReferenceExpression -> {
+            getReferencedName()
+        }
+
+        is KtDotQualifiedExpression -> {
+            val receiver = receiverExpression.qualifiedName()
+            val selector = (selectorExpression as? KtNameReferenceExpression)?.getReferencedName()
+            if (receiver != null && selector != null) "$receiver.$selector" else selector
+        }
+
+        else -> {
+            null
+        }
+    }
+
+private fun KtExpression.isRuntimeInstance(): Boolean =
+    when {
+        receiverName() == "Runtime" -> {
+            true
+        }
+
+        this is KtDotQualifiedExpression -> {
+            val call = selectorExpression as? KtCallExpression
+            call?.calleeName() == "getRuntime" && receiverExpression.receiverName() == "Runtime"
+        }
+
+        this is KtCallExpression && calleeName() == "getRuntime" -> {
+            (parent as? KtDotQualifiedExpression)?.receiverExpression?.isRuntimeInstance() == true
+        }
+
+        else -> {
+            false
+        }
+    }
+
+private fun KtExpression.isProcessHandleInstance(): Boolean = receiverName() == "ProcessHandle"
+
+private fun KtExpression.isFilesClass(): Boolean = receiverName() == "Files" || qualifiedName() == "java.nio.file.Files"
 
 /**
  * Static AST safety inspector using K2 PSI.
@@ -11,6 +61,10 @@ import org.jetbrains.kotlin.psi.KtTreeVisitorVoid
  * the host JVM (e.g. System.exit, exitProcess, Runtime.halt, ProcessBuilder, destructive file deletion).
  */
 public object SnippetAstSafetyChecker {
+    private val RUNTIME_TERMINAL_METHODS = setOf("halt", "exit", "exec")
+    private val PROCESS_DESTRUCTIVE_METHODS = setOf("destroy", "destroyAll", "destroyForcibly")
+    private val FILES_DESTRUCTIVE_METHODS = setOf("delete", "deleteIfExists")
+
     /**
      * Returns true if the code contains dangerous calls capable of killing or corrupting the host JVM.
      */
@@ -57,44 +111,27 @@ public object SnippetAstSafetyChecker {
         psi.accept(
             object : KtTreeVisitorVoid() {
                 override fun visitDotQualifiedExpression(expression: KtDotQualifiedExpression) {
-                    val receiver = expression.receiverExpression.text.trim()
-                    val selector =
-                        expression.selectorExpression
-                            ?.text
-                            ?.trim()
-                            .orEmpty()
+                    val receiver = expression.receiverExpression
+                    val selector = expression.selectorExpression as? KtCallExpression
+                    val method = selector?.calleeName()
 
-                    if ((receiver == "System" || receiver == "java.lang.System") && selector.startsWith("exit(")) {
+                    if (receiver.isSystemClass() && method == "exit") {
                         foundDangerous = true
                     }
-                    if (receiver.contains("Runtime") &&
-                        (
-                            selector.startsWith("halt(") ||
-                                selector.startsWith("exit(") ||
-                                selector.startsWith("exec(")
-                        )
-                    ) {
+                    if (receiver.isRuntimeInstance() && method in RUNTIME_TERMINAL_METHODS) {
                         foundDangerous = true
                     }
-                    if (receiver.contains("ProcessHandle") && selector.startsWith("destroy")) {
+                    if (receiver.isProcessHandleInstance() && method in PROCESS_DESTRUCTIVE_METHODS) {
                         foundDangerous = true
                     }
-                    if ((receiver == "Files" || receiver == "java.nio.file.Files") &&
-                        (
-                            selector.startsWith("delete(") ||
-                                selector.startsWith("deleteIfExists(")
-                        )
-                    ) {
-                        foundDangerous = true
-                    }
-                    if (selector.startsWith("deleteRecursively(")) {
+                    if (receiver.isFilesClass() && method in FILES_DESTRUCTIVE_METHODS) {
                         foundDangerous = true
                     }
                     super.visitDotQualifiedExpression(expression)
                 }
 
                 override fun visitCallExpression(expression: KtCallExpression) {
-                    val calleeName = expression.calleeExpression?.text
+                    val calleeName = expression.calleeName()
                     if (calleeName in exitProcessAliases ||
                         calleeName in directExitAliases ||
                         calleeName in processBuilderAliases ||

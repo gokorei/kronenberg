@@ -41,6 +41,32 @@ class SnippetAstSafetyCheckerSpec {
     }
 
     @Test
+    fun `detects dangerous calls with multiline comments nested templates and trailing commas`() {
+        val dangerousCode =
+            """
+            fun terminate(count: Int, enabled: Boolean): Nothing {
+                System
+                    /* preserve comments = false */
+                    .exit(
+                        status = when (enabled) {
+                            true -> "${'$'}count active"
+                            else -> "none",
+                        },
+                    )
+            }
+            """.trimIndent()
+
+        SnippetAstSafetyChecker.containsHostTerminatingCalls(dangerousCode) shouldBe true
+    }
+
+    @Test
+    fun `does not classify identifiers containing Runtime as runtime access`() {
+        val safeCode = "fun inspect(runtimeStatus: String) = runtimeStatus.contains(\"Runtime\")"
+
+        SnippetAstSafetyChecker.containsHostTerminatingCalls(safeCode) shouldBe false
+    }
+
+    @Test
     fun `allows safe Kotlin snippet code`() {
         val safeCode = "fun add(a: Int, b: Int): Int = a + b"
         SnippetAstSafetyChecker.containsHostTerminatingCalls(safeCode) shouldBe false

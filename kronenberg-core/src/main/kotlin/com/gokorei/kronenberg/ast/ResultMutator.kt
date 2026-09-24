@@ -14,7 +14,7 @@ public class ResultMutator : TypedAstMutator<KtCallExpression>(KtCallExpression:
         "Mutates Result and functional error handling calls (getOrElse, getOrDefault, getOrNull, onSuccess, onFailure)"
 
     override fun canMutateTyped(element: KtCallExpression): Boolean {
-        val callee = element.calleeExpression?.text ?: return false
+        val callee = element.typedCalleeName() ?: return false
         return callee in RESULT_MUTATIONS
     }
 
@@ -23,7 +23,7 @@ public class ResultMutator : TypedAstMutator<KtCallExpression>(KtCallExpression:
         context: MutationContext,
     ): List<AstEdit> {
         val callee = element.calleeExpression ?: return emptyList()
-        val original = callee.text
+        val original = element.typedCalleeName() ?: return emptyList()
         val replacement = RESULT_MUTATIONS[original] ?: return emptyList()
 
         return listOf(

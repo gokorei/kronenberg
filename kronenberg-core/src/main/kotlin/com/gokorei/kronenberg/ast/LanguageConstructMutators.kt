@@ -10,6 +10,7 @@ import org.jetbrains.kotlin.psi.KtConstantExpression
 import org.jetbrains.kotlin.psi.KtIsExpression
 import org.jetbrains.kotlin.psi.KtLiteralStringTemplateEntry
 import org.jetbrains.kotlin.psi.KtPostfixExpression
+import org.jetbrains.kotlin.psi.KtPsiUtil
 import org.jetbrains.kotlin.psi.KtSafeQualifiedExpression
 import org.jetbrains.kotlin.psi.KtStringTemplateExpression
 
@@ -95,9 +96,9 @@ public class SafeCallMutator : TypedAstMutator<KtSafeQualifiedExpression>(KtSafe
     ): List<AstEdit> {
         val receiver = element.receiverExpression
         val selector = element.selectorExpression ?: return emptyList()
-        val rep = "${receiver.text}!!.${selector.text}"
+        val replacement = "${receiver.text}!!.${selector.text}"
         return listOf(
-            context.edit(element, rep, "Mutated safe call '${element.text}' to '$rep'"),
+            context.edit(element, replacement, "Mutated safe call '${element.text}' to '$replacement'"),
         )
     }
 }
@@ -126,8 +127,9 @@ public class SmartCastMutator : AstMutator {
 
         if (element is KtBinaryExpressionWithTypeRHS) {
             val opRef = element.operationReference
-            val sign = opRef.text
-            val rep = if (sign == "as") "as?" else "as"
+            val isSafeCast = KtPsiUtil.isSafeCast(element)
+            val sign = if (isSafeCast) "as?" else "as"
+            val rep = if (isSafeCast) "as" else "as?"
             return listOf(
                 context.edit(opRef, rep, "Mutated cast operator '$sign' to '$rep'", originalText = element.text),
             )
@@ -146,12 +148,10 @@ public class RangeOperatorMutator : TypedAstMutator<KtBinaryExpression>(KtBinary
     override val description: String = "Mutates range expressions (0 until n <-> 0..n, downTo <-> .., 0..<n <-> 0..n)"
 
     override fun canMutateTyped(element: KtBinaryExpression): Boolean {
-        val sign = element.operationReference.text
-        return sign == "until" ||
-            sign == "downTo" ||
-            sign == "..<" ||
-            element.operationReference.operationSignTokenType == KtTokens.RANGE ||
-            element.operationReference.operationSignTokenType == KtTokens.RANGE_UNTIL
+        val operation = element.operationReference
+        val name = operation.getReferencedName()
+        val sign = operation.operationSignTokenType
+        return name == "until" || name == "downTo" || sign == KtTokens.RANGE_UNTIL || sign == KtTokens.RANGE
     }
 
     override fun mutateTyped(
@@ -159,8 +159,9 @@ public class RangeOperatorMutator : TypedAstMutator<KtBinaryExpression>(KtBinary
         context: MutationContext,
     ): List<AstEdit> {
         val opRef = element.operationReference
-        val sign = opRef.text
-        val replacement = if (sign == "until" || sign == "downTo" || sign == "..<") ".." else "..<"
+        val name = opRef.getReferencedName()
+        val sign = opRef.operationSignTokenType
+        val replacement = if (name == "until" || name == "downTo" || sign == KtTokens.RANGE_UNTIL) ".." else "..<"
         return listOf(
             context.edit(opRef, replacement, "Mutated range operator '$sign' to '$replacement'", originalText = element.text),
         )
@@ -175,26 +176,27 @@ public class LiteralMutationMutator : TypedAstMutator<KtConstantExpression>(KtCo
     override val category: MutatorCategory = MutatorCategory.LITERAL_MUTATION
     override val description: String = "Mutates numeric constant literals (x -> x+1, x-1)"
 
-    override fun canMutateTyped(element: KtConstantExpression): Boolean {
-        val text = element.text
-        if (text == "true" || text == "false") return false
-        return text.toIntOrNull() != null || text.toDoubleOrNull() != null || text.toLongOrNull() != null
-    }
+    override fun canMutateTyped(element: KtConstantExpression): Boolean =
+        when (element.numericLiteralKind()) {
+            KtNumericLiteralKind.INTEGER -> element.text.toIntOrNull() != null
+            KtNumericLiteralKind.FLOAT -> element.text.toDoubleOrNull() != null
+            else -> false
+        }
 
     override fun mutateTyped(
         element: KtConstantExpression,
         context: MutationContext,
     ): List<AstEdit> {
         val text = element.text
-        val intVal = text.toIntOrNull()
-        if (intVal != null) {
+        if (element.numericLiteralKind() == KtNumericLiteralKind.INTEGER) {
+            val intVal = text.toIntOrNull() ?: return emptyList()
             return listOf((intVal + 1).toString(), (intVal - 1).toString()).map { mutatedNum ->
                 context.edit(element, mutatedNum, "Altered integer constant $text -> $mutatedNum")
             }
         }
 
-        val doubleVal = text.toDoubleOrNull()
-        if (doubleVal != null && !text.contains("f") && !text.contains("F") && !text.contains("L")) {
+        if (element.numericLiteralKind() == KtNumericLiteralKind.FLOAT) {
+            val doubleVal = text.toDoubleOrNull() ?: return emptyList()
             val mutatedNum = (doubleVal + 1.0).toString()
             return listOf(
                 context.edit(element, mutatedNum, "Altered double constant $text -> $mutatedNum"),

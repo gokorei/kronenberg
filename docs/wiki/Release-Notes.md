@@ -20,6 +20,7 @@ Overview of all notable changes to Kronenberg by version.
 ### Bug Fixes
 
 ### Improvements
+- Enforced PSI-only Kotlin source inspection with typed metadata, validated centralized range replacement, and a static architecture guard.
 
 ---
 

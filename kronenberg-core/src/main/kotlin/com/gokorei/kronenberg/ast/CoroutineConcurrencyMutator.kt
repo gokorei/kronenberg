@@ -5,6 +5,7 @@ import com.gokorei.kronenberg.model.MutatorCategory
 import org.jetbrains.kotlin.com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.psi.KtCallExpression
 import org.jetbrains.kotlin.psi.KtDotQualifiedExpression
+import org.jetbrains.kotlin.psi.KtNameReferenceExpression
 
 /**
  * Mutates coroutine concurrency primitives (Dispatchers, SupervisorJob/Job, supervisorScope/coroutineScope, async/launch).
@@ -14,43 +15,38 @@ public class CoroutineConcurrencyMutator : AstMutator {
     override val category: MutatorCategory = MutatorCategory.COROUTINE
     override val description: String = "Mutates Kotlin coroutine dispatchers, cancellation hierarchies, and builders"
 
-    override fun canMutate(element: PsiElement): Boolean {
-        if (element is KtDotQualifiedExpression) {
-            val text = element.text
-            return text in DISPATCHER_SWAPS
+    override fun canMutate(element: PsiElement): Boolean =
+        when (element) {
+            is KtDotQualifiedExpression -> element.dispatcherKey()?.let(DISPATCHER_SWAPS::containsKey) == true
+            is KtCallExpression -> element.typedCalleeName()?.let(COROUTINE_CALL_SWAPS::containsKey) == true
+            else -> false
         }
-        if (element is KtCallExpression) {
-            val callee = element.calleeExpression?.text ?: return false
-            return callee in COROUTINE_CALL_SWAPS
-        }
-        return false
-    }
 
     override fun mutate(
         element: PsiElement,
         context: MutationContext,
     ): List<AstEdit> {
         if (element is KtDotQualifiedExpression) {
-            val text = element.text
-            val replacement = DISPATCHER_SWAPS[text] ?: return emptyList()
+            val key = element.dispatcherKey() ?: return emptyList()
+            val replacement = DISPATCHER_SWAPS[key] ?: return emptyList()
             return listOf(
                 context.edit(
                     target = element,
-                    replacement = replacement,
-                    description = "Mutated coroutine dispatcher '$text' to '$replacement'",
+                    replacement = "Dispatchers.$replacement",
+                    description = "Mutated coroutine dispatcher '$key' to 'Dispatchers.$replacement'",
                 ),
             )
         }
 
         if (element is KtCallExpression) {
             val callee = element.calleeExpression ?: return emptyList()
-            val text = callee.text
-            val replacement = COROUTINE_CALL_SWAPS[text] ?: return emptyList()
+            val name = element.typedCalleeName() ?: return emptyList()
+            val replacement = COROUTINE_CALL_SWAPS[name] ?: return emptyList()
             return listOf(
                 context.edit(
                     target = callee,
                     replacement = replacement,
-                    description = "Mutated coroutine primitive '$text' to '$replacement'",
+                    description = "Mutated coroutine primitive '$name' to '$replacement'",
                 ),
             )
         }
@@ -58,13 +54,19 @@ public class CoroutineConcurrencyMutator : AstMutator {
         return emptyList()
     }
 
+    private fun KtDotQualifiedExpression.dispatcherKey(): Pair<String, String>? {
+        val receiver = (receiverExpression as? KtNameReferenceExpression)?.getReferencedName()
+        val selector = (selectorExpression as? KtNameReferenceExpression)?.getReferencedName()
+        return if (receiver != null && selector != null) receiver to selector else null
+    }
+
     public companion object {
         private val DISPATCHER_SWAPS =
             mapOf(
-                "Dispatchers.IO" to "Dispatchers.Default",
-                "Dispatchers.Default" to "Dispatchers.IO",
-                "Dispatchers.Main" to "Dispatchers.Unconfined",
-                "Dispatchers.Unconfined" to "Dispatchers.Default",
+                ("Dispatchers" to "IO") to "Default",
+                ("Dispatchers" to "Default") to "IO",
+                ("Dispatchers" to "Main") to "Unconfined",
+                ("Dispatchers" to "Unconfined") to "Default",
             )
 
         private val COROUTINE_CALL_SWAPS =

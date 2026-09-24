@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub Actions CodeQL security scanning workflow (`.github/workflows/codeql.yml`).
 - Automated GitHub Wiki synchronization workflow (`.github/workflows/wiki-sync.yml`).
 
+### Changed
+- Enforced PSI-only Kotlin source inspection with typed metadata, validated centralized range replacement, and a static architecture guard.
+
 ## [0.1.0] - 2026-09-12
 
 ### Added

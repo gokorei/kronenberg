@@ -10,10 +10,28 @@ import org.jetbrains.kotlin.psi.KtCallExpression
 import org.jetbrains.kotlin.psi.KtConstantExpression
 import org.jetbrains.kotlin.psi.KtDotQualifiedExpression
 import org.jetbrains.kotlin.psi.KtIfExpression
+import org.jetbrains.kotlin.psi.KtNameReferenceExpression
 import org.jetbrains.kotlin.psi.KtNamedFunction
+import org.jetbrains.kotlin.psi.KtNullableType
 import org.jetbrains.kotlin.psi.KtPrefixExpression
 import org.jetbrains.kotlin.psi.KtReturnExpression
 import org.jetbrains.kotlin.psi.KtStringTemplateExpression
+import org.jetbrains.kotlin.psi.KtTypeReference
+import org.jetbrains.kotlin.psi.KtUserType
+
+private val LIST_FACTORIES = setOf("listOf", "mutableListOf")
+private val SET_FACTORIES = setOf("setOf", "mutableSetOf")
+private val MAP_FACTORIES = setOf("mapOf", "mutableMapOf")
+private val NUMERIC_TYPES = setOf("Int", "Long", "Short", "Byte", "Double", "Float", "Number")
+
+private fun KtTypeReference.referencedTypeName(): String? {
+    var type = typeElement
+    while (type is KtNullableType) {
+        type = type.innerType
+    }
+    val reference = (type as? KtUserType)?.referenceExpression
+    return (reference as? KtNameReferenceExpression)?.getReferencedName()
+}
 
 /**
  * Mutates boolean prefixes (!flag -> flag), boolean literals (true <-> false), and logical operators (&& <-> ||).
@@ -27,7 +45,7 @@ public class BooleanInversionMutator : AstMutator {
         if (element is KtPrefixExpression && element.operationToken == KtTokens.EXCL && element.baseExpression != null) {
             return true
         }
-        if (element is KtConstantExpression && (element.text == "true" || element.text == "false")) {
+        if (element is KtConstantExpression && element.booleanLiteralValue() != null) {
             return true
         }
         if (element is KtBinaryExpression) {
@@ -40,17 +58,19 @@ public class BooleanInversionMutator : AstMutator {
     override fun mutate(
         element: PsiElement,
         context: MutationContext,
-    ): List<AstEdit> {
-        return when (element) {
+    ): List<AstEdit> =
+        when (element) {
             is KtPrefixExpression -> {
-                val base = element.baseExpression ?: return emptyList()
-                listOf(context.edit(element, base.text, "Negation inverted (removed '!')"))
+                element.baseExpression?.let { base ->
+                    listOf(context.edit(element, base.text, "Negation inverted (removed '!')"))
+                } ?: emptyList()
             }
 
             is KtConstantExpression -> {
-                val text = element.text
-                val replacement = if (text == "true") "false" else "true"
-                listOf(context.edit(element, replacement, "Inverted boolean literal from '$text' to '$replacement'"))
+                element.booleanLiteralValue()?.let { value ->
+                    val replacement = (!value).toString()
+                    listOf(context.edit(element, replacement, "Inverted boolean literal from '$value' to '$replacement'"))
+                } ?: emptyList()
             }
 
             is KtBinaryExpression -> {
@@ -69,7 +89,6 @@ public class BooleanInversionMutator : AstMutator {
                 emptyList()
             }
         }
-    }
 }
 
 /**
@@ -82,7 +101,7 @@ public class ConditionReplacementMutator : TypedAstMutator<KtIfExpression>(KtIfE
 
     override fun canMutateTyped(element: KtIfExpression): Boolean {
         val cond = element.condition ?: return false
-        return cond.text != "true" && cond.text != "false"
+        return cond.booleanLiteralValue() == null
     }
 
     override fun mutateTyped(
@@ -111,41 +130,38 @@ public class ReturnValueMutator : TypedAstMutator<KtReturnExpression>(KtReturnEx
         context: MutationContext,
     ): List<AstEdit> {
         val returned = element.returnedExpression ?: return emptyList()
-        val text = returned.text.trim()
-        val isStringExpr = returned is KtStringTemplateExpression || (returned is KtConstantExpression && text.startsWith("\""))
+        val isStringExpr = returned is KtStringTemplateExpression
+        val returnedCallName = (returned as? KtCallExpression)?.typedCalleeName()
+        val returnedBoolean = returned.booleanLiteralValue()
 
         val replacements = mutableListOf<Pair<String, String>>()
 
-        // Resolve enclosing function return type if available
         var parent = element.parent
         while (parent != null && parent !is KtNamedFunction) {
             parent = parent.parent
         }
-        val fn = parent
-        val declaredType = fn?.typeReference?.text?.trim()
-        val isNullable = declaredType?.endsWith("?") == true
+        val function = parent
+        val declaredType = function?.typeReference?.referencedTypeName()
+        val isNullable = function?.typeReference?.typeElement is KtNullableType
 
         if (isStringExpr || declaredType == "String" || declaredType == "CharSequence") {
             replacements.add("\"\"" to "Replaced return string with empty string")
             replacements.add("\"mutated\"" to "Replaced return string with altered string")
-        } else if (text == "true" || text == "false" || declaredType == "Boolean") {
-            if (text == "true") {
-                replacements.add("false" to "Replaced return value with false")
-            } else if (text == "false") {
-                replacements.add("true" to "Replaced return value with true")
+        } else if (returnedBoolean != null || declaredType == "Boolean") {
+            if (returnedBoolean != null) {
+                replacements.add((!returnedBoolean).toString() to "Inverted return value")
             } else {
                 replacements.add("false" to "Replaced return value with false")
                 replacements.add("true" to "Replaced return value with true")
             }
-        } else if (text.startsWith("listOf(") || text.startsWith("mutableListOf(") || declaredType?.startsWith("List") == true) {
+        } else if (returnedCallName in LIST_FACTORIES || declaredType == "List" || declaredType == "MutableList") {
             replacements.add("emptyList()" to "Replaced list return with emptyList()")
-        } else if (text.startsWith("setOf(") || text.startsWith("mutableSetOf(") || declaredType?.startsWith("Set") == true) {
+        } else if (returnedCallName in SET_FACTORIES || declaredType == "Set" || declaredType == "MutableSet") {
             replacements.add("emptySet()" to "Replaced set return with emptySet()")
-        } else if (text.startsWith("mapOf(") || text.startsWith("mutableMapOf(") || declaredType?.startsWith("Map") == true) {
+        } else if (returnedCallName in MAP_FACTORIES || declaredType == "Map" || declaredType == "MutableMap") {
             replacements.add("emptyMap()" to "Replaced map return with emptyMap()")
         } else {
-            // General or unknown type
-            val isNumeric = declaredType in setOf("Int", "Long", "Short", "Byte", "Double", "Float", "Number")
+            val isNumeric = declaredType in NUMERIC_TYPES
             if (isNumeric || declaredType == null) {
                 replacements.add("0" to "Replaced return value with 0")
             }
@@ -154,11 +170,11 @@ public class ReturnValueMutator : TypedAstMutator<KtReturnExpression>(KtReturnEx
             }
         }
 
-        if (isNullable && text != "null") {
+        if (isNullable && !returned.isNullLiteral()) {
             replacements.add("null" to "Replaced nullable return value with null")
         }
 
-        return replacements.filter { text != it.first }.map { (replacement, desc) ->
+        return replacements.map { (replacement, desc) ->
             context.edit(returned, replacement, desc, originalText = element.text)
         }
     }
@@ -190,7 +206,7 @@ public class VoidMethodCallMutator : TypedAstMutator<KtCallExpression>(KtCallExp
             }
 
         return listOf(
-            context.edit(targetElement, "Unit", "Omitted statement '${targetElement.text.take(30)}'"),
+            context.edit(targetElement, "Unit", "Omitted statement '${targetElement.text}'"),
         )
     }
 }

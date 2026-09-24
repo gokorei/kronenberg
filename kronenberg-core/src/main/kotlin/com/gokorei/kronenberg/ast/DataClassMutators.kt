@@ -15,7 +15,7 @@ public class DataClassCopyMutator : TypedAstMutator<KtCallExpression>(KtCallExpr
     override val description: String = "Mutates data class copy() calls by stripping parameter overrides"
 
     override fun canMutateTyped(element: KtCallExpression): Boolean {
-        val callee = element.calleeExpression?.text ?: return false
+        val callee = element.typedCalleeName() ?: return false
         if (callee != "copy") return false
         val argList = element.valueArgumentList ?: return false
         return argList.arguments.isNotEmpty()
@@ -71,32 +71,39 @@ public class DestructuringMutator : TypedAstMutator<KtDestructuringDeclaration>(
 
     override fun canMutateTyped(element: KtDestructuringDeclaration): Boolean = element.entries.size >= 2
 
+    @Suppress("ComplexCondition")
     override fun mutateTyped(
         element: KtDestructuringDeclaration,
         context: MutationContext,
     ): List<AstEdit> {
         val entries = element.entries
-        if (entries.size < 2) return emptyList()
-
-        val first = entries[0].text
-        val second = entries[1].text
-        val rest = if (entries.size > 2) entries.drop(2).joinToString(prefix = ", ", separator = ", ") { it.text } else ""
-        val swappedText = "($second, $first$rest)"
-
-        // Target the bracketed entries range using exact parenthesis tokens
-        val startOffset = element.lPar?.textRange?.startOffset ?: (entries.first().textRange.startOffset - 1)
-        val endOffset = element.rPar?.textRange?.endOffset ?: (entries.last().textRange.endOffset + 1)
-
-        val (line, col) = context.lineAndCol(element.textRange.startOffset)
+        val first = entries.getOrNull(0)
+        val second = entries.getOrNull(1)
+        val leftParenthesis = element.lPar
+        val rightParenthesis = element.rPar
+        if (first == null || second == null || leftParenthesis == null || rightParenthesis == null) {
+            return emptyList()
+        }
+        val startOffset = leftParenthesis.textRange.startOffset
+        val endOffset = rightParenthesis.textRange.endOffset
+        val entryEdits =
+            listOf(
+                PsiSourceEdit(first.textRange.startOffset, first.textRange.endOffset, second.text),
+                PsiSourceEdit(second.textRange.startOffset, second.textRange.endOffset, first.text),
+            )
+        val replacement = PsiSourceRenderer.render(element, startOffset, endOffset, entryEdits)
+        val originalText = PsiSourceRenderer.render(element, startOffset, endOffset, emptyList())
+        val (line, column) = context.lineAndCol(startOffset)
         return listOf(
             AstEdit(
                 startOffset = startOffset,
                 endOffset = endOffset,
-                replacement = swappedText,
-                originalText = element.text.substringBefore("=").trim(),
-                description = "Swapped destructuring entries '($first, $second)' to '($second, $first)'",
+                replacement = replacement,
+                originalText = originalText,
+                description = "Swapped destructuring entries '${first.text}' and '${second.text}'",
                 line = line,
-                column = col,
+                column = column,
+                filePath = context.filePath,
             ),
         )
     }

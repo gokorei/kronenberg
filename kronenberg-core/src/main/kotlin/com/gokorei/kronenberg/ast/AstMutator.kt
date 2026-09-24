@@ -2,9 +2,13 @@ package com.gokorei.kronenberg.ast
 
 import com.gokorei.kronenberg.model.AstEdit
 import com.gokorei.kronenberg.model.MutatorCategory
+import org.jetbrains.kotlin.KtNodeTypes
 import org.jetbrains.kotlin.com.intellij.psi.PsiElement
+import org.jetbrains.kotlin.psi.KtConstantExpression
 import org.jetbrains.kotlin.psi.KtElement
+import org.jetbrains.kotlin.psi.KtExpression
 import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.KtNameReferenceExpression
 import kotlin.reflect.KClass
 import kotlin.reflect.cast
 
@@ -61,6 +65,35 @@ public fun computeLineAndColumn(
     val col = safeOffset - lastLineBreak
     return Pair(line, col)
 }
+
+internal fun org.jetbrains.kotlin.psi.KtCallExpression.typedCalleeName(): String? =
+    (calleeExpression as? KtNameReferenceExpression)?.getReferencedName()
+
+internal enum class KtNumericLiteralKind {
+    INTEGER,
+    FLOAT,
+}
+
+internal fun KtConstantExpression.numericLiteralKind(): KtNumericLiteralKind? =
+    when (node.elementType) {
+        KtNodeTypes.INTEGER_CONSTANT -> KtNumericLiteralKind.INTEGER
+        KtNodeTypes.FLOAT_CONSTANT -> KtNumericLiteralKind.FLOAT
+        else -> null
+    }
+
+internal fun KtConstantExpression.booleanLiteralValue(): Boolean? =
+    when (text) {
+        "true" -> true
+        "false" -> false
+        else -> null
+    }.takeIf { node.elementType == KtNodeTypes.BOOLEAN_CONSTANT }
+
+internal fun KtExpression.isZeroIntegerLiteral(): Boolean =
+    this is KtConstantExpression && numericLiteralKind() == KtNumericLiteralKind.INTEGER && text.toLongOrNull() == 0L
+
+internal fun KtExpression.booleanLiteralValue(): Boolean? = (this as? KtConstantExpression)?.booleanLiteralValue()
+
+internal fun KtExpression.isNullLiteral(): Boolean = this is KtConstantExpression && node.elementType == KtNodeTypes.NULL
 
 /**
  * Service Provider Interface (SPI) for individual K2 PSI AST mutation rules.

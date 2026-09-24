@@ -6,6 +6,9 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
+import org.jetbrains.kotlin.com.intellij.psi.PsiElement
+import org.jetbrains.kotlin.com.intellij.psi.PsiErrorElement
+import org.jetbrains.kotlin.psi.KtTreeVisitorVoid
 import org.junit.jupiter.api.Test
 
 class AstMutantGeneratorSpec {
@@ -87,6 +90,38 @@ class AstMutantGeneratorSpec {
         returnMutants.any { it.replacementText == "false" } shouldBe false
         returnMutants.any { it.replacementText == "0" } shouldBe false
         returnMutants.any { it.replacementText == "\"\"" } shouldBe true
+    }
+
+    @Test
+    fun `preserves nested templates comments and trailing commas in every mutant`() {
+        val source =
+            """
+            fun render(count: Int, enabled: Boolean): String =
+                buildString {
+                    // nested template and trailing comma
+                    append("status=${'$'}{if (enabled) "${'$'}count items" else "none"}",
+                    )
+                }
+            """.trimIndent()
+
+        val mutants = generator.generateMutants(source, MutationConfig(includeExtreme = true))
+        val templateMutants = mutants.filter { it.mutatorName == "StringTemplateMutator" }
+
+        templateMutants.isNotEmpty() shouldBe true
+        templateMutants.forEach { mutant ->
+            var errors = 0
+            K2SnippetFrontend.parsePsi(mutant.mutatedSource).accept(
+                object : KtTreeVisitorVoid() {
+                    override fun visitElement(element: PsiElement) {
+                        if (element is PsiErrorElement) errors++
+                        super.visitElement(element)
+                    }
+                },
+            )
+            errors shouldBe 0
+            mutant.mutatedSource shouldContain "status="
+            mutant.mutatedSource shouldContain "\",\n"
+        }
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.gokorei.kronenberg.runner
 
 import com.gokorei.kronenberg.ast.K2SnippetFrontend
 import org.jetbrains.kotlin.psi.KtCallExpression
+import org.jetbrains.kotlin.psi.KtNameReferenceExpression
 import org.jetbrains.kotlin.psi.KtNamedFunction
 import org.jetbrains.kotlin.psi.KtTreeVisitorVoid
 
@@ -17,7 +18,7 @@ public object CallGraphReachability {
         function.accept(
             object : KtTreeVisitorVoid() {
                 override fun visitCallExpression(expression: KtCallExpression) {
-                    expression.calleeExpression?.text?.let { calledNames.add(it) }
+                    (expression.calleeExpression as? KtNameReferenceExpression)?.getReferencedName()?.let { calledNames.add(it) }
                     super.visitCallExpression(expression)
                 }
             },

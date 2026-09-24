@@ -9,8 +9,8 @@ public final class com/gokorei/kronenberg/ast/ArithmeticOperatorMutator : com/go
 
 public final class com/gokorei/kronenberg/ast/AstMutantGenerator {
 	public fun <init> ()V
-	public fun <init> (Lcom/gokorei/kronenberg/ast/MutatorRegistry;)V
-	public synthetic fun <init> (Lcom/gokorei/kronenberg/ast/MutatorRegistry;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lcom/gokorei/kronenberg/ast/MutatorRegistry;Lcom/gokorei/kronenberg/ast/PsiSourceEditor;)V
+	public synthetic fun <init> (Lcom/gokorei/kronenberg/ast/MutatorRegistry;Lcom/gokorei/kronenberg/ast/PsiSourceEditor;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun generateMutants (Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutationConfig;Ljava/lang/String;)Ljava/util/List;
 	public static synthetic fun generateMutants$default (Lcom/gokorei/kronenberg/ast/AstMutantGenerator;Ljava/lang/String;Lcom/gokorei/kronenberg/model/MutationConfig;Ljava/lang/String;ILjava/lang/Object;)Ljava/util/List;
 }
@@ -101,6 +101,12 @@ public final class com/gokorei/kronenberg/ast/DataClassCopyMutator : com/gokorei
 	public fun getDescription ()Ljava/lang/String;
 	public fun getName ()Ljava/lang/String;
 	public synthetic fun mutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;Lcom/gokorei/kronenberg/ast/MutationContext;)Ljava/util/List;
+}
+
+public final class com/gokorei/kronenberg/ast/DefaultPsiSourceEditor : com/gokorei/kronenberg/ast/PsiSourceEditor {
+	public static final field INSTANCE Lcom/gokorei/kronenberg/ast/DefaultPsiSourceEditor;
+	public fun remove (Ljava/lang/String;Ljava/util/List;)Lcom/gokorei/kronenberg/ast/PsiReplacementResult;
+	public fun replace (Ljava/lang/String;Ljava/util/List;)Lcom/gokorei/kronenberg/ast/PsiReplacementResult;
 }
 
 public final class com/gokorei/kronenberg/ast/DestructuringMutator : com/gokorei/kronenberg/ast/TypedAstMutator {
@@ -209,6 +215,62 @@ public final class com/gokorei/kronenberg/ast/PreconditionMutator : com/gokorei/
 }
 
 public final class com/gokorei/kronenberg/ast/PreconditionMutator$Companion {
+}
+
+public final class com/gokorei/kronenberg/ast/PsiReplacementFailure : java/lang/Enum {
+	public static final field INVALID_RANGE Lcom/gokorei/kronenberg/ast/PsiReplacementFailure;
+	public static final field NON_PSI_BOUNDARY Lcom/gokorei/kronenberg/ast/PsiReplacementFailure;
+	public static final field OVERLAPPING_RANGES Lcom/gokorei/kronenberg/ast/PsiReplacementFailure;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/gokorei/kronenberg/ast/PsiReplacementFailure;
+	public static fun values ()[Lcom/gokorei/kronenberg/ast/PsiReplacementFailure;
+}
+
+public abstract interface class com/gokorei/kronenberg/ast/PsiReplacementResult {
+}
+
+public final class com/gokorei/kronenberg/ast/PsiReplacementResult$Applied : com/gokorei/kronenberg/ast/PsiReplacementResult {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lcom/gokorei/kronenberg/ast/PsiReplacementResult$Applied;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/ast/PsiReplacementResult$Applied;Ljava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/ast/PsiReplacementResult$Applied;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getSource ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/gokorei/kronenberg/ast/PsiReplacementResult$Rejected : com/gokorei/kronenberg/ast/PsiReplacementResult {
+	public fun <init> (Lcom/gokorei/kronenberg/ast/PsiSourceEdit;Lcom/gokorei/kronenberg/ast/PsiReplacementFailure;)V
+	public final fun component1 ()Lcom/gokorei/kronenberg/ast/PsiSourceEdit;
+	public final fun component2 ()Lcom/gokorei/kronenberg/ast/PsiReplacementFailure;
+	public final fun copy (Lcom/gokorei/kronenberg/ast/PsiSourceEdit;Lcom/gokorei/kronenberg/ast/PsiReplacementFailure;)Lcom/gokorei/kronenberg/ast/PsiReplacementResult$Rejected;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/ast/PsiReplacementResult$Rejected;Lcom/gokorei/kronenberg/ast/PsiSourceEdit;Lcom/gokorei/kronenberg/ast/PsiReplacementFailure;ILjava/lang/Object;)Lcom/gokorei/kronenberg/ast/PsiReplacementResult$Rejected;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEdit ()Lcom/gokorei/kronenberg/ast/PsiSourceEdit;
+	public final fun getReason ()Lcom/gokorei/kronenberg/ast/PsiReplacementFailure;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/gokorei/kronenberg/ast/PsiSourceEdit {
+	public fun <init> (IILjava/lang/String;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (IILjava/lang/String;)Lcom/gokorei/kronenberg/ast/PsiSourceEdit;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/ast/PsiSourceEdit;IILjava/lang/String;ILjava/lang/Object;)Lcom/gokorei/kronenberg/ast/PsiSourceEdit;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEndOffset ()I
+	public final fun getReplacement ()Ljava/lang/String;
+	public final fun getStartOffset ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class com/gokorei/kronenberg/ast/PsiSourceEditor {
+	public abstract fun remove (Ljava/lang/String;Ljava/util/List;)Lcom/gokorei/kronenberg/ast/PsiReplacementResult;
+	public abstract fun replace (Ljava/lang/String;Ljava/util/List;)Lcom/gokorei/kronenberg/ast/PsiReplacementResult;
 }
 
 public final class com/gokorei/kronenberg/ast/RangeOperatorMutator : com/gokorei/kronenberg/ast/TypedAstMutator {

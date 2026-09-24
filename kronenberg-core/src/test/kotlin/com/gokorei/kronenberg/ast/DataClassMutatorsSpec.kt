@@ -62,7 +62,8 @@ class DataClassMutatorsSpec {
             val edits = findMutations("fun split(p: Pair<Int, String>) { val (id, name) = p }", mutator)
             edits.size shouldBe 1
             edits.first().replacement shouldBe "(name, id)"
-            edits.first().description shouldContain "Swapped destructuring entries"
+            edits.first().originalText shouldBe "(id, name)"
+            edits.first().description.contains("Swapped destructuring entries") shouldBe true
         }
 
         @Test
@@ -73,11 +74,43 @@ class DataClassMutatorsSpec {
         }
 
         @Test
+        fun `preserves multiline comments and trailing commas while swapping entries`() {
+            val code =
+                """
+                fun split(p: Pair<Int, String>) {
+                    val (
+                        first, // primary = unchanged
+                        second, // secondary = unchanged
+                    ) = p
+                }
+                """.trimIndent()
+            val edits = findMutations(code, mutator)
+
+            edits.size shouldBe 1
+            edits.first().replacement shouldContain "// primary = unchanged"
+            edits.first().replacement shouldContain "// secondary = unchanged"
+            edits.first().replacement shouldContain "second,"
+            edits.first().replacement shouldContain "first,"
+            val mutants =
+                AstMutantGenerator().generateMutants(
+                    code,
+                    com.gokorei.kronenberg.model
+                        .MutationConfig(includeExtreme = true),
+                )
+            mutants.filter { it.mutatorName == mutator.name }.forEach { mutant ->
+                mutant.mutatedSource shouldContain "// primary = unchanged"
+                mutant.mutatedSource shouldContain "// secondary = unchanged"
+                mutant.mutatedSource shouldContain "second,"
+                mutant.mutatedSource shouldContain "first,"
+            }
+        }
+
+        @Test
         fun `correctly handles destructuring with whitespace inside parentheses`() {
             val code = "fun split(p: Pair<Int, String>) { val (  first  ,  second  ) = p }"
             val edits = findMutations(code, mutator)
             edits.size shouldBe 1
-            edits.first().replacement shouldBe "(second, first)"
+            edits.first().replacement shouldBe "(  second  ,  first  )"
 
             val generator = AstMutantGenerator()
             val mutants =
@@ -86,7 +119,9 @@ class DataClassMutatorsSpec {
                     com.gokorei.kronenberg.model
                         .MutationConfig(includeExtreme = true),
                 )
-            mutants.any { it.mutatedSource.contains("val (second, first) = p") } shouldBe true
+            mutants.filter { it.mutatorName == mutator.name }.all { mutant ->
+                mutant.mutatedSource.contains("val (  second  ,  first  ) = p")
+            } shouldBe true
         }
     }
 }
