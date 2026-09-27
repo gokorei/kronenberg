@@ -7,6 +7,7 @@ import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationConfig
 import com.gokorei.kronenberg.model.MutationReport
 import com.gokorei.kronenberg.model.SnippetExecutionTrust
+import com.gokorei.kronenberg.model.SnippetExecutionTrustPolicy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -237,8 +238,16 @@ public class DefaultMutationExecutionPipeline(
     }
 }
 
-private fun untrustedExecutionReport(executionTrust: SnippetExecutionTrust): MutationReport? {
-    if (executionTrust != SnippetExecutionTrust.UNTRUSTED) return null
+/**
+ * Builds the fail-closed rejection for a configuration that is not explicitly trusted, or null
+ * when [executionTrust] is [SnippetExecutionTrust.TRUSTED_LOCAL].
+ *
+ * The decision is delegated to [SnippetExecutionTrustPolicy], which allows only the explicit
+ * trusted value. Adding a new trust level to the enum therefore keeps failing closed here instead
+ * of falling through to compilation.
+ */
+private fun untrustedExecutionReport(executionTrust: SnippetExecutionTrust?): MutationReport? {
+    if (SnippetExecutionTrustPolicy.isTrusted(executionTrust)) return null
     return MutationReport(
         totalMutants = 0,
         killedCount = 0,

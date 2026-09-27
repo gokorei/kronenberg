@@ -535,7 +535,9 @@ public final class com/gokorei/kronenberg/model/MutationConfig {
 	public final fun component7 ()Ljava/util/List;
 	public final fun component8 ()Z
 	public final fun component9 ()Ljava/util/List;
+	public final fun copy (DDJZZLjava/lang/Integer;Ljava/util/List;ZLjava/util/List;)Lcom/gokorei/kronenberg/model/MutationConfig;
 	public final fun copy (DDJZZLjava/lang/Integer;Ljava/util/List;ZLjava/util/List;Lcom/gokorei/kronenberg/model/SnippetExecutionTrust;)Lcom/gokorei/kronenberg/model/MutationConfig;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/model/MutationConfig;DDJZZLjava/lang/Integer;Ljava/util/List;ZLjava/util/List;ILjava/lang/Object;)Lcom/gokorei/kronenberg/model/MutationConfig;
 	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/model/MutationConfig;DDJZZLjava/lang/Integer;Ljava/util/List;ZLjava/util/List;Lcom/gokorei/kronenberg/model/SnippetExecutionTrust;ILjava/lang/Object;)Lcom/gokorei/kronenberg/model/MutationConfig;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getBaselineTimeoutMs ()J
@@ -651,5 +653,12 @@ public final class com/gokorei/kronenberg/model/SnippetExecutionTrust : java/lan
 
 public final class com/gokorei/kronenberg/model/SnippetExecutionTrust$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/gokorei/kronenberg/model/SnippetExecutionTrustPolicy {
+	public static final field INSTANCE Lcom/gokorei/kronenberg/model/SnippetExecutionTrustPolicy;
+	public final fun isTrusted (Lcom/gokorei/kronenberg/model/SnippetExecutionTrust;)Z
+	public final fun isTrustedName (Ljava/lang/String;)Z
+	public final fun resolve (Ljava/lang/String;)Lcom/gokorei/kronenberg/model/SnippetExecutionTrust;
 }
 

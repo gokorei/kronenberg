@@ -3,10 +3,12 @@ package com.gokorei.kronenberg.runner
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationConfig
 import com.gokorei.kronenberg.model.SnippetExecutionTrust
+import com.gokorei.kronenberg.model.SnippetExecutionTrustPolicy
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.DynamicTest
@@ -239,7 +241,74 @@ class MutationExecutionPipelineSpec {
                 }
             }
 
+    @TestFactory
+    fun `rejects every trust value that is not explicitly trusted local`(): Stream<DynamicTest> =
+        Stream
+            .of(*SnippetExecutionTrust.entries.toTypedArray())
+            .filter { it != SnippetExecutionTrust.TRUSTED_LOCAL }
+            .map { trust ->
+                DynamicTest.dynamicTest(trust.name) {
+                    assertRejectedBeforeCompilation(
+                        MutationConfig(executionTrust = trust, extraClasspath = listOf("/host/gradle/state")),
+                    )
+                }
+            }
+
+    @TestFactory
+    fun `rejects future and unknown serialized trust values`(): Stream<DynamicTest> =
+        Stream
+            .of(
+                "SANDBOXED",
+                "FUTURE_TRUST_MODE",
+                "trusted_local",
+                "",
+            ).map { name ->
+                DynamicTest.dynamicTest(name.ifEmpty { "<blank>" }) {
+                    val resolved = SnippetExecutionTrustPolicy.resolve(name)
+                    resolved shouldBe SnippetExecutionTrust.UNTRUSTED
+                    assertRejectedBeforeCompilation(MutationConfig(executionTrust = resolved))
+                }
+            }
+
+    @Test
+    fun `explicitly trusted local code reaches the compiler`() {
+        val compiler = RecordingCompiler()
+        val runner = RecordingRunner()
+        val isolatedPipeline = DefaultMutationExecutionPipeline(compiler = compiler, runner = runner)
+
+        try {
+            val report =
+                runBlocking {
+                    isolatedPipeline.execute(
+                        sourceCode = "fun value() = 1",
+                        testCode = "fun main() { check(value() == 1) }",
+                        config = MutationConfig(executionTrust = SnippetExecutionTrust.TRUSTED_LOCAL),
+                    )
+                }
+
+            report.baselineError.shouldNotBeNull()
+            report.baselineError!! shouldNotContain "Untrusted project code execution is not supported"
+            compiler.compileCount shouldBe 1
+            runner.runCount shouldBe 0
+        } finally {
+            isolatedPipeline.close()
+        }
+    }
+
     private fun assertUntrustedRejected(source: String) {
+        assertRejectedBeforeCompilation(
+            MutationConfig(
+                executionTrust = SnippetExecutionTrust.UNTRUSTED,
+                extraClasspath = listOf("/host/gradle/state"),
+            ),
+            source = source,
+        )
+    }
+
+    private fun assertRejectedBeforeCompilation(
+        config: MutationConfig,
+        source: String = "fun abuse() { System.getenv(\"PATH\") }",
+    ) {
         val compiler = RecordingCompiler()
         val runner = RecordingRunner()
         val isolatedPipeline = DefaultMutationExecutionPipeline(compiler = compiler, runner = runner)
@@ -250,11 +319,7 @@ class MutationExecutionPipelineSpec {
                     isolatedPipeline.execute(
                         sourceCode = source,
                         testCode = "fun main() { abuse() }",
-                        config =
-                            MutationConfig(
-                                executionTrust = SnippetExecutionTrust.UNTRUSTED,
-                                extraClasspath = listOf("/host/gradle/state"),
-                            ),
+                        config = config,
                     )
                 }
 

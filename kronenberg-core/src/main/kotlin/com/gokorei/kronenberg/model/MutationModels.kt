@@ -23,10 +23,46 @@ public enum class MutantStatus {
     BASELINE_ERROR,
 }
 
+/**
+ * Trust classification for project code that Kronenberg is asked to compile and execute.
+ */
 @Serializable
 public enum class SnippetExecutionTrust {
+    /** Code the operator trusts with the same authority as the build and test process that runs it. */
     TRUSTED_LOCAL,
+
+    /** Code that must never be parsed, compiled, or executed by this process. Rejected, not isolated. */
     UNTRUSTED,
+}
+
+/**
+ * Fail-closed policy for [SnippetExecutionTrust].
+ *
+ * [isTrusted] is an allow-list rather than a denylist: only the explicit
+ * [SnippetExecutionTrust.TRUSTED_LOCAL] value authorizes execution. `null` and any value added
+ * to the enum by a future release are therefore untrusted by construction, so a new trust level
+ * cannot be executed by an older Kronenberg that has never heard of it.
+ */
+public object SnippetExecutionTrustPolicy {
+    /**
+     * Returns true only for [SnippetExecutionTrust.TRUSTED_LOCAL].
+     */
+    public fun isTrusted(trust: SnippetExecutionTrust?): Boolean = trust == SnippetExecutionTrust.TRUSTED_LOCAL
+
+    /**
+     * Resolves a trust value by its exact serialized name.
+     *
+     * `null`, blank, mis-cased, and unrecognized names, including names introduced by a newer
+     * Kronenberg release, resolve to [SnippetExecutionTrust.UNTRUSTED] so that an unparsable
+     * configuration cannot silently become trusted.
+     */
+    public fun resolve(name: String?): SnippetExecutionTrust =
+        SnippetExecutionTrust.entries.firstOrNull { it.name == name } ?: SnippetExecutionTrust.UNTRUSTED
+
+    /**
+     * Returns true only when [name] resolves to [SnippetExecutionTrust.TRUSTED_LOCAL].
+     */
+    public fun isTrustedName(name: String?): Boolean = isTrusted(resolve(name))
 }
 
 /**
@@ -116,6 +152,12 @@ public data class MutationReport(
 
 /**
  * Configuration options for mutation audit executions.
+ *
+ * [executionTrust] is part of the primary constructor so that the generated `copy` carries it and a
+ * copied configuration cannot silently revert to a trusted value. Because that appends a parameter
+ * to a published data class, this class also re-declares the nine-parameter `copy` and the
+ * nine-parameter constructor, which restores the `copy`/`copy$default` descriptors that callers
+ * compiled before the trust boundary depend on.
  */
 @Serializable
 public data class MutationConfig(
@@ -128,8 +170,19 @@ public data class MutationConfig(
     val targetLines: List<Int>? = null,
     val enableCache: Boolean = false,
     val extraClasspath: List<String> = emptyList(),
+    /**
+     * Trust classification for the code this configuration is about to execute.
+     *
+     * Defaults to [SnippetExecutionTrust.TRUSTED_LOCAL] so configurations written before the trust
+     * boundary existed keep their previous behaviour. [SnippetExecutionTrustPolicy] fails closed for
+     * every other value, including values added by a future release.
+     */
     val executionTrust: SnippetExecutionTrust = SnippetExecutionTrust.TRUSTED_LOCAL,
 ) {
+    /**
+     * Nine-parameter constructor retained so that callers compiled before the trust boundary keep
+     * resolving, defaulting to [SnippetExecutionTrust.TRUSTED_LOCAL] as they did previously.
+     */
     public constructor(
         minScore: Double,
         timeoutMultiplier: Double,
@@ -152,4 +205,36 @@ public data class MutationConfig(
         extraClasspath,
         SnippetExecutionTrust.TRUSTED_LOCAL,
     )
+
+    /**
+     * Nine-parameter `copy` retained so that binaries compiled before the trust boundary, which
+     * resolved `copy` and `copy$default` against nine parameters, keep linking. It carries
+     * [executionTrust] over to the copy, so copying a configuration can never widen its trust.
+     *
+     * The arity is fixed by the published ABI, not by taste.
+     */
+    @Suppress("LongParameterList")
+    public fun copy(
+        minScore: Double = this.minScore,
+        timeoutMultiplier: Double = this.timeoutMultiplier,
+        baselineTimeoutMs: Long = this.baselineTimeoutMs,
+        higherOrderMutants: Boolean = this.higherOrderMutants,
+        includeExtreme: Boolean = this.includeExtreme,
+        maxMutants: Int? = this.maxMutants,
+        targetLines: List<Int>? = this.targetLines,
+        enableCache: Boolean = this.enableCache,
+        extraClasspath: List<String> = this.extraClasspath,
+    ): MutationConfig =
+        MutationConfig(
+            minScore,
+            timeoutMultiplier,
+            baselineTimeoutMs,
+            higherOrderMutants,
+            includeExtreme,
+            maxMutants,
+            targetLines,
+            enableCache,
+            extraClasspath,
+            executionTrust,
+        )
 }

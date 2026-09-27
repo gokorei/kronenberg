@@ -6,7 +6,7 @@ Kronenberg compiles K2 PSI AST mutants in the host JVM and executes trusted loca
 
 Kronenberg supports **trusted local project code only**. The operator must trust the audited source, tests, dependencies, and build configuration with the same authority as the Gradle build and test process that normally executes them.
 
-Untrusted repositories, pull-request code, hostile build scripts, and attacker-controlled source or test code are **not supported**. `MutationConfig.executionTrust` defaults to `SnippetExecutionTrust.TRUSTED_LOCAL`. Selecting `SnippetExecutionTrust.UNTRUSTED` returns a structured baseline error before source parsing, compilation, classpath access, or snippet execution.
+Untrusted repositories, pull-request code, hostile build scripts, and attacker-controlled source or test code are **not supported**. `MutationConfig.executionTrust` defaults to `SnippetExecutionTrust.TRUSTED_LOCAL`, which preserves the behaviour of configurations written before the trust boundary existed. Selecting `SnippetExecutionTrust.UNTRUSTED` returns a structured baseline error before source parsing, compilation, classpath access, or snippet execution.
 
 This mode must be used only in an environment where Kronenberg already has authority to run the project. Use an external disposable VM, container, or CI isolation boundary for untrusted repositories. Keep credentials, signing keys, production configuration, and valuable host data outside that environment.
 
@@ -27,13 +27,20 @@ Abuse-case tests cover each row and assert that untrusted requests never invoke 
 
 ## Execution Policy
 
-`DefaultMutationExecutionPipeline` is the supported mutation-audit entrypoint:
+`DefaultMutationExecutionPipeline` is the supported mutation-audit entrypoint and the only place the trust decision is made:
 
-1. `SnippetExecutionTrust.UNTRUSTED` is rejected before any project code is parsed or compiled.
-2. `SnippetExecutionTrust.TRUSTED_LOCAL` continues through the existing compile, baseline, mutation, and report pipeline.
-3. The CLI and Gradle plugin use the trusted-local default. They do not claim to isolate hostile repositories.
+1. `SnippetExecutionTrustPolicy` is consulted before any project code is parsed, compiled, given a classpath, or executed.
+2. The policy is an allow-list. Only the explicit `SnippetExecutionTrust.TRUSTED_LOCAL` value continues through the compile, baseline, mutation, and report pipeline; every other value produces a structured baseline error.
+3. A denylist of `UNTRUSTED` alone would be unsafe, because a trust level added by a future release would fall through to execution on every version that predates it. Unknown serialized names resolve to `SnippetExecutionTrust.UNTRUSTED` through `SnippetExecutionTrustPolicy.resolve`, and an unparsable name fails decoding rather than defaulting to trusted.
+4. The CLI and Gradle plugin use the trusted-local default. They do not claim to isolate hostile repositories.
 
-`FastSnippetRunner` is a lower-level trusted-local execution interface. Calling it directly bypasses the pipeline policy check, so its contract is restricted to trusted bytecode. It must not be used as an untrusted execution service.
+`FastSnippetRunner` and `SnippetCompiler` sit below the policy boundary. They are lower-level mechanisms that do not evaluate trust: their contracts are restricted to trusted local code, and calling them directly bypasses the policy check. They are not the policy boundary, not an isolation layer, and must not be used as an untrusted execution service.
+
+## Model Evolution
+
+`MutationConfig` is a published data class, so adding `executionTrust` to its primary constructor would have changed the JVM descriptors of the generated `copy` and `copy$default` and broken every caller compiled against an earlier release. The class therefore re-declares the nine-parameter constructor and the nine-parameter `copy`, which keep the pre-boundary descriptors available, and that `copy` carries `executionTrust` into the copy so that copying a configuration can never widen its trust. `MutationConfigBinaryCompatibilitySpec` asserts the legacy descriptors through reflection, and every copy form is tested to preserve an untrusted request.
+
+The only entry that changes shape in the published `kronenberg-core.api` dump is the compiler-generated synthetic constructor that backs omitted default arguments, which now also carries the new parameter. Kotlin excludes synthetic members from its binary compatibility guarantees, and `apiCheck` reports no incompatibility; every public entry is either unchanged or added.
 
 ## Why There Is No Untrusted Worker
 

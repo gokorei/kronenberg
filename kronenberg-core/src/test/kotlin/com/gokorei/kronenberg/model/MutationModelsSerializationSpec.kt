@@ -1,7 +1,9 @@
 package com.gokorei.kronenberg.model
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.jupiter.api.Test
@@ -91,5 +93,26 @@ class MutationModelsSerializationSpec {
         val deserialized = json.decodeFromString<MutationConfig>(serialized)
 
         deserialized.executionTrust shouldBe SnippetExecutionTrust.UNTRUSTED
+    }
+
+    @Test
+    fun `MutationConfig serialization never promotes an unknown execution trust value`() {
+        val payload = """{"executionTrust":"SANDBOXED"}"""
+
+        // Failing to decode is the fail-closed outcome: an unrecognized trust value must never
+        // decode into a trusted configuration. If this starts throwing a different type, or stops
+        // throwing because coercion was enabled, re-check the policy before relaxing it.
+        shouldThrow<SerializationException> {
+            json.decodeFromString<MutationConfig>(payload)
+        }
+    }
+
+    @Test
+    fun `MutationConfig serialization round trip agrees with the fail closed resolver`() {
+        val config = MutationConfig(executionTrust = SnippetExecutionTrust.UNTRUSTED)
+
+        val deserialized = json.decodeFromString<MutationConfig>(json.encodeToString(config))
+
+        SnippetExecutionTrustPolicy.isTrustedName(deserialized.executionTrust.name) shouldBe false
     }
 }

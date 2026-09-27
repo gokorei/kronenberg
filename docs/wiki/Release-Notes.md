@@ -19,12 +19,17 @@ Overview of all notable changes to Kronenberg by version.
 
 ### Security
 - Defined a trusted-local-only execution threat model and fail-closed `SnippetExecutionTrust.UNTRUSTED` policy that rejects untrusted project code before parsing, compilation, classpath access, or execution.
-- Added abuse-case coverage for filesystem, network, process, reflection, environment, and JVM-global-state capabilities.
+- Added `SnippetExecutionTrustPolicy`, an allow-list gate that authorizes only the explicit `SnippetExecutionTrust.TRUSTED_LOCAL` value, so `null`, unrecognized serialized names, and trust levels added by future releases all fail closed instead of falling through to execution.
+- Added abuse-case coverage for filesystem, network, process, reflection, environment, and JVM-global-state capabilities, plus a positive control proving explicitly trusted code still reaches the compiler.
 - Clarified that class loaders, virtual threads, AST guards, property rollback, and ordinary child processes are not security boundaries and documented requirements for any future OS-isolated worker.
+- Documented that the policy boundary is the `DefaultMutationExecutionPipeline` entrypoint and that `FastSnippetRunner` and `SnippetCompiler` sit below it, do not evaluate trust, and must only be used with trusted local code.
 
 ### Bug Fixes
+- Preserved the published `MutationConfig` ABI by re-declaring the nine-parameter constructor and `copy` alongside the new `executionTrust` field, keeping the pre-boundary `copy` and `copy$default` descriptors resolvable for previously compiled callers.
+- Ensured every `MutationConfig.copy` form carries `executionTrust` into the copy, so copying a configuration can no longer silently revert an untrusted request to trusted.
 
 ### Improvements
+- Covered the trust boundary with reflection-based binary-compatibility tests for the legacy `MutationConfig` descriptors, copy-preservation tests, and fail-closed policy tests covering future and unknown trust values.
 
 ---
 

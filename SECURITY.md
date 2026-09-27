@@ -15,6 +15,10 @@ Kronenberg supports trusted local project code only. Source, tests, dependencies
 
 Kronenberg's `URLClassLoader`, virtual threads, AST guard, and global-state rollback are reliability controls, not security boundaries. They do not isolate project code from the host filesystem, network, subprocesses, environment, reflection, or JVM-global state.
 
+The policy boundary is the audit entrypoint, `DefaultMutationExecutionPipeline`, which evaluates `MutationConfig.executionTrust` before any project code is parsed, compiled, given a classpath, or executed. `SnippetExecutionTrustPolicy` is an allow-list: only the explicit `SnippetExecutionTrust.TRUSTED_LOCAL` value authorizes execution, and every other value, including a `null` or a trust level added by a future release, is rejected.
+
+`FastSnippetRunner` and `SnippetCompiler` sit **below** that boundary. They are lower-level mechanisms that do not evaluate trust: their contracts are restricted to trusted local code, and calling them directly bypasses the policy check entirely. They are not the policy boundary and must not be used as an untrusted execution service or as an isolation layer.
+
 Untrusted repository execution is unsupported and rejected before parsing, compilation, classpath access, or execution. Run hostile repositories only in an external disposable VM, container, or isolated CI environment without secrets or internal-network access. See [Architecture & Execution Trust Boundary](docs/wiki/Architecture-And-Sandboxing.md) for the complete model.
 
 ## Reporting a Vulnerability

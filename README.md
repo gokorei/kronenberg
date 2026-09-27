@@ -53,7 +53,9 @@ Kronenberg is organized into a clean, multi-module architecture:
 
 Kronenberg supports **trusted local project code only**. Its in-process compiler, `URLClassLoader`, virtual threads, AST guard, and property rollback improve performance and reliability, but they do not form a security boundary. Project code retains the filesystem, network, process, reflection, environment, and JVM-global capabilities of the host test worker.
 
-Untrusted repositories and hostile pull requests are unsupported. Set `SnippetExecutionTrust.UNTRUSTED` in `MutationConfig` to fail closed before parsing, compilation, classpath access, or execution. Run untrusted repositories in an external disposable VM, container, or isolated CI job with no secrets or internal-network access. See [Architecture & Execution Trust Boundary](docs/wiki/Architecture-And-Sandboxing.md) for the complete threat model and future untrusted-worker requirements.
+The policy boundary is the audit entrypoint, `DefaultMutationExecutionPipeline`, which evaluates `MutationConfig.executionTrust` before parsing, compilation, classpath access, or execution. `SnippetExecutionTrustPolicy` allows only the explicit `SnippetExecutionTrust.TRUSTED_LOCAL` value, so every other value, including an absent value or a trust level added by a future release, is rejected. `FastSnippetRunner` and `SnippetCompiler` are lower-level mechanisms below that boundary: they do not evaluate trust, and calling them directly bypasses the policy. They are not an isolation layer and must only be used with trusted local code.
+
+Untrusted repositories and hostile pull requests are unsupported. Set `SnippetExecutionTrust.UNTRUSTED` in `MutationConfig` to fail closed. Run untrusted repositories in an external disposable VM, container, or isolated CI job with no secrets or internal-network access. See [Architecture & Execution Trust Boundary](docs/wiki/Architecture-And-Sandboxing.md) for the complete threat model and future untrusted-worker requirements.
 
 ---
 
