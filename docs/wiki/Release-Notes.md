@@ -18,6 +18,13 @@ Overview of all notable changes to Kronenberg by version.
 - Automated GitHub Wiki synchronization workflow (`.github/workflows/wiki-sync.yml`).
 
 ### Bug Fixes
+- Fixed ResultMutator to replace complete recovery and callback call expressions with syntactically and semantically compilable calls.
+- Fixed ResultMutator matching any receiver by callee text alone, which rewrote non-`Result` calls such as `MutableMap.getOrDefault(key, fallback)`, `List.getOrNull(index)` and a `String` extension `getOrElse { }` into non-compiling `getOrThrow()` calls.
+- Added a PSI-only receiver applicability rule (`PsiResultReceiverAnalyzer`) plus `kotlin.Result` argument-shape contracts (`ResultCallContracts`), so Result mutations are limited to receivers that are provably or plausibly a `kotlin.Result`.
+- Added Result receiver verdict, foreign receiver, and end-to-end compilation tests proving that every generated Result mutant compiles with zero errors and that Map, String, collection and custom shadowing receivers never produce mutants.
+- Fixed ResultMutator treating an unresolved receiver as mutable. A custom class declared in a separate compilation unit is free to declare `getOrElse`, `getOrDefault`, `getOrNull`, `onSuccess` or `onFailure` with an identical signature, so `repo.getOrNull()` was rewritten to `repo.getOrThrow()` and the mutant never compiled. Applicability now fails closed: only a receiver the analysed file proves to be a `kotlin.Result` is mutated.
+- Fixed ResultMutator losing valid `kotlin.Result` mutations when the proof is one level removed. Receivers are now proven from a declared return type of a function declared in the same file with a matching arity, and from chains of Result-preserving members over a direct factory, so `parse(input).getOrNull()` and `runCatching { }.map { }.getOrNull()` keep producing mutants.
+- Added separate-compilation-unit tests that compile a custom class into its own output directory and prove it yields no mutants, zero compile errors, and that the rejected rewrites are hard compile errors against the real external type.
 
 ### Improvements
 

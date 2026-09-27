@@ -102,7 +102,7 @@ Every mutator is implemented via pure K2 PSI AST visitors (`KtTreeVisitorVoid`),
 
 | Mutator Class | Description |
 | :--- | :--- |
-| `ResultMutator` | Mutates Result and functional error handling calls (getOrElse, getOrDefault, getOrNull, onSuccess, onFailure) |
+| `ResultMutator` | Mutates Result and functional error handling calls (getOrElse, getOrDefault, getOrNull, onSuccess, onFailure) only when the analysed file proves the receiver is a kotlin.Result |
 
 ### Return Values
 

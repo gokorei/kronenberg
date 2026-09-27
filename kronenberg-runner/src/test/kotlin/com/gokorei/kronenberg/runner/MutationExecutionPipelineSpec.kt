@@ -1,5 +1,8 @@
 package com.gokorei.kronenberg.runner
 
+import com.gokorei.kronenberg.ast.AstMutantGenerator
+import com.gokorei.kronenberg.ast.MutatorRegistry
+import com.gokorei.kronenberg.ast.ResultMutator
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationConfig
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -11,6 +14,41 @@ import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 
 class MutationExecutionPipelineSpec {
+    private data class ResultMutationCase(
+        val source: String,
+        val killedTest: String,
+        val survivedTest: String,
+        val expectedMutatedSource: String,
+    )
+
+    private fun assertResultMutation(
+        case: ResultMutationCase,
+        test: String,
+        expectedStatus: MutantStatus,
+    ) {
+        val resultPipeline =
+            DefaultMutationExecutionPipeline(
+                generator = AstMutantGenerator(MutatorRegistry(listOf(ResultMutator()))),
+            )
+        try {
+            runBlocking {
+                val report = resultPipeline.execute(case.source, test, MutationConfig())
+                report.baselineError shouldBe null
+                report.compileErrorCount shouldBe 0
+                val result = report.results.single { it.mutant.mutatorName == "ResultMutator" }
+                result.mutant.mutatedSource shouldBe case.expectedMutatedSource
+                result.status shouldBe expectedStatus
+            }
+        } finally {
+            resultPipeline.close()
+        }
+    }
+
+    private fun assertKillAndSurvive(case: ResultMutationCase) {
+        assertResultMutation(case, case.killedTest, MutantStatus.KILLED)
+        assertResultMutation(case, case.survivedTest, MutantStatus.SURVIVED)
+    }
+
     private val pipeline: MutationExecutionPipeline = DefaultMutationExecutionPipeline()
 
     @Test
@@ -173,6 +211,120 @@ class MutationExecutionPipelineSpec {
             report.baselineError!! shouldContain "Baseline test failed before mutation"
             report.totalMutants shouldBe 0
         }
+    }
+
+    @Test
+    fun `getOrElse Result mutants compile and kill or survive`() {
+        assertKillAndSurvive(
+            ResultMutationCase(
+                source = "fun recover(result: Result<Int>): Int = result.getOrElse { 0 }",
+                killedTest =
+                    """
+                    fun testRecover() {
+                        check(recover(Result.success(1)) == 1)
+                        check(recover(Result.failure<Int>(IllegalStateException())) == 0)
+                    }
+                    """.trimIndent(),
+                survivedTest = "fun testRecover() { check(recover(Result.success(1)) == 1) }",
+                expectedMutatedSource = "fun recover(result: Result<Int>): Int = result.getOrThrow()",
+            ),
+        )
+    }
+
+    @Test
+    fun `getOrDefault Result mutants compile and kill or survive`() {
+        assertKillAndSurvive(
+            ResultMutationCase(
+                source = "fun recover(result: Result<Int>): Int = result.getOrDefault(0)",
+                killedTest =
+                    """
+                    fun testRecover() {
+                        check(recover(Result.success(1)) == 1)
+                        check(recover(Result.failure<Int>(IllegalStateException())) == 0)
+                    }
+                    """.trimIndent(),
+                survivedTest = "fun testRecover() { check(recover(Result.success(1)) == 1) }",
+                expectedMutatedSource = "fun recover(result: Result<Int>): Int = result.getOrThrow()",
+            ),
+        )
+    }
+
+    @Test
+    fun `getOrNull Result mutants compile and kill or survive`() {
+        assertKillAndSurvive(
+            ResultMutationCase(
+                source = "fun recover(result: Result<Int>): Int? = result.getOrNull()",
+                killedTest =
+                    """
+                    fun testRecover() {
+                        check(recover(Result.success(1)) == 1)
+                        check(recover(Result.failure<Int>(IllegalStateException())) == null)
+                    }
+                    """.trimIndent(),
+                survivedTest = "fun testRecover() { check(recover(Result.success(1)) == 1) }",
+                expectedMutatedSource = "fun recover(result: Result<Int>): Int? = result.getOrThrow()",
+            ),
+        )
+    }
+
+    @Test
+    fun `onSuccess Result mutants compile and kill or survive`() {
+        assertKillAndSurvive(
+            ResultMutationCase(
+                source =
+                    "fun observe(result: Result<Int>, output: MutableList<String>): " +
+                        "Result<Int> = result.onSuccess { output += \"success\" }",
+                killedTest =
+                    """
+                    fun testObserve() {
+                        val output = mutableListOf<String>()
+                        check(observe(Result.success(1), output).isSuccess)
+                        check(output == listOf("success"))
+                    }
+                    """.trimIndent(),
+                survivedTest =
+                    """
+                    fun testObserve() {
+                        val output = mutableListOf<String>()
+                        check(observe(Result.failure<Int>(IllegalStateException()), output).isFailure)
+                        check(output.isEmpty())
+                    }
+                    """.trimIndent(),
+                expectedMutatedSource =
+                    "fun observe(result: Result<Int>, output: MutableList<String>): " +
+                        "Result<Int> = result.onFailure {}",
+            ),
+        )
+    }
+
+    @Test
+    fun `onFailure Result mutants compile and kill or survive`() {
+        assertKillAndSurvive(
+            ResultMutationCase(
+                source =
+                    "fun observe(result: Result<Int>, output: MutableList<String>): " +
+                        "Result<Int> = result.onFailure { output += \"failure\" }",
+                killedTest =
+                    """
+                    fun testObserve() {
+                        val output = mutableListOf<String>()
+                        check(observe(Result.failure<Int>(IllegalStateException()), output).isFailure)
+                        check(output == listOf("failure"))
+                    }
+                    """.trimIndent(),
+                survivedTest =
+                    """
+                    fun testObserve() {
+                        val output = mutableListOf<String>()
+                        check(observe(Result.success(1), output).isSuccess)
+                        check(output.isEmpty())
+                    }
+                    """.trimIndent(),
+                expectedMutatedSource =
+                    "fun observe(result: Result<Int>, output: MutableList<String>): " +
+                        "Result<Int> = result.onSuccess {}",
+            ),
+        )
     }
 
     @Test
