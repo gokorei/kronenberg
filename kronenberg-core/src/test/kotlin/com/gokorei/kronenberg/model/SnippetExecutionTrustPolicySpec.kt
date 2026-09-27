@@ -77,4 +77,16 @@ class SnippetExecutionTrustPolicySpec {
             SnippetExecutionTrustPolicy.resolve(value.name) shouldBe value
         }
     }
+
+    @Test
+    fun `an absent trust value is rejected by the policy even though the constructor defaults to trusted local`() {
+        // Two different questions, deliberately kept apart. At the policy boundary a missing value
+        // is untrusted, because the allow-list only authorizes the explicit trusted constant. At the
+        // constructor boundary an omitted argument binds the nine-parameter constructor, whose body
+        // names TRUSTED_LOCAL. Serialized configurations have no trusted default at all and fail to
+        // decode when the key is absent.
+        SnippetExecutionTrustPolicy.isTrusted(null) shouldBe false
+        SnippetExecutionTrustPolicy.resolve(null) shouldBe SnippetExecutionTrust.UNTRUSTED
+        MutationConfig().executionTrust shouldBe SnippetExecutionTrust.TRUSTED_LOCAL
+    }
 }

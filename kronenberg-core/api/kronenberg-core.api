@@ -523,6 +523,7 @@ public final class com/gokorei/kronenberg/model/MutationConfig {
 	public static final field Companion Lcom/gokorei/kronenberg/model/MutationConfig$Companion;
 	public fun <init> ()V
 	public fun <init> (DDJZZLjava/lang/Integer;Ljava/util/List;ZLjava/util/List;)V
+	public synthetic fun <init> (DDJZZLjava/lang/Integer;Ljava/util/List;ZLjava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun <init> (DDJZZLjava/lang/Integer;Ljava/util/List;ZLjava/util/List;Lcom/gokorei/kronenberg/model/SnippetExecutionTrust;)V
 	public synthetic fun <init> (DDJZZLjava/lang/Integer;Ljava/util/List;ZLjava/util/List;Lcom/gokorei/kronenberg/model/SnippetExecutionTrust;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()D

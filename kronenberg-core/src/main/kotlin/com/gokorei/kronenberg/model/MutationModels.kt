@@ -153,11 +153,44 @@ public data class MutationReport(
 /**
  * Configuration options for mutation audit executions.
  *
+ * # Trust is always explicit on the trust-aware shape
+ *
  * [executionTrust] is part of the primary constructor so that the generated `copy` carries it and a
- * copied configuration cannot silently revert to a trusted value. Because that appends a parameter
- * to a published data class, this class also re-declares the nine-parameter `copy` and the
- * nine-parameter constructor, which restores the `copy`/`copy$default` descriptors that callers
- * compiled before the trust boundary depend on.
+ * copied configuration cannot silently revert to a trusted value. It deliberately has **no default
+ * value**: the ten-parameter primary constructor is the trust-aware shape, and it forces every
+ * caller to state the trust classification instead of inheriting one by accident. Omitting
+ * [executionTrust] therefore resolves to the pre-trust-boundary shape, whose documented behaviour is
+ * the trusted-local default.
+ *
+ * # Binary compatibility with the pre-boundary ABI
+ *
+ * `MutationConfig` shipped in 0.1.0 as a nine-parameter data class, so the released JVM descriptors
+ * are fixed:
+ *
+ * - `<init>()V`
+ * - `<init>(DDJZZLjava/lang/Integer;Ljava/util/List;ZLjava/util/List;)V`
+ * - `<init>(DDJZZLjava/lang/Integer;Ljava/util/List;ZLjava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V`
+ * - `copy(DDJZZLjava/lang/Integer;Ljava/util/List;ZLjava/util/List;)` and its `copy$default` bridge
+ *
+ * The third descriptor is the synthetic constructor that backs omitted default arguments. Leaving
+ * `executionTrust` defaulted on the primary constructor would have moved that synthetic descriptor
+ * to ten parameters and broken every caller compiled against 0.1.0, even though
+ * `kotlinx.binary-compatibility-validator` ignores synthetic members. This class therefore restores
+ * all four descriptors:
+ *
+ * - the explicit no-argument constructor re-declares `<init>()V`;
+ * - the all-defaulted nine-parameter secondary constructor re-declares both the nine-parameter
+ *   constructor and its `int`/`DefaultConstructorMarker` synthetic bridge, and it is the documented
+ *   trusted-local default for a configuration that omits a trust value;
+ * - the nine-parameter `copy` re-declares `copy` and `copy$default`, carrying [executionTrust] into
+ *   the copy so copying can never widen trust.
+ *
+ * The two sets of default values must stay identical, because `MutationConfig()` resolves through the
+ * no-argument constructor while `MutationConfig(minScore = 90.0)` resolves through the nine-parameter
+ * one. `MutationConfigBinaryCompatibilitySpec` asserts the agreement, asserts each of the descriptors
+ * above through reflection, and drives the legacy synthetic constructor through its bit mask, so
+ * dropping or desynchronising the shim fails the build rather than silently breaking downstream
+ * linkage.
  */
 @Serializable
 public data class MutationConfig(
@@ -173,26 +206,42 @@ public data class MutationConfig(
     /**
      * Trust classification for the code this configuration is about to execute.
      *
-     * Defaults to [SnippetExecutionTrust.TRUSTED_LOCAL] so configurations written before the trust
-     * boundary existed keep their previous behaviour. [SnippetExecutionTrustPolicy] fails closed for
-     * every other value, including values added by a future release.
+     * No default value: see the class documentation. Omitting this argument binds to the
+     * nine-parameter constructor, which is [SnippetExecutionTrust.TRUSTED_LOCAL].
      */
-    val executionTrust: SnippetExecutionTrust = SnippetExecutionTrust.TRUSTED_LOCAL,
+    val executionTrust: SnippetExecutionTrust,
 ) {
     /**
-     * Nine-parameter constructor retained so that callers compiled before the trust boundary keep
-     * resolving, defaulting to [SnippetExecutionTrust.TRUSTED_LOCAL] as they did previously.
+     * No-argument constructor retained for the pre-trust-boundary `<init>()V` descriptor.
+     *
+     * Kotlin only generates a synthetic no-argument constructor for an all-defaulted *primary*
+     * constructor, and the primary constructor is trust-aware. Without this declaration, callers
+     * compiled against 0.1.0 would fail to link on `MutationConfig()`.
      */
+    public constructor() : this(executionTrust = SnippetExecutionTrust.TRUSTED_LOCAL)
+
+    /**
+     * Nine-parameter constructor retained so that callers compiled before the trust boundary keep
+     * resolving, including the synthetic default-argument bridge they were compiled against.
+     *
+     * Omitting [executionTrust] therefore resolves here and yields
+     * [SnippetExecutionTrust.TRUSTED_LOCAL], the pre-boundary behaviour. This is the single, explicit
+     * home of that default; see the class documentation.
+     *
+     * The default values below must stay identical to the primary constructor's, or
+     * `MutationConfig(minScore = 90.0)` would silently differ from `MutationConfig()`.
+     */
+    @Suppress("LongParameterList")
     public constructor(
-        minScore: Double,
-        timeoutMultiplier: Double,
-        baselineTimeoutMs: Long,
-        higherOrderMutants: Boolean,
-        includeExtreme: Boolean,
-        maxMutants: Int?,
-        targetLines: List<Int>?,
-        enableCache: Boolean,
-        extraClasspath: List<String>,
+        minScore: Double = 80.0,
+        timeoutMultiplier: Double = 3.0,
+        baselineTimeoutMs: Long = 1000L,
+        higherOrderMutants: Boolean = false,
+        includeExtreme: Boolean = false,
+        maxMutants: Int? = null,
+        targetLines: List<Int>? = null,
+        enableCache: Boolean = false,
+        extraClasspath: List<String> = emptyList(),
     ) : this(
         minScore,
         timeoutMultiplier,

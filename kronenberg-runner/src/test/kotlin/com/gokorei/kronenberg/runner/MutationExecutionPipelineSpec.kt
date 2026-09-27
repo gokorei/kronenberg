@@ -295,6 +295,35 @@ class MutationExecutionPipelineSpec {
         }
     }
 
+    @Test
+    fun `a configuration that omits execution trust is trusted local and reaches the compiler`() {
+        // An omitted trust value binds the nine-parameter constructor, which names TRUSTED_LOCAL.
+        // This is the documented default, so the pipeline must execute it rather than reject it. If
+        // this test starts failing, the trusted default moved and README, SECURITY.md, and the
+        // architecture wiki have to be updated in the same change.
+        val compiler = RecordingCompiler()
+        val runner = RecordingRunner()
+        val isolatedPipeline = DefaultMutationExecutionPipeline(compiler = compiler, runner = runner)
+
+        try {
+            val report =
+                runBlocking {
+                    isolatedPipeline.execute(
+                        sourceCode = "fun value() = 1",
+                        testCode = "fun main() { check(value() == 1) }",
+                        config = MutationConfig(minScore = 90.0),
+                    )
+                }
+
+            MutationConfig(minScore = 90.0).executionTrust shouldBe SnippetExecutionTrust.TRUSTED_LOCAL
+            report.baselineError.shouldNotBeNull()
+            report.baselineError!! shouldNotContain "Untrusted project code execution is not supported"
+            compiler.compileCount shouldBe 1
+        } finally {
+            isolatedPipeline.close()
+        }
+    }
+
     private fun assertUntrustedRejected(source: String) {
         assertRejectedBeforeCompilation(
             MutationConfig(

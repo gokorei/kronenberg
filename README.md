@@ -53,9 +53,21 @@ Kronenberg is organized into a clean, multi-module architecture:
 
 Kronenberg supports **trusted local project code only**. Its in-process compiler, `URLClassLoader`, virtual threads, AST guard, and property rollback improve performance and reliability, but they do not form a security boundary. Project code retains the filesystem, network, process, reflection, environment, and JVM-global capabilities of the host test worker.
 
-The policy boundary is the audit entrypoint, `DefaultMutationExecutionPipeline`, which evaluates `MutationConfig.executionTrust` before parsing, compilation, classpath access, or execution. `SnippetExecutionTrustPolicy` allows only the explicit `SnippetExecutionTrust.TRUSTED_LOCAL` value, so every other value, including an absent value or a trust level added by a future release, is rejected. `FastSnippetRunner` and `SnippetCompiler` are lower-level mechanisms below that boundary: they do not evaluate trust, and calling them directly bypasses the policy. They are not an isolation layer and must only be used with trusted local code.
+The policy boundary is the audit entrypoint, `DefaultMutationExecutionPipeline`, which evaluates `MutationConfig.executionTrust` before parsing, compilation, classpath access, or execution. `SnippetExecutionTrustPolicy` is an allow-list: only the explicit `SnippetExecutionTrust.TRUSTED_LOCAL` value authorizes execution, so `null`, an unrecognized serialized name, and a trust level added by a future release are all rejected. `FastSnippetRunner` and `SnippetCompiler` are lower-level mechanisms below that boundary: they do not evaluate trust, and calling them directly bypasses the policy. They are not an isolation layer and must only be used with trusted local code.
 
-Untrusted repositories and hostile pull requests are unsupported. Set `SnippetExecutionTrust.UNTRUSTED` in `MutationConfig` to fail closed. Run untrusted repositories in an external disposable VM, container, or isolated CI job with no secrets or internal-network access. See [Architecture & Execution Trust Boundary](docs/wiki/Architecture-And-Sandboxing.md) for the complete threat model and future untrusted-worker requirements.
+### What "absent trust" means
+
+`executionTrust` is **required**, not defaulted, on the trust-aware ten-parameter `MutationConfig` constructor, so the two ways of leaving it out resolve deliberately and differently:
+
+| How trust is omitted | Result | Rationale |
+| :--- | :--- | :--- |
+| Kotlin call binds the nine-parameter constructor, e.g. `MutationConfig()` or `MutationConfig(minScore = 90.0)` | `SnippetExecutionTrust.TRUSTED_LOCAL` | The call site is code in your own build, compiled and linked by you. This is the pre-trust-boundary behaviour, and it is the only source of the trusted default. |
+| Serialized JSON omits the `executionTrust` key | Decoding fails with `MissingFieldException` | Serialized configuration is the one channel where a trust value can arrive from outside the process, so absence is never read as consent. |
+| Serialized JSON carries an unknown or mis-cased `executionTrust` | Decoding fails; `SnippetExecutionTrustPolicy.resolve` maps the name to `UNTRUSTED` | An unparsable trust value must not become a trusted one. |
+
+The trusted default therefore belongs to in-process construction only, and it is the documented contract rather than an implicit fallback: the trust-aware constructor has no default, and the nine-parameter constructor names `TRUSTED_LOCAL` explicitly in its body. Set `SnippetExecutionTrust.UNTRUSTED` to fail closed, and never add a default value back to `executionTrust`.
+
+Untrusted repositories and hostile pull requests are unsupported. Run untrusted repositories in an external disposable VM, container, or isolated CI job with no secrets or internal-network access. See [Architecture & Execution Trust Boundary](docs/wiki/Architecture-And-Sandboxing.md) for the complete threat model and future untrusted-worker requirements.
 
 ---
 

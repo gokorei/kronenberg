@@ -19,15 +19,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Automated GitHub Wiki synchronization workflow (`.github/workflows/wiki-sync.yml`).
 
 ### Changed
-- Covered the trust boundary with reflection-based binary-compatibility tests for the legacy `MutationConfig` descriptors, copy-preservation tests, and fail-closed policy tests covering future and unknown trust values.
+- Covered the trust boundary with reflection-based binary-compatibility tests for every pre-boundary `MutationConfig` descriptor, including a test that drives the legacy synthetic constructor through its bit mask to prove the bridge still substitutes defaults, plus copy-preservation and fail-closed policy tests covering absent, future, and unknown trust values.
 
 ### Fixed
+- Restored the legacy nine-argument synthetic default-argument constructor descriptor `(DDJZZLjava/lang/Integer;Ljava/util/List;ZLjava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V` on `MutationConfig`, which callers compiled against 0.1.0 link against and which `kotlinx.binary-compatibility-validator` filters out of `apiCheck`.
+- Restored the legacy `MutationConfig()` no-argument descriptor, which Kotlin only generates for an all-defaulted primary constructor and which the trust-aware primary constructor had displaced.
 - Preserved the published `MutationConfig` ABI by re-declaring the nine-parameter constructor and `copy` alongside the new `executionTrust` field, keeping the pre-boundary `copy` and `copy$default` descriptors resolvable for previously compiled callers.
 - Ensured every `MutationConfig.copy` form carries `executionTrust` into the copy, so copying a configuration can no longer silently revert an untrusted request to trusted.
+- Made the `kronenberg-core.api` diff against the previous release purely additive: no entry is removed and no entry changes shape, synthetic or not.
 
 ### Security
 - Defined a trusted-local-only execution threat model and fail-closed `SnippetExecutionTrust.UNTRUSTED` policy that rejects untrusted project code before parsing, compilation, classpath access, or execution.
 - Added `SnippetExecutionTrustPolicy`, an allow-list gate that authorizes only the explicit `SnippetExecutionTrust.TRUSTED_LOCAL` value, so `null`, unrecognized serialized names, and trust levels added by future releases all fail closed instead of falling through to execution.
+- Removed the default value from `MutationConfig.executionTrust` and made a serialized configuration that omits the `executionTrust` key fail to decode with `MissingFieldException`, so an absent trust value can no longer be read as consent on the only channel where a trust value can arrive from outside the process.
+- Documented absent-trust resolution consistently in `README.md`, `SECURITY.md`, and the architecture wiki: an omitted Kotlin argument binds the nine-parameter constructor, whose body names `TRUSTED_LOCAL`, while an omitted serialized key is rejected.
 - Added abuse-case coverage for filesystem, network, process, reflection, environment, and JVM-global-state capabilities, plus a positive control proving explicitly trusted code still reaches the compiler.
 - Clarified that class loaders, virtual threads, AST guards, property rollback, and ordinary child processes are not security boundaries and documented requirements for any future OS-isolated worker.
 - Documented that the policy boundary is the `DefaultMutationExecutionPipeline` entrypoint and that `FastSnippetRunner` and `SnippetCompiler` sit below it, do not evaluate trust, and must only be used with trusted local code.
