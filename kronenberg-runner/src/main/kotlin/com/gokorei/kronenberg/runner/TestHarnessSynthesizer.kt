@@ -18,25 +18,43 @@ public data class CandidateTestFunction(
 
 /**
  * Structural breakdown of parsed test code.
+ *
+ * The file-level annotations, package directive, and imports are hoisted out of [rawBody] so that
+ * [TestHarnessSynthesizer.mergeSourceWithParsedTest] can re-emit them ahead of the merged declarations,
+ * which is the only position the Kotlin grammar accepts them in.
  */
 public data class ParsedTestCode(
     val packageDirective: String?,
     val imports: List<String>,
+    val fileAnnotations: List<String>,
     val rawBody: String,
     val testHasMain: Boolean,
     val sourceHasMain: Boolean,
     val candidateTests: List<CandidateTestFunction>,
 ) {
+    /**
+     * True when the harness must generate a top-level `main` dispatcher for the discovered candidate tests.
+     */
+    public val requiresSynthesizedMain: Boolean
+        get() = !testHasMain && candidateTests.isNotEmpty()
+
+    @Deprecated(
+        "Reports a disjunction of two independent entry points; use testHasMain and sourceHasMain instead.",
+        ReplaceWith("testHasMain || sourceHasMain"),
+    )
     public val hasMain: Boolean
         get() = testHasMain || sourceHasMain
 
+    @Deprecated(
+        "Use the primary constructor so source and test entry points stay independently observable.",
+    )
     public constructor(
         packageDirective: String?,
         imports: List<String>,
         rawBody: String,
         hasMain: Boolean,
         candidateTests: List<CandidateTestFunction>,
-    ) : this(packageDirective, imports, rawBody, hasMain, false, candidateTests)
+    ) : this(packageDirective, imports, emptyList(), rawBody, hasMain, false, candidateTests)
 }
 
 /**
@@ -54,6 +72,7 @@ public object TestHarnessSynthesizer {
             return ParsedTestCode(
                 packageDirective = null,
                 imports = emptyList(),
+                fileAnnotations = emptyList(),
                 rawBody = "",
                 testHasMain = false,
                 sourceHasMain = false,
@@ -65,10 +84,11 @@ public object TestHarnessSynthesizer {
 
         val imports = testFile.importDirectives.map { it.text }
         val pkg = testFile.packageDirective?.takeIf { it.text.isNotBlank() }?.text
-        val rawBody = stripPackageAndImports(testCode, testFile)
+        val fileAnnotations = testFile.annotationEntries.map { it.text }
+        val rawBody = SourceTextSlicer.bodyExcluding(testCode, testFile, emptyList())
 
-        val testHasMain = testFile.declarations.filterIsInstance<KtNamedFunction>().any { it.name == "main" }
-        val sourceHasMain = sourceFile?.declarations?.filterIsInstance<KtNamedFunction>()?.any { it.name == "main" } == true
+        val testHasMain = topLevelMains(testFile).isNotEmpty()
+        val sourceHasMain = sourceFile?.let { topLevelMains(it).isNotEmpty() } == true
 
         val candidateTests = mutableListOf<CandidateTestFunction>()
         val topLevelTestFunctions =
@@ -104,6 +124,7 @@ public object TestHarnessSynthesizer {
         return ParsedTestCode(
             packageDirective = pkg,
             imports = imports,
+            fileAnnotations = fileAnnotations,
             rawBody = rawBody,
             testHasMain = testHasMain,
             sourceHasMain = sourceHasMain,
@@ -111,23 +132,13 @@ public object TestHarnessSynthesizer {
         )
     }
 
-    private fun sourceBodyWithoutMain(file: KtFile): String {
-        val sourceMain = file.declarations.filterIsInstance<KtNamedFunction>().firstOrNull { it.name == "main" }
-        return file.declarations
-            .filterNot { it == sourceMain }
-            .joinToString("\n\n") { it.text }
-            .trim()
-    }
-
-    private fun isTestFunctionCandidate(fn: KtNamedFunction): Boolean {
-        val name = fn.name ?: ""
-        val isTestNamed = name.startsWith("test", ignoreCase = true) || name.endsWith("test", ignoreCase = true)
-        val isAnnotated = fn.annotationEntries.any { it.shortName?.asString() == "Test" }
-        return (isTestNamed || isAnnotated) && fn.valueParameters.isEmpty()
-    }
-
     /**
      * Merges source code with test definitions, synthesizing an auto-wrapping `main()` harness when needed.
+     *
+     * The merged program keeps exactly one top-level `main`: the test entry point when the test file
+     * declares one, otherwise the synthesized dispatcher, otherwise the source entry point. Every
+     * top-level source `main` dropped on the way is reported by [removedSourceMainLineRanges] so that
+     * mutations inside that unreachable region are never scored.
      */
     public fun mergeSourceWithParsedTest(
         code: String,
@@ -137,33 +148,43 @@ public object TestHarnessSynthesizer {
         if (test.rawBody.isBlank()) return code
 
         val codeFile = K2SnippetFrontend.parsePsi(code)
-        val shouldSynthesizeMain = !test.testHasMain && test.candidateTests.isNotEmpty()
-        val sourceHasMain = codeFile.declarations.filterIsInstance<KtNamedFunction>().any { it.name == "main" }
-        val removeSourceMain = sourceHasMain && (test.testHasMain || shouldSynthesizeMain)
-        val codeBody = mergedSourceBody(codeFile, removeSourceMain)
-        val testBodyWithMain = buildTestBody(code, test, mutant, shouldSynthesizeMain)
+        val removedMains = if (removesSourceMains(test)) topLevelMains(codeFile) else emptyList()
+        val codeBody = SourceTextSlicer.bodyExcluding(code, codeFile, removedMains)
+        val testBodyWithMain = buildTestBody(code, test, mutant)
         val imports = (codeFile.importDirectives.map { it.text } + test.imports).distinct()
+        val fileAnnotations = (codeFile.annotationEntries.map { it.text } + test.fileAnnotations).distinct()
         val packageDirective = codeFile.packageDirective?.takeIf { it.text.isNotBlank() }?.text ?: test.packageDirective
-        return buildMergedCode(packageDirective, imports, codeBody, testBodyWithMain)
+        return buildMergedCode(fileAnnotations, packageDirective, imports, codeBody, testBodyWithMain)
     }
 
-    private fun mergedSourceBody(
-        codeFile: KtFile,
-        removeSourceMain: Boolean,
-    ): String =
-        if (removeSourceMain) {
-            sourceBodyWithoutMain(codeFile)
-        } else {
-            stripPackageAndImports(codeFile.text, codeFile)
-        }
+    /**
+     * Inclusive 1-indexed line ranges of the top-level source `main` declarations that
+     * [mergeSourceWithParsedTest] strips from the executed program.
+     *
+     * Those lines are unreachable once the harness supplies the entry point, so a mutation landing
+     * inside them can never influence the outcome and would otherwise be recorded as a permanent
+     * false survivor. Callers must exclude them from evaluation.
+     */
+    public fun removedSourceMainLineRanges(
+        code: String,
+        test: ParsedTestCode,
+    ): List<IntRange> {
+        if (!removesSourceMains(test)) return emptyList()
+        val file = K2SnippetFrontend.parsePsi(code)
+        return topLevelMains(file).map { fn -> SourceTextSlicer.lineRangeOf(code, fn) }
+    }
+
+    private fun removesSourceMains(test: ParsedTestCode): Boolean = test.testHasMain || test.requiresSynthesizedMain
+
+    private fun topLevelMains(file: KtFile): List<KtNamedFunction> =
+        file.declarations.filterIsInstance<KtNamedFunction>().filter { it.name == "main" }
 
     private fun buildTestBody(
         code: String,
         test: ParsedTestCode,
         mutant: AstMutant?,
-        shouldSynthesizeMain: Boolean,
     ): String {
-        if (!shouldSynthesizeMain) return test.rawBody
+        if (!test.requiresSynthesizedMain) return test.rawBody
         val orderedTests = orderedTests(code, test.candidateTests, mutant)
         return buildString {
             appendLine(test.rawBody)
@@ -198,12 +219,17 @@ public object TestHarnessSynthesizer {
     }
 
     private fun buildMergedCode(
+        fileAnnotations: List<String>,
         packageDirective: String?,
         imports: List<String>,
         codeBody: String,
         testBody: String,
     ): String =
         buildString {
+            if (fileAnnotations.isNotEmpty()) {
+                fileAnnotations.forEach { appendLine(it) }
+                appendLine()
+            }
             if (packageDirective != null) {
                 appendLine(packageDirective)
                 appendLine()
@@ -223,22 +249,12 @@ public object TestHarnessSynthesizer {
     public fun stripPackageAndImports(
         source: String,
         file: KtFile,
-    ): String {
-        val rangesToRemove = mutableListOf<org.jetbrains.kotlin.com.intellij.openapi.util.TextRange>()
-        file.packageDirective?.takeIf { it.text.isNotBlank() }?.let { rangesToRemove.add(it.textRange) }
-        file.importList?.takeIf { it.text.isNotBlank() }?.let { rangesToRemove.add(it.textRange) }
+    ): String = SourceTextSlicer.stripPackageAndImports(source, file)
 
-        if (rangesToRemove.isEmpty()) return source.trim()
-
-        val sortedRanges = rangesToRemove.sortedByDescending { it.startOffset }
-        var result = source
-        for (range in sortedRanges) {
-            val start = range.startOffset.coerceAtLeast(0)
-            val end = range.endOffset.coerceAtMost(result.length)
-            if (start < end) {
-                result = result.substring(0, start) + result.substring(end)
-            }
-        }
-        return result.trim()
+    private fun isTestFunctionCandidate(fn: KtNamedFunction): Boolean {
+        val name = fn.name ?: ""
+        val isTestNamed = name.startsWith("test", ignoreCase = true) || name.endsWith("test", ignoreCase = true)
+        val isAnnotated = fn.annotationEntries.any { it.shortName?.asString() == "Test" }
+        return (isTestNamed || isAnnotated) && fn.valueParameters.isEmpty()
     }
 }
