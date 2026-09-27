@@ -48,78 +48,21 @@ public class DefaultMutationExecutionPipeline(
 
         // 0. Safety pre-flight check
         if (SnippetAstSafetyChecker.containsHostTerminatingCalls(baselineCombined)) {
-            return MutationReport(
-                totalMutants = 0,
-                killedCount = 0,
-                survivedCount = 0,
-                timeoutCount = 0,
-                compileErrorCount = 0,
-                mutationScore = 0.0,
-                results = emptyList(),
-                baselineError = "Code contains forbidden host-terminating calls (e.g. System.exit, exitProcess, Runtime.halt)",
-            )
+            return baselineFailureReport("Code contains forbidden host-terminating calls (e.g. System.exit, exitProcess, Runtime.halt)")
         }
 
         // 1. Verify baseline code and tests
-        val baselineCompile = compiler.compile(baselineCombined, extraClasspath = config.extraClasspath)
-        if (baselineCompile !is CompileResult.Compiled) {
-            val failMsg = (baselineCompile as? CompileResult.Failed)?.message ?: "Baseline compilation failed"
-            return MutationReport(
-                totalMutants = 0,
-                killedCount = 0,
-                survivedCount = 0,
-                timeoutCount = 0,
-                compileErrorCount = 0,
-                mutationScore = 0.0,
-                results = emptyList(),
-                baselineError = "Baseline compilation failed: $failMsg",
-            )
-        }
-
-        val baselineOutcome =
-            try {
-                runner.run(
-                    baselineCompile.outDir,
-                    timeoutMs = config.baselineTimeoutMs,
-                    extraClasspath = config.extraClasspath,
-                )
-            } finally {
-                compiler.cleanup(baselineCompile)
-            }
-
-        if (baselineOutcome.status == MutantStatus.KILLED) {
-            return MutationReport(
-                totalMutants = 0,
-                killedCount = 0,
-                survivedCount = 0,
-                timeoutCount = 0,
-                compileErrorCount = 0,
-                mutationScore = 0.0,
-                results = emptyList(),
-                baselineError = "Baseline test failed before mutation: ${baselineOutcome.failureMessage}",
-            )
-        }
-
-        if (baselineOutcome.status == MutantStatus.TIMED_OUT) {
-            return MutationReport(
-                totalMutants = 0,
-                killedCount = 0,
-                survivedCount = 0,
-                timeoutCount = 0,
-                compileErrorCount = 0,
-                mutationScore = 0.0,
-                results = emptyList(),
-                baselineError = "Baseline test execution timed out after ${config.baselineTimeoutMs}ms",
-            )
-        }
+        val baseline = verifyBaseline(baselineCombined, config)
+        baseline.failureReport?.let { return it }
 
         val calibratedTimeoutMs =
-            (maxOf(baselineOutcome.executionTimeMs, 10L) * config.timeoutMultiplier)
+            (maxOf(baseline.executionTimeMs, 10L) * config.timeoutMultiplier)
                 .toLong()
                 .coerceIn(50L, 10_000L)
 
-        // 2. Generate AST mutants
-        val mutants = generator.generateMutants(trimmedSource, config, filePath = sourceFilePath)
+        // 2. Generate AST mutants, excluding the regions the harness removed from the program
+        val removedSourceMainLines = TestHarnessSynthesizer.removedSourceMainLineRanges(trimmedSource, parsedTest)
+        val mutants = generateReachableMutants(trimmedSource, config, removedSourceMainLines, sourceFilePath)
         if (mutants.isEmpty()) {
             return MutationReport(
                 totalMutants = 0,
@@ -230,4 +173,75 @@ public class DefaultMutationExecutionPipeline(
     override fun close() {
         runner.close()
     }
+
+    private fun verifyBaseline(
+        combinedCode: String,
+        config: MutationConfig,
+    ): BaselineVerification {
+        val compiled = compiler.compile(combinedCode, extraClasspath = config.extraClasspath)
+        if (compiled !is CompileResult.Compiled) {
+            val message = (compiled as? CompileResult.Failed)?.message ?: "Baseline compilation failed"
+            return BaselineVerification(baselineFailureReport("Baseline compilation failed: $message"))
+        }
+
+        val outcome =
+            try {
+                runner.run(
+                    compiled.outDir,
+                    timeoutMs = config.baselineTimeoutMs,
+                    extraClasspath = config.extraClasspath,
+                )
+            } finally {
+                compiler.cleanup(compiled)
+            }
+
+        val failure =
+            when (outcome.status) {
+                MutantStatus.KILLED -> "Baseline test failed before mutation: ${outcome.failureMessage}"
+                MutantStatus.TIMED_OUT -> "Baseline test execution timed out after ${config.baselineTimeoutMs}ms"
+                else -> null
+            }
+        return BaselineVerification(failure?.let(::baselineFailureReport), outcome.executionTimeMs)
+    }
+
+    /**
+     * Generates the mutants that still influence the executed program.
+     *
+     * A mutation inside a top-level source `main` that the harness removed cannot reach the run, so it is
+     * dropped instead of being scored as a survivor. The mutant budget is applied after that exclusion so
+     * the retained budget always goes to reachable code.
+     */
+    private fun generateReachableMutants(
+        source: String,
+        config: MutationConfig,
+        removedMainLines: List<IntRange>,
+        sourceFilePath: String?,
+    ): List<AstMutant> {
+        val generationConfig = if (removedMainLines.isEmpty()) config else config.copy(maxMutants = null)
+        return generator
+            .generateMutants(source, generationConfig, filePath = sourceFilePath)
+            .filter { mutant -> removedMainLines.none { mutant.line in it } }
+            .let { reachable -> config.maxMutants?.let { reachable.take(it) } ?: reachable }
+    }
+
+    private fun baselineFailureReport(baselineError: String): MutationReport =
+        MutationReport(
+            totalMutants = 0,
+            killedCount = 0,
+            survivedCount = 0,
+            timeoutCount = 0,
+            compileErrorCount = 0,
+            mutationScore = 0.0,
+            results = emptyList(),
+            baselineError = baselineError,
+        )
 }
+
+/**
+ * Outcome of the pre-mutation baseline pass: a failure report when the suite is unusable, plus the
+ * measured baseline execution time used to calibrate the per-mutant timeout.
+ */
+private data class BaselineVerification(
+    val failureReport: MutationReport? = null,
+    val executionTimeMs: Long = 0L,
+)

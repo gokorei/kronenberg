@@ -2,6 +2,8 @@ package com.gokorei.kronenberg.runner
 
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationConfig
+import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -90,6 +92,133 @@ class MutationExecutionPipelineSpec {
             killed.shouldNotBeNull()
             killed!!.failureMessage.shouldNotBeNull()
             killed.failureMessage!! shouldContain "Killed by"
+        }
+    }
+
+    @Test
+    fun `executes discovered tests and kills mutants when source defines main`() {
+        val source =
+            """
+            fun main() {
+                val unused = 1
+            }
+
+            fun add(a: Int, b: Int): Int = a + b
+            """.trimIndent()
+        val test = "fun testAdd() { check(add(2, 3) == 5) }"
+
+        runBlocking {
+            val report = pipeline.execute(source, test, MutationConfig())
+
+            report.baselineError shouldBe null
+            report.totalMutants shouldNotBe 0
+            report.killedCount shouldNotBe 0
+            report.survivedCount shouldBe 0
+        }
+    }
+
+    @Test
+    fun `executes discovered tests when source declares file level annotations`() {
+        val source =
+            """
+            // leading file comment
+            @file:Suppress("UNUSED_VARIABLE")
+
+            package com.example
+
+            fun main() {
+                val unused = 1
+            }
+
+            fun add(a: Int, b: Int): Int = a + b
+            """.trimIndent()
+        val test = "fun testAdd() { check(add(2, 3) == 5) }"
+
+        runBlocking {
+            val report = pipeline.execute(source, test, MutationConfig())
+
+            report.baselineError shouldBe null
+            report.totalMutants shouldNotBe 0
+            report.killedCount shouldNotBe 0
+            report.survivedCount shouldBe 0
+        }
+    }
+
+    @Test
+    fun `uses the source entry point and evaluates its mutations when test code is blank`() {
+        val source =
+            """
+            fun main() {
+                check(add(1, 1) == 2)
+            }
+
+            fun add(a: Int, b: Int): Int = a + b
+            """.trimIndent()
+
+        runBlocking {
+            val report = pipeline.execute(source, "", MutationConfig())
+
+            report.baselineError shouldBe null
+            report.totalMutants shouldNotBe 0
+            report.killedCount shouldNotBe 0
+            report.results.any { result -> result.mutant.line == 2 } shouldBe true
+            TestHarnessSynthesizer
+                .removedSourceMainLineRanges(source, TestHarnessSynthesizer.parseTestCode("", source))
+                .shouldBeEmpty()
+        }
+    }
+
+    @Test
+    fun `executes discovered tests when the only declared main is object scoped`() {
+        val source =
+            """
+            object EntryPoint {
+                fun main() {}
+            }
+
+            fun add(a: Int, b: Int): Int = a + b
+            """.trimIndent()
+        val test = "fun testAdd() { check(add(2, 3) == 5) }"
+
+        runBlocking {
+            val report = pipeline.execute(source, test, MutationConfig())
+
+            report.baselineError shouldBe null
+            report.totalMutants shouldNotBe 0
+            report.killedCount shouldNotBe 0
+            report.survivedCount shouldBe 0
+        }
+    }
+
+    @Test
+    fun `excludes mutations inside every removed top level source main`() {
+        val source =
+            """
+            fun main() {
+                check(add(1, 1) == 2)
+            }
+
+            fun main(args: Array<String>) {
+                require(args.isEmpty())
+            }
+
+            fun add(a: Int, b: Int): Int = a + b
+            """.trimIndent()
+        val test = "fun testAdd() { check(add(2, 3) == 5) }"
+
+        runBlocking {
+            val report = pipeline.execute(source, test, MutationConfig())
+            val removedLines =
+                TestHarnessSynthesizer.removedSourceMainLineRanges(
+                    source,
+                    TestHarnessSynthesizer.parseTestCode(test, source),
+                )
+
+            removedLines shouldHaveSize 2
+            report.baselineError shouldBe null
+            report.totalMutants shouldNotBe 0
+            report.survivedCount shouldBe 0
+            report.results.any { result -> removedLines.any { result.mutant.line in it } } shouldBe false
         }
     }
 

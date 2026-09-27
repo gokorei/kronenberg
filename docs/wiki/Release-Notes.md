@@ -18,8 +18,13 @@ Overview of all notable changes to Kronenberg by version.
 - Automated GitHub Wiki synchronization workflow (`.github/workflows/wiki-sync.yml`).
 
 ### Bug Fixes
+- Fixed test-harness discovery and execution when source code defines a top-level `main`; source and test entry points are now detected independently, so discovered tests are no longer suppressed and the merged program never declares two top-level `main` functions.
+- Fixed source entry-point removal to strip only the declaration itself: file-level annotations, the leading file comment, and every other declaration are preserved, and the merged program now emits file annotations ahead of the package directive as the grammar requires.
+- Fixed permanent false survivors by excluding mutations that land inside a top-level `main` the harness removes, because that code is unreachable in the executed program. The excluded line ranges are reported by `TestHarnessSynthesizer.removedSourceMainLineRanges` so callers can apply the same policy.
 
 ### Improvements
+- Every top-level source `main` is now removed rather than only the first one, and object-scoped `main` members are left untouched because they are not part of the merged top-level scope.
+- `ParsedTestCode` now exposes `testHasMain` and `sourceHasMain` separately plus `requiresSynthesizedMain`; the ambiguous `hasMain` property and its single-flag constructor are deprecated in favour of those.
 
 ---
 
