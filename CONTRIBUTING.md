@@ -13,7 +13,7 @@ All contributors and maintainers are expected to adhere to the [Contributor Cove
 ## Architectural Principles & Philosophy
 
 1. **Static AST Traversal Over Regex**: NEVER use regex or string pattern matching to parse or modify Kotlin code. Always use Kotlin K2 PSI AST visitors (`KtTreeVisitorVoid`).
-2. **Deterministic & In-Process**: Never spawn external Gradle/JVM daemons at runtime. All compilation and execution must remain sandboxed inside in-process Virtual Threads and isolated `URLClassLoader` instances.
+2. **Trusted-Local, In-Process Execution**: Never spawn external Gradle/JVM daemons for trusted mutation execution. `URLClassLoader` and Virtual Threads are not security boundaries; untrusted project code must be rejected or delegated to an external OS-isolated environment.
 3. **Explicit Interfaces & Errors as Values**: Public APIs must be defined as explicit Kotlin interfaces, returning typed result models (`Result<T>` or sealed outcome hierarchies).
 4. **Outcome-Driven TDD**: Write tests first to specify functional behavior before writing implementations. Every feature and mutator rule requires comprehensive unit tests verifying that mutants are killed appropriately.
 

@@ -81,7 +81,7 @@ public class ThreadLocalPrintStream(
 }
 
 /**
- * Execution outcome from running compiled bytecode inside a virtual-thread sandbox.
+ * Execution outcome from running trusted project bytecode in the host JVM.
  */
 public data class RunnerOutcome(
     val status: MutantStatus,
@@ -92,11 +92,11 @@ public data class RunnerOutcome(
 )
 
 /**
- * In-process virtual-thread snippet execution sandbox contract.
+ * In-process virtual-thread execution contract for trusted local snippets.
  */
 public interface FastSnippetRunner : AutoCloseable {
     /**
-     * Executes bytecode in [classesDir] with isolated URLClassLoader and Virtual Thread sandbox.
+     * Executes trusted local bytecode in [classesDir] with a fresh URLClassLoader and Virtual Thread.
      */
     public fun run(
         classesDir: Path,
@@ -107,7 +107,7 @@ public interface FastSnippetRunner : AutoCloseable {
 }
 
 /**
- * Default sandbox runner using isolated URLClassLoaders and Java 21 Virtual Threads.
+ * Default trusted-local runner using fresh URLClassLoaders and Java 21 Virtual Threads.
  */
 public class DefaultFastSnippetRunner(
     threadPoolSize: Int = 4,

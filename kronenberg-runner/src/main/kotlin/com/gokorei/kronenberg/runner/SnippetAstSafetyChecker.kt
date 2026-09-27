@@ -6,13 +6,12 @@ import org.jetbrains.kotlin.psi.KtDotQualifiedExpression
 import org.jetbrains.kotlin.psi.KtTreeVisitorVoid
 
 /**
- * Static AST safety inspector using K2 PSI.
- * Analyzes snippet code to detect operations that would terminate or disrupt
- * the host JVM (e.g. System.exit, exitProcess, Runtime.halt, ProcessBuilder, destructive file deletion).
+ * Best-effort AST guard for trusted snippets using K2 PSI.
+ * Detects common operations that terminate or disrupt the host JVM; this is not a security boundary.
  */
 public object SnippetAstSafetyChecker {
     /**
-     * Returns true if the code contains dangerous calls capable of killing or corrupting the host JVM.
+     * Returns true for common host-disrupting calls, without claiming complete protection.
      */
     public fun containsHostTerminatingCalls(code: String): Boolean {
         if (code.isBlank()) return false

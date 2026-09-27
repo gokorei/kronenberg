@@ -1,7 +1,10 @@
 package com.gokorei.kronenberg.model
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import kotlinx.serialization.MissingFieldException
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.jupiter.api.Test
@@ -80,5 +83,53 @@ class MutationModelsSerializationSpec {
         deserialized.timeoutMultiplier shouldBe 4.0
         deserialized.higherOrderMutants shouldBe true
         deserialized.maxMutants shouldBe 50
+        deserialized.executionTrust shouldBe SnippetExecutionTrust.TRUSTED_LOCAL
+    }
+
+    @Test
+    fun `MutationConfig serialization preserves explicit untrusted execution request`() {
+        val config = MutationConfig(executionTrust = SnippetExecutionTrust.UNTRUSTED)
+
+        val serialized = json.encodeToString(config)
+        val deserialized = json.decodeFromString<MutationConfig>(serialized)
+
+        deserialized.executionTrust shouldBe SnippetExecutionTrust.UNTRUSTED
+    }
+
+    @Test
+    fun `MutationConfig serialization never promotes an unknown execution trust value`() {
+        val payload = """{"executionTrust":"SANDBOXED"}"""
+
+        // Failing to decode is the fail-closed outcome: an unrecognized trust value must never
+        // decode into a trusted configuration. If this starts throwing a different type, or stops
+        // throwing because coercion was enabled, re-check the policy before relaxing it.
+        shouldThrow<SerializationException> {
+            json.decodeFromString<MutationConfig>(payload)
+        }
+    }
+
+    @Test
+    fun `MutationConfig serialization never promotes an absent execution trust value`() {
+        val payload =
+            """{"minScore":90.0,"timeoutMultiplier":3.0,"baselineTimeoutMs":1000,""" +
+                """"higherOrderMutants":false,"includeExtreme":false,"maxMutants":null,""" +
+                """"targetLines":null,"enableCache":false,"extraClasspath":[]}"""
+
+        // A serialized configuration is the one channel where the trust value can arrive from
+        // outside the process, so absence must not be read as consent. `executionTrust` carries no
+        // default value on the primary constructor precisely so that a pre-trust-boundary payload
+        // fails to decode instead of silently decoding as TRUSTED_LOCAL.
+        shouldThrow<MissingFieldException> {
+            json.decodeFromString<MutationConfig>(payload)
+        }
+    }
+
+    @Test
+    fun `MutationConfig serialization round trip agrees with the fail closed resolver`() {
+        val config = MutationConfig(executionTrust = SnippetExecutionTrust.UNTRUSTED)
+
+        val deserialized = json.decodeFromString<MutationConfig>(json.encodeToString(config))
+
+        SnippetExecutionTrustPolicy.isTrustedName(deserialized.executionTrust.name) shouldBe false
     }
 }
