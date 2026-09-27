@@ -211,6 +211,11 @@ public final class com/gokorei/kronenberg/ast/PreconditionMutator : com/gokorei/
 public final class com/gokorei/kronenberg/ast/PreconditionMutator$Companion {
 }
 
+public final class com/gokorei/kronenberg/ast/PsiResultReceiverAnalyzer : com/gokorei/kronenberg/ast/ResultReceiverAnalyzer {
+	public fun <init> ()V
+	public fun verdict (Lorg/jetbrains/kotlin/psi/KtCallExpression;Ljava/lang/String;)Lcom/gokorei/kronenberg/ast/ResultReceiverVerdict;
+}
+
 public final class com/gokorei/kronenberg/ast/RangeOperatorMutator : com/gokorei/kronenberg/ast/TypedAstMutator {
 	public fun <init> ()V
 	public synthetic fun canMutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;)Z
@@ -229,9 +234,29 @@ public final class com/gokorei/kronenberg/ast/RelationalBoundaryMutator : com/go
 	public synthetic fun mutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;Lcom/gokorei/kronenberg/ast/MutationContext;)Ljava/util/List;
 }
 
+public final class com/gokorei/kronenberg/ast/ResultCallContract {
+	public fun <init> (II)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun copy (II)Lcom/gokorei/kronenberg/ast/ResultCallContract;
+	public static synthetic fun copy$default (Lcom/gokorei/kronenberg/ast/ResultCallContract;IIILjava/lang/Object;)Lcom/gokorei/kronenberg/ast/ResultCallContract;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLambdaArguments ()I
+	public final fun getValueArguments ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/gokorei/kronenberg/ast/ResultCallContracts {
+	public static final field INSTANCE Lcom/gokorei/kronenberg/ast/ResultCallContracts;
+	public final fun accepts (Ljava/lang/String;Lorg/jetbrains/kotlin/psi/KtCallExpression;)Z
+}
+
 public final class com/gokorei/kronenberg/ast/ResultMutator : com/gokorei/kronenberg/ast/TypedAstMutator {
 	public static final field Companion Lcom/gokorei/kronenberg/ast/ResultMutator$Companion;
 	public fun <init> ()V
+	public fun <init> (Lcom/gokorei/kronenberg/ast/ResultReceiverAnalyzer;)V
+	public synthetic fun <init> (Lcom/gokorei/kronenberg/ast/ResultReceiverAnalyzer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public synthetic fun canMutateTyped (Lorg/jetbrains/kotlin/psi/KtElement;)Z
 	public fun getCategory ()Lcom/gokorei/kronenberg/model/MutatorCategory;
 	public fun getDescription ()Ljava/lang/String;
@@ -240,6 +265,29 @@ public final class com/gokorei/kronenberg/ast/ResultMutator : com/gokorei/kronen
 }
 
 public final class com/gokorei/kronenberg/ast/ResultMutator$Companion {
+}
+
+public abstract interface class com/gokorei/kronenberg/ast/ResultReceiverAnalyzer {
+	public abstract fun verdict (Lorg/jetbrains/kotlin/psi/KtCallExpression;Ljava/lang/String;)Lcom/gokorei/kronenberg/ast/ResultReceiverVerdict;
+}
+
+public final class com/gokorei/kronenberg/ast/ResultReceiverVerdict : java/lang/Enum {
+	public static final field FOREIGN Lcom/gokorei/kronenberg/ast/ResultReceiverVerdict;
+	public static final field RESULT Lcom/gokorei/kronenberg/ast/ResultReceiverVerdict;
+	public static final field UNKNOWN Lcom/gokorei/kronenberg/ast/ResultReceiverVerdict;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/gokorei/kronenberg/ast/ResultReceiverVerdict;
+	public static fun values ()[Lcom/gokorei/kronenberg/ast/ResultReceiverVerdict;
+}
+
+public final class com/gokorei/kronenberg/ast/ResultTypeHeuristics {
+	public static final field INSTANCE Lcom/gokorei/kronenberg/ast/ResultTypeHeuristics;
+	public static final field RESULT_TYPE Ljava/lang/String;
+	public static final field STRING_TYPE Ljava/lang/String;
+	public final fun baseTypeName (Ljava/lang/String;)Ljava/lang/String;
+	public final fun factoryTypeOf (Lorg/jetbrains/kotlin/psi/KtCallExpression;)Ljava/lang/String;
+	public final fun getFOREIGN_TYPES ()Ljava/util/Set;
+	public final fun initializerType (Lorg/jetbrains/kotlin/psi/KtExpression;)Ljava/lang/String;
 }
 
 public final class com/gokorei/kronenberg/ast/ReturnValueMutator : com/gokorei/kronenberg/ast/TypedAstMutator {

@@ -6,24 +6,37 @@ import org.jetbrains.kotlin.psi.KtCallExpression
 
 /**
  * Mutates Kotlin standard library Result recovery and callback expressions.
+ *
+ * Callee names alone are not enough to identify a `kotlin.Result` member: the standard library
+ * itself declares colliding overloads such as `Map.getOrDefault(key, defaultValue)`,
+ * `Map.getOrElse(key) { default }` and `List.getOrNull(index)`, and user-defined types can shadow
+ * any of the five names with an identical signature. Every candidate therefore has to pass two
+ * PSI-only applicability checks before it is rewritten:
+ *
+ * 1. [ResultCallContracts] verifies that the argument shape matches the `kotlin.Result` overload.
+ * 2. [receiverAnalyzer] verifies that the receiver is not provably a foreign type or a shadowing
+ *    declaration, using [PsiResultReceiverAnalyzer] by default.
+ *
+ * Both checks are pure PSI inspection: no symbol resolution, no compiler frontend, no regular
+ * expressions. The rewrite always replaces the complete call expression so the resulting source
+ * stays compilable (`result.getOrElse { 0 }` becomes `result.getOrThrow()`, never `result.getOrThrow { 0 }`).
  */
-public class ResultMutator : TypedAstMutator<KtCallExpression>(KtCallExpression::class) {
+public class ResultMutator(
+    private val receiverAnalyzer: ResultReceiverAnalyzer = PsiResultReceiverAnalyzer(),
+) : TypedAstMutator<KtCallExpression>(KtCallExpression::class) {
     override val name: String = "ResultMutator"
     override val category: MutatorCategory = MutatorCategory.RESULT_ERROR_HANDLING
     override val description: String =
-        "Mutates Result and functional error handling calls (getOrElse, getOrDefault, getOrNull, onSuccess, onFailure)"
+        "Mutates Result and functional error handling calls (getOrElse, getOrDefault, getOrNull, onSuccess, onFailure) " +
+            "when the receiver is provably or plausibly a kotlin.Result"
 
-    override fun canMutateTyped(element: KtCallExpression): Boolean {
-        val callee = element.calleeExpression?.text ?: return false
-        return callee in RESULT_MUTATIONS
-    }
+    override fun canMutateTyped(element: KtCallExpression): Boolean = replacementFor(element) != null
 
     override fun mutateTyped(
         element: KtCallExpression,
         context: MutationContext,
     ): List<AstEdit> {
-        val callee = element.calleeExpression?.text ?: return emptyList()
-        val replacement = RESULT_MUTATIONS[callee] ?: return emptyList()
+        val replacement = replacementFor(element) ?: return emptyList()
         val original = element.text
 
         return listOf(
@@ -33,6 +46,18 @@ public class ResultMutator : TypedAstMutator<KtCallExpression>(KtCallExpression:
                 description = "Mutated Result call '$original' to '$replacement'",
             ),
         )
+    }
+
+    /**
+     * Returns the replacement text when [element] is an applicable `kotlin.Result` call, otherwise
+     * `null`. Applicability and mutation share this single decision so the two can never disagree.
+     */
+    private fun replacementFor(element: KtCallExpression): String? {
+        val callee = element.calleeExpression?.text ?: return null
+        val replacement = RESULT_MUTATIONS[callee] ?: return null
+        if (!ResultCallContracts.accepts(callee, element)) return null
+        if (receiverAnalyzer.verdict(element, callee) == ResultReceiverVerdict.FOREIGN) return null
+        return replacement
     }
 
     public companion object {

@@ -19,6 +19,9 @@ Overview of all notable changes to Kronenberg by version.
 
 ### Bug Fixes
 - Fixed ResultMutator to replace complete recovery and callback call expressions with syntactically and semantically compilable calls.
+- Fixed ResultMutator matching any receiver by callee text alone, which rewrote non-`Result` calls such as `MutableMap.getOrDefault(key, fallback)`, `List.getOrNull(index)` and a `String` extension `getOrElse { }` into non-compiling `getOrThrow()` calls.
+- Added a PSI-only receiver applicability rule (`PsiResultReceiverAnalyzer`) plus `kotlin.Result` argument-shape contracts (`ResultCallContracts`), so Result mutations are limited to receivers that are provably or plausibly a `kotlin.Result`.
+- Added Result receiver verdict, foreign receiver, and end-to-end compilation tests proving that every generated Result mutant compiles with zero errors and that Map, String, collection and custom shadowing receivers never produce mutants.
 
 ### Improvements
 
