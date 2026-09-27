@@ -4,34 +4,38 @@ import org.jetbrains.kotlin.psi.KtCallExpression
 import org.jetbrains.kotlin.psi.KtClassOrObject
 import org.jetbrains.kotlin.psi.KtConstantExpression
 import org.jetbrains.kotlin.psi.KtExpression
-import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtNameReferenceExpression
 import org.jetbrains.kotlin.psi.KtNamedFunction
 import org.jetbrains.kotlin.psi.KtParenthesizedExpression
-import org.jetbrains.kotlin.psi.KtProperty
 import org.jetbrains.kotlin.psi.KtQualifiedExpression
 import org.jetbrains.kotlin.psi.KtThisExpression
-import org.jetbrains.kotlin.psi.psiUtil.collectDescendantsOfType
-import org.jetbrains.kotlin.psi.psiUtil.getContainingKtFile
 import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
 
 /**
  * PSI-only [ResultReceiverAnalyzer] deciding whether a call really targets `kotlin.Result`.
  *
- * The analysis is deliberately conservative in one direction and permissive in the other:
+ * The analysis is a proof obligation, not a guess. A receiver is reported as
+ * [ResultReceiverVerdict.RESULT] only when the parsed file itself states the fact:
  *
- * * A receiver is rejected ([ResultReceiverVerdict.FOREIGN]) whenever the parsed file proves it is
- *   not a `kotlin.Result`. This covers literal receivers, a static type drawn from
- *   [ResultTypeHeuristics.FOREIGN_TYPES] such as `Map`, `MutableMap` or `String`, and any type
- *   declared in the file that shadows the callee with its own member (directly or through a
- *   locally declared supertype).
- * * A receiver is accepted ([ResultReceiverVerdict.UNKNOWN]) when the file simply does not carry
- *   enough information, for example `parse(input).getOrNull()`. Rejecting those would silently
- *   remove the mutation operator from real-world `Result` code, which is its main use case.
+ * * a declared type reference written on a parameter, property, local variable or member, such as
+ *   `result: Result<Int>` or `cache.last: Result<Int>`;
+ * * a return type the same file states for a function whose arity matches the call, written out
+ *   explicitly as in `fun parse(input: String): Result<Int>` or produced by a direct factory as in
+ *   `fun parse(input: String) = runCatching { }`;
+ * * a direct `kotlin.Result` factory such as `Result.success(1)`, `Result.failure(e)` or
+ *   `runCatching { }`, and any chain of [ResultTypeHeuristics.RESULT_PRESERVING_MEMBERS] applied
+ *   to such a factory, so `runCatching { }.map { }.getOrNull()` stays provable.
  *
- * The second layer of defence is the argument shape checked by [ResultCallContracts]: receiver
- * types that cannot be resolved at all still fail the shape check whenever their overload differs
- * from the `kotlin.Result` one.
+ * Everything else is rejected, which is the whole point of the rule. A receiver whose type is
+ * declared in another compilation unit, or which is a call the file never resolves, is reported as
+ * [ResultReceiverVerdict.UNKNOWN]; a receiver drawn from [ResultTypeHeuristics.FOREIGN_TYPES], or
+ * shadowed by a type declared in the analysed file, is reported as [ResultReceiverVerdict.FOREIGN].
+ * Neither is mutated, so a custom `Repository.getOrNull()` or `Listener.onFailure { }` defined
+ * outside the analysed file can no longer be rewritten into a call that does not compile.
+ *
+ * [ResultCallContracts] remains the independent first gate on the argument shape, which keeps the
+ * standard library collisions such as `Map.getOrDefault(key, fallback)` out even before the
+ * receiver is looked at.
  */
 public class PsiResultReceiverAnalyzer : ResultReceiverAnalyzer {
     override fun verdict(
@@ -40,14 +44,9 @@ public class PsiResultReceiverAnalyzer : ResultReceiverAnalyzer {
     ): ResultReceiverVerdict {
         val receiver = receiverOf(call) ?: return ResultReceiverVerdict.FOREIGN
         if (receiver is KtConstantExpression) return ResultReceiverVerdict.FOREIGN
-        val file = call.getContainingKtFile() ?: return ResultReceiverVerdict.UNKNOWN
-        val declarations = ResultDeclarationIndexBuilder.build(file)
-        val typeText = inferTypeText(receiver, file, declarations) ?: return ResultReceiverVerdict.UNKNOWN
-        val base = ResultTypeHeuristics.baseTypeName(typeText)
-        if (base == ResultTypeHeuristics.RESULT_TYPE) return ResultReceiverVerdict.RESULT
-        if (base in ResultTypeHeuristics.FOREIGN_TYPES) return ResultReceiverVerdict.FOREIGN
-        if (declaresMember(file, base, callee, mutableSetOf())) return ResultReceiverVerdict.FOREIGN
-        return ResultReceiverVerdict.UNKNOWN
+        val index = ResultDeclarationIndex.build(call.getContainingKtFile())
+        val typeText = inferTypeText(receiver, index) ?: return ResultReceiverVerdict.UNKNOWN
+        return classify(typeText, callee, index)
     }
 
     /**
@@ -59,49 +58,100 @@ public class PsiResultReceiverAnalyzer : ResultReceiverAnalyzer {
         return if (qualified.selectorExpression === call) qualified.receiverExpression else null
     }
 
+    /**
+     * Classifies a receiver whose type the analysed file states, using [ResultTypeHeuristics.RESULT_TYPE]
+     * as the only accepted outcome and a known non-Result type or a shadowing local declaration as the
+     * two provable rejections. Everything else remains unproven.
+     */
+    private fun classify(
+        typeText: String,
+        callee: String,
+        index: ResultDeclarationIndex,
+    ): ResultReceiverVerdict {
+        val base = ResultTypeHeuristics.baseTypeName(typeText)
+        return when {
+            base == ResultTypeHeuristics.RESULT_TYPE -> ResultReceiverVerdict.RESULT
+            base in ResultTypeHeuristics.FOREIGN_TYPES -> ResultReceiverVerdict.FOREIGN
+            index.declaresMember(base, callee) -> ResultReceiverVerdict.FOREIGN
+            else -> ResultReceiverVerdict.UNKNOWN
+        }
+    }
+
     private fun inferTypeText(
         expression: KtExpression,
-        file: KtFile,
-        declarations: List<ResultLocalDeclaration>,
+        index: ResultDeclarationIndex,
     ): String? =
         when (expression) {
-            is KtCallExpression -> inferFromCall(expression, file, declarations)
-            is KtNameReferenceExpression -> lookup(declarations, expression.getReferencedName(), expression)
+            is KtCallExpression -> inferFromCall(expression, index)
+            is KtNameReferenceExpression -> lookup(index, expression.getReferencedName(), expression)
             is KtThisExpression -> expression.getStrictParentOfType<KtClassOrObject>()?.name
-            is KtParenthesizedExpression -> expression.expression?.let { inferTypeText(it, file, declarations) }
-            is KtQualifiedExpression -> inferFromQualified(expression, file, declarations)
+            is KtParenthesizedExpression -> expression.expression?.let { inferTypeText(it, index) }
+            is KtQualifiedExpression -> inferFromQualified(expression, index)
             else -> ResultTypeHeuristics.initializerType(expression)
         }
 
     private fun inferFromCall(
         call: KtCallExpression,
-        file: KtFile,
-        declarations: List<ResultLocalDeclaration>,
+        index: ResultDeclarationIndex,
     ): String? {
-        ResultTypeHeuristics.factoryTypeOf(call)?.let { return it }
-        val qualified = call.parent as? KtQualifiedExpression ?: return null
-        if (qualified.selectorExpression !== call) return null
-        val receiver = qualified.receiverExpression ?: return null
-        val receiverType = inferTypeText(receiver, file, declarations) ?: return null
-        val callee = call.calleeExpression?.text ?: return null
-        return localMemberType(file, ResultTypeHeuristics.baseTypeName(receiverType), callee)
+        val factoryType = ResultTypeHeuristics.factoryTypeOf(call)
+        if (factoryType != null) return factoryType
+        // A call used as the selector of a qualified expression is resolved as a member of its
+        // receiver only; consulting a same-named top-level function there would prove the wrong
+        // declaration, so only the receiver path is taken.
+        val asSelector = call.parent as? KtQualifiedExpression
+        return if (asSelector?.selectorExpression === call) {
+            memberTypeOfSelector(asSelector, index)
+        } else {
+            index.functionReturnType(call.calleeExpression?.text.orEmpty(), call.valueArguments.size)
+        }
     }
 
     private fun inferFromQualified(
         qualified: KtQualifiedExpression,
-        file: KtFile,
-        declarations: List<ResultLocalDeclaration>,
+        index: ResultDeclarationIndex,
     ): String? {
-        val receiver = qualified.receiverExpression ?: return null
-        val receiverType = inferTypeText(receiver, file, declarations) ?: return null
-        val selectorName =
-            when (val selector = qualified.selectorExpression) {
-                is KtNameReferenceExpression -> selector.getReferencedName()
-                is KtCallExpression -> selector.calleeExpression?.text
-                else -> null
-            } ?: return null
-        return localMemberType(file, ResultTypeHeuristics.baseTypeName(receiverType), selectorName)
+        val selector = qualified.selectorExpression
+        // `Result.success(1)` is a qualified expression whose selector is the factory call, so the
+        // factory is resolved before any receiver named `Result` would have to be looked up.
+        val factoryType = (selector as? KtCallExpression)?.let { ResultTypeHeuristics.factoryTypeOf(it) }
+        return factoryType ?: memberTypeOfSelector(qualified, index)
     }
+
+    /**
+     * Types a qualified expression by its receiver and selector, either through a member declared
+     * locally or, when both are a `kotlin.Result` chain, through the Result-preserving rule.
+     */
+    private fun memberTypeOfSelector(
+        qualified: KtQualifiedExpression,
+        index: ResultDeclarationIndex,
+    ): String? {
+        val receiverType = inferTypeText(qualified.receiverExpression, index)
+        val selectorName = selectorNameOf(qualified)
+        if (receiverType == null || selectorName == null) return null
+        val base = ResultTypeHeuristics.baseTypeName(receiverType)
+        return if (isPreservedResult(base, selectorName)) {
+            ResultTypeHeuristics.RESULT_TYPE
+        } else {
+            index.memberTypeOf(base, selectorName)
+        }
+    }
+
+    /**
+     * Reports whether applying [memberName] to a receiver of type [base] is guaranteed to yield
+     * another `kotlin.Result`, which is what makes a factory chain provable.
+     */
+    private fun isPreservedResult(
+        base: String,
+        memberName: String,
+    ): Boolean = base == ResultTypeHeuristics.RESULT_TYPE && ResultTypeHeuristics.isResultPreserving(memberName)
+
+    private fun selectorNameOf(qualified: KtQualifiedExpression): String? =
+        when (val selector = qualified.selectorExpression) {
+            is KtNameReferenceExpression -> selector.getReferencedName()
+            is KtCallExpression -> selector.calleeExpression?.text
+            else -> null
+        }
 
     /**
      * Resolves a simple name to the type of the nearest declaration visible at [anchor].
@@ -110,61 +160,14 @@ public class PsiResultReceiverAnalyzer : ResultReceiverAnalyzer {
      * file, which keeps a local shadowing variable from being mistaken for an outer receiver.
      */
     private fun lookup(
-        declarations: List<ResultLocalDeclaration>,
+        index: ResultDeclarationIndex,
         name: String,
         anchor: KtExpression,
     ): String? {
         val anchorOffset = anchor.textRange.startOffset
         val scope = anchor.getStrictParentOfType<KtNamedFunction>()
-        val preceding = declarations.filter { it.name == name && it.offset < anchorOffset }
+        val preceding = index.declarations.filter { it.name == name && it.offset < anchorOffset }
         return preceding.filter { it.scope === scope }.maxByOrNull { it.offset }?.typeText
             ?: preceding.maxByOrNull { it.offset }?.typeText
-    }
-
-    /**
-     * Reports whether a type declared in [file] declares [memberName] itself, either directly or
-     * through a supertype that is also declared in the same file.
-     */
-    private fun declaresMember(
-        file: KtFile,
-        className: String,
-        memberName: String,
-        visited: MutableSet<String>,
-    ): Boolean {
-        if (!visited.add(className)) return false
-        val declaration = localClass(file, className) ?: return false
-        val shadowsCallee =
-            declaration.declarations.any { child ->
-                when (child) {
-                    is KtNamedFunction -> child.name == memberName
-                    is KtProperty -> child.name == memberName
-                    else -> false
-                }
-            }
-        if (shadowsCallee) return true
-        return declaration.superTypeListEntries
-            .mapNotNull { entry -> entry.typeReference?.let { ResultTypeHeuristics.baseTypeName(it.text) } }
-            .any { declaresMember(file, it, memberName, visited) }
-    }
-
-    private fun localClass(
-        file: KtFile,
-        className: String,
-    ): KtClassOrObject? = file.collectDescendantsOfType<KtClassOrObject>().firstOrNull { it.name == className }
-
-    private fun localMemberType(
-        file: KtFile,
-        className: String,
-        memberName: String,
-    ): String? {
-        val declaration = localClass(file, className) ?: return null
-        return declaration.declarations
-            .firstNotNullOfOrNull { member ->
-                when (member) {
-                    is KtProperty -> member.typeReference?.text?.takeIf { member.name == memberName }
-                    is KtNamedFunction -> member.typeReference?.text?.takeIf { member.name == memberName }
-                    else -> null
-                }
-            }
     }
 }

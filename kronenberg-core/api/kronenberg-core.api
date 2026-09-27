@@ -287,7 +287,9 @@ public final class com/gokorei/kronenberg/ast/ResultTypeHeuristics {
 	public final fun baseTypeName (Ljava/lang/String;)Ljava/lang/String;
 	public final fun factoryTypeOf (Lorg/jetbrains/kotlin/psi/KtCallExpression;)Ljava/lang/String;
 	public final fun getFOREIGN_TYPES ()Ljava/util/Set;
+	public final fun getRESULT_PRESERVING_MEMBERS ()Ljava/util/Set;
 	public final fun initializerType (Lorg/jetbrains/kotlin/psi/KtExpression;)Ljava/lang/String;
+	public final fun isResultPreserving (Ljava/lang/String;)Z
 }
 
 public final class com/gokorei/kronenberg/ast/ReturnValueMutator : com/gokorei/kronenberg/ast/TypedAstMutator {

@@ -21,9 +21,13 @@ public enum class ResultReceiverVerdict {
     FOREIGN,
 
     /**
-     * The receiver type cannot be derived from the parsed file alone, for example because it comes
-     * from another module. Such calls stay mutable so real-world `Result` usage keeps producing
-     * mutants instead of silently losing coverage.
+     * The receiver type cannot be derived from the parsed file alone, for example because the type
+     * is declared in a separate compilation unit or the receiver is a call the file never resolves.
+     *
+     * Applicability fails closed on this verdict: an unproven receiver is not mutated, because a
+     * custom class declared outside the analysed file is free to declare `getOrElse`,
+     * `getOrDefault`, `getOrNull`, `onSuccess` or `onFailure` with an identical signature. Rewriting
+     * such a call to `getOrThrow()` produces a mutant that cannot compile.
      */
     UNKNOWN,
 }
@@ -139,6 +143,23 @@ public object ResultTypeHeuristics {
             "Unit",
         )
 
+    /**
+     * `kotlin.Result` members that return another `kotlin.Result`.
+     *
+     * Applying one of these to a proven `Result` receiver proves the whole chain is a `Result`, so
+     * `runCatching { }.map { }.getOrNull()` stays a `kotlin.Result` call even though the file
+     * declares no `Result` class to look the member up in.
+     */
+    public val RESULT_PRESERVING_MEMBERS: Set<String> =
+        setOf(
+            "andAlso",
+            "map",
+            "mapCatching",
+            "onFailure",
+            "onSuccess",
+            "recoverCatching",
+        )
+
     private val FACTORY_TYPES: Map<String, String> =
         mapOf(
             "Result.failure" to RESULT_TYPE,
@@ -171,6 +192,11 @@ public object ResultTypeHeuristics {
         )
 
     /**
+     * Reports whether [memberName] is a `kotlin.Result` member that returns a `kotlin.Result`.
+     */
+    public fun isResultPreserving(memberName: String): Boolean = memberName in RESULT_PRESERVING_MEMBERS
+
+    /**
      * Reduces a possibly qualified, nullable and generic type reference to its bare type name.
      */
     public fun baseTypeName(typeText: String): String =
@@ -184,6 +210,9 @@ public object ResultTypeHeuristics {
 
     /**
      * Resolves the return type of a well-known factory call such as `runCatching { }` or `mapOf()`.
+     *
+     * Both a bare call (`runCatching { }`) and a qualified call written as `Qualifier.callee(...)`
+     * are recognised, so `Result.success(1)` resolves to `Result` in either position.
      */
     public fun factoryTypeOf(call: KtCallExpression): String? {
         val callee = call.calleeExpression?.text ?: return null

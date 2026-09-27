@@ -132,9 +132,6 @@
     <ID>ReturnCount:PreconditionMutator.kt$PreconditionMutator$override fun canMutateTyped(element: KtCallExpression): Boolean</ID>
     <ID>ReturnCount:PreconditionMutator.kt$PreconditionMutator$override fun mutateTyped( element: KtCallExpression, context: MutationContext, ): List&lt;AstEdit&gt;</ID>
     <ID>ReturnCount:PsiResultReceiverAnalyzer.kt$PsiResultReceiverAnalyzer$override fun verdict( call: KtCallExpression, callee: String, ): ResultReceiverVerdict</ID>
-    <ID>ReturnCount:PsiResultReceiverAnalyzer.kt$PsiResultReceiverAnalyzer$private fun declaresMember( file: KtFile, className: String, memberName: String, visited: MutableSet&lt;String&gt;, ): Boolean</ID>
-    <ID>ReturnCount:PsiResultReceiverAnalyzer.kt$PsiResultReceiverAnalyzer$private fun inferFromCall( call: KtCallExpression, file: KtFile, declarations: List&lt;ResultLocalDeclaration&gt;, ): String?</ID>
-    <ID>ReturnCount:PsiResultReceiverAnalyzer.kt$PsiResultReceiverAnalyzer$private fun inferFromQualified( qualified: KtQualifiedExpression, file: KtFile, declarations: List&lt;ResultLocalDeclaration&gt;, ): String?</ID>
     <ID>ReturnCount:ResultMutator.kt$ResultMutator$private fun replacementFor(element: KtCallExpression): String?</ID>
     <ID>ReturnCount:ScopeMutators.kt$ScopeFunctionMutator$override fun mutateTyped( element: KtCallExpression, context: MutationContext, ): List&lt;AstEdit&gt;</ID>
     <ID>SpreadOperator:FastSnippetRunner.kt$DefaultFastSnippetRunner$(null, *invokeArgs)</ID>

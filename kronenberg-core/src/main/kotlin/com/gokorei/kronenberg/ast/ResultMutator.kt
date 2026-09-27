@@ -14,12 +14,15 @@ import org.jetbrains.kotlin.psi.KtCallExpression
  * PSI-only applicability checks before it is rewritten:
  *
  * 1. [ResultCallContracts] verifies that the argument shape matches the `kotlin.Result` overload.
- * 2. [receiverAnalyzer] verifies that the receiver is not provably a foreign type or a shadowing
- *    declaration, using [PsiResultReceiverAnalyzer] by default.
+ * 2. [receiverAnalyzer] must *prove* the receiver is a `kotlin.Result`, using
+ *    [PsiResultReceiverAnalyzer] by default.
  *
  * Both checks are pure PSI inspection: no symbol resolution, no compiler frontend, no regular
- * expressions. The rewrite always replaces the complete call expression so the resulting source
- * stays compilable (`result.getOrElse { 0 }` becomes `result.getOrThrow()`, never `result.getOrThrow { 0 }`).
+ * expressions. The second check fails closed: a receiver whose type the analysed file does not
+ * state, such as a custom class declared in a separate compilation unit, is left alone rather than
+ * rewritten into a call that cannot compile. The rewrite always replaces the complete call
+ * expression so the resulting source stays compilable (`result.getOrElse { 0 }` becomes
+ * `result.getOrThrow()`, never `result.getOrThrow { 0 }`).
  */
 public class ResultMutator(
     private val receiverAnalyzer: ResultReceiverAnalyzer = PsiResultReceiverAnalyzer(),
@@ -28,7 +31,7 @@ public class ResultMutator(
     override val category: MutatorCategory = MutatorCategory.RESULT_ERROR_HANDLING
     override val description: String =
         "Mutates Result and functional error handling calls (getOrElse, getOrDefault, getOrNull, onSuccess, onFailure) " +
-            "when the receiver is provably or plausibly a kotlin.Result"
+            "only when the analysed file proves the receiver is a kotlin.Result"
 
     override fun canMutateTyped(element: KtCallExpression): Boolean = replacementFor(element) != null
 
@@ -56,7 +59,7 @@ public class ResultMutator(
         val callee = element.calleeExpression?.text ?: return null
         val replacement = RESULT_MUTATIONS[callee] ?: return null
         if (!ResultCallContracts.accepts(callee, element)) return null
-        if (receiverAnalyzer.verdict(element, callee) == ResultReceiverVerdict.FOREIGN) return null
+        if (receiverAnalyzer.verdict(element, callee) != ResultReceiverVerdict.RESULT) return null
         return replacement
     }
 

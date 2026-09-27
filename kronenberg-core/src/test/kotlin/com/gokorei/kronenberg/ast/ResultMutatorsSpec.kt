@@ -94,6 +94,129 @@ class ResultMutatorsSpec {
     }
 
     @Test
+    fun `mutates Result receivers proven through chains factories and declared return types`() {
+        val cases =
+            listOf(
+                Case(
+                    source = "fun first(): Int? = Result.success(1).getOrNull()",
+                    originalText = "getOrNull()",
+                    replacementText = "getOrThrow()",
+                    mutatedSource = "fun first(): Int? = Result.success(1).getOrThrow()",
+                ),
+                Case(
+                    source = "fun first(): Int? = runCatching { 1 }.map { it * 2 }.getOrNull()",
+                    originalText = "getOrNull()",
+                    replacementText = "getOrThrow()",
+                    mutatedSource = "fun first(): Int? = runCatching { 1 }.map { it * 2 }.getOrThrow()",
+                ),
+                Case(
+                    source = "fun first(): Int? = Result.success(1).mapCatching { it * 2 }.getOrNull()",
+                    originalText = "getOrNull()",
+                    replacementText = "getOrThrow()",
+                    mutatedSource = "fun first(): Int? = Result.success(1).mapCatching { it * 2 }.getOrThrow()",
+                ),
+                Case(
+                    source =
+                        "fun parse(input: String): Result<Int> = Result.success(1)\n\n" +
+                            "fun first(input: String): Int? = parse(input).getOrNull()",
+                    originalText = "getOrNull()",
+                    replacementText = "getOrThrow()",
+                    mutatedSource =
+                        "fun parse(input: String): Result<Int> = Result.success(1)\n\n" +
+                            "fun first(input: String): Int? = parse(input).getOrThrow()",
+                ),
+                Case(
+                    source =
+                        "class Parser {\n    fun parse(input: String): Result<Int> = Result.success(1)\n}\n\n" +
+                            "fun first(parser: Parser, input: String): Int? = parser.parse(input).getOrNull()",
+                    originalText = "getOrNull()",
+                    replacementText = "getOrThrow()",
+                    mutatedSource =
+                        "class Parser {\n    fun parse(input: String): Result<Int> = Result.success(1)\n}\n\n" +
+                            "fun first(parser: Parser, input: String): Int? = parser.parse(input).getOrThrow()",
+                ),
+                Case(
+                    source =
+                        "fun parse(input: String) = runCatching { input.length }\n\n" +
+                            "fun first(input: String): Int? = parse(input).getOrNull()",
+                    originalText = "getOrNull()",
+                    replacementText = "getOrThrow()",
+                    mutatedSource =
+                        "fun parse(input: String) = runCatching { input.length }\n\n" +
+                            "fun first(input: String): Int? = parse(input).getOrThrow()",
+                ),
+            )
+
+        cases.forEach { case ->
+            val mutants = mutantsOf(case.source)
+            mutants.map { it.originalText } shouldBe listOf(case.originalText)
+            mutants.single().replacementText shouldBe case.replacementText
+            mutants.single().mutatedSource shouldBe case.mutatedSource
+        }
+    }
+
+    @Test
+    fun `mutates every provable call of a chain whose intermediate Result members are also mutated`() {
+        val source = "fun first(): Int? = runCatching { 1 }.onSuccess { println(it) }.getOrNull()"
+
+        mutantsOf(source).map { it.mutatedSource } shouldBe
+            listOf(
+                "fun first(): Int? = runCatching { 1 }.onFailure {}.getOrNull()",
+                "fun first(): Int? = runCatching { 1 }.onSuccess { println(it) }.getOrThrow()",
+            )
+    }
+
+    @Test
+    fun `does not mutate custom receivers declared outside the analysed file`() {
+        val sources =
+            listOf(
+                // `Repository`, `Session`, `Cache` and `Listener` all live in another compilation
+                // unit, so the analysed file can state nothing about them.
+                "fun find(repo: Repository): String? = repo.getOrNull()",
+                "fun fallback(repo: Repository): String = repo.getOrDefault(\"none\")",
+                "fun fallback(repo: Repository): String = repo.getOrElse { \"none\" }",
+                "fun watch(cache: Cache): Cache = cache.onSuccess { println(\"ok\") }",
+                "fun watch(listener: Listener): Listener = listener.onFailure { println(\"failed\") }",
+                "fun value(session: Session): Int = session.getOrNull()",
+                "fun fallback(session: Session): Int = session.getOrElse { 0 }",
+                // The receiver is a call the analysed file never resolves, so it stays unproven.
+                "fun find(id: String): String? = repository().getOrNull()",
+                "fun first(key: String): Int? = lookup(key).getOrNull()",
+                "fun first(): Int? = parse(\"x\").getOrNull()",
+            )
+
+        sources.forEach { source ->
+            mutantsOf(source).shouldBeEmpty()
+        }
+    }
+
+    @Test
+    fun `does not mutate when a same-named local function returns a foreign type`() {
+        val sources =
+            listOf(
+                // Call arity selects the two-argument overload, whose return type is not a Result.
+                "fun parse(input: String): Result<Int> = Result.success(1)\n\n" +
+                    "fun parse(input: String, strict: Boolean): String = \"\"\n\n" +
+                    "fun first(input: String): String? = parse(input, true).getOrNull()",
+                // The declared return type is a Map, so the receiver is provably foreign.
+                "fun lookup(key: String): Map<String, Int> = mapOf()\n\n" +
+                    "fun first(key: String): Int? = lookup(key).getOrNull()",
+                // A variadic declaration is not a proof, because arity no longer selects it.
+                "fun parse(vararg input: String): Result<Int> = Result.success(1)\n\n" +
+                    "fun first(): Int? = parse(\"x\").getOrNull()",
+                // A body the file does not describe is not a proof either.
+                "fun parse(input: String) = load(input)\n\n" +
+                    "fun first(input: String): Int? = parse(input).getOrNull()",
+                // `fold` is a Result member that does not return a Result, so the chain is unproven.
+                "fun first(): Int? = runCatching { 1 }.fold(0) { acc, _ -> acc }.getOrNull()",
+            )
+
+        sources.forEach { source ->
+            mutantsOf(source).shouldBeEmpty()
+        }
+    }
+
+    @Test
     fun `does not mutate Map receivers`() {
         val sources =
             listOf(
@@ -191,6 +314,99 @@ class ResultMutatorsSpec {
         analyzer.verdict(callIn("fun f(): Int? = parse(\"x\").getOrNull()", "getOrNull"), "getOrNull") shouldBe
             ResultReceiverVerdict.UNKNOWN
     }
+
+    @Test
+    fun `verdict is UNKNOWN for receivers declared in another compilation unit`() {
+        val analyzer = PsiResultReceiverAnalyzer()
+
+        val cases =
+            listOf(
+                Triple("fun f(r: Repository): String? = r.getOrNull()", "getOrNull", "getOrNull"),
+                Triple("fun f(r: Repository): String = r.getOrDefault(\"none\")", "getOrDefault", "getOrDefault"),
+                Triple("fun f(r: Repository): String = r.getOrElse { \"none\" }", "getOrElse", "getOrElse"),
+                Triple("fun f(c: Cache): Cache = c.onSuccess { }", "onSuccess", "onSuccess"),
+                Triple("fun f(l: Listener): Listener = l.onFailure { }", "onFailure", "onFailure"),
+                Triple("fun f(): String? = repository().getOrNull()", "getOrNull", "getOrNull"),
+            )
+
+        cases.forEach { (source, callee, receiverCallee) ->
+            analyzer.verdict(callIn(source, receiverCallee), callee) shouldBe ResultReceiverVerdict.UNKNOWN
+            mutantsOf(source).shouldBeEmpty()
+        }
+    }
+
+    @Test
+    fun `verdict is RESULT for declared return types factory chains and safe calls`() {
+        val analyzer = PsiResultReceiverAnalyzer()
+
+        val cases =
+            listOf(
+                Triple(
+                    "fun p(i: String): Result<Int> = Result.success(1)\n\nfun f(i: String): Int? = p(i).getOrNull()",
+                    "getOrNull",
+                    "getOrNull",
+                ),
+                Triple("fun f(): Int? = runCatching { 1 }.map { it }.getOrNull()", "getOrNull", "getOrNull"),
+                Triple("fun f(): Int? = runCatching { 1 }.onFailure { }.getOrNull()", "getOrNull", "getOrNull"),
+                Triple("fun f(r: Result<Int>?): Int? = r?.getOrNull()", "getOrNull", "getOrNull"),
+                Triple("fun f(r: Result<Int>): Result<Int> = r.onSuccess { }", "onSuccess", "onSuccess"),
+            )
+
+        cases.forEach { (source, callee, receiverCallee) ->
+            analyzer.verdict(callIn(source, receiverCallee), callee) shouldBe ResultReceiverVerdict.RESULT
+        }
+    }
+
+    @Test
+    fun `verdict is FOREIGN when a local function of matching arity returns a foreign type`() {
+        val analyzer = PsiResultReceiverAnalyzer()
+
+        val source =
+            "fun lookup(k: String): Map<String, Int> = mapOf()\n\nfun f(k: String): Int? = lookup(k).getOrNull()"
+        analyzer.verdict(callIn(source, "getOrNull"), "getOrNull") shouldBe ResultReceiverVerdict.FOREIGN
+        analyzer.verdict(callIn("fun f(k: String): Int? = lookup(k).getOrNull()", "getOrNull"), "getOrNull") shouldBe
+            ResultReceiverVerdict.UNKNOWN
+    }
+
+    @Test
+    fun `cyclic local supertypes terminate the shadowing search`() {
+        val source =
+            "abstract class A : B()\n\n" +
+                "abstract class B : A() {\n    abstract fun getOrElse(fallback: () -> Int): Int\n}\n\n" +
+                "class C : A()\n\n" +
+                "fun value(subject: A): Int = subject.getOrElse { 0 }"
+        mutantsOf(source).shouldBeEmpty()
+        PsiResultReceiverAnalyzer().verdict(callIn(source, "getOrElse"), "getOrElse") shouldBe
+            ResultReceiverVerdict.FOREIGN
+    }
+
+    @Test
+    fun `an analyzer injected into the mutator decides applicability`() {
+        val source = "fun find(repo: Repository): String? = repo.getOrNull()"
+        val mutantsOfResultVerdict = generatorWith(ResultReceiverVerdict.RESULT).generateMutants(source)
+        val mutantsOfUnknownVerdict = generatorWith(ResultReceiverVerdict.UNKNOWN).generateMutants(source)
+
+        mutantsOfResultVerdict.map { it.mutatedSource } shouldBe
+            listOf("fun find(repo: Repository): String? = repo.getOrThrow()")
+        mutantsOfUnknownVerdict.shouldBeEmpty()
+    }
+
+    private fun generatorWith(verdict: ResultReceiverVerdict): AstMutantGenerator =
+        AstMutantGenerator(
+            MutatorRegistry(
+                listOf(
+                    ResultMutator(
+                        receiverAnalyzer =
+                            object : ResultReceiverAnalyzer {
+                                override fun verdict(
+                                    call: KtCallExpression,
+                                    callee: String,
+                                ): ResultReceiverVerdict = verdict
+                            },
+                    ),
+                ),
+            ),
+        )
 
     private fun callIn(
         source: String,
