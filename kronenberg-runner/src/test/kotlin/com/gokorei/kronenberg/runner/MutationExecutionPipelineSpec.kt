@@ -1,7 +1,10 @@
 package com.gokorei.kronenberg.runner
 
+import com.gokorei.kronenberg.model.AuditViolation
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationConfig
+import com.gokorei.kronenberg.model.MutationReportEvaluator
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -70,6 +73,50 @@ class MutationExecutionPipelineSpec {
             report.totalMutants shouldBe 0
             report.mutationScore shouldBe 0.0
             report.isPassed shouldBe false
+            MutationReportEvaluator.evaluate(report).violations shouldContain AuditViolation.NO_MUTANTS
+        }
+    }
+
+    @Test
+    fun `reports emitted by the pipeline always reconcile with their own results`() {
+        val source = "fun clamp(value: Int, low: Int, high: Int): Int = if (value < low) low else value"
+        val test = "fun testClamp() { check(clamp(-1, 0, 10) == 0); check(clamp(5, 0, 10) == 5) }"
+
+        runBlocking {
+            val report = pipeline.execute(source, test, MutationConfig())
+            val evaluation = MutationReportEvaluator.evaluate(report)
+
+            report.results.size shouldBe report.totalMutants
+            evaluation.isContradictory shouldBe false
+            evaluation.mutationScore shouldBe report.mutationScore
+        }
+    }
+
+    @Test
+    fun `baseline failures stay distinguishable from empty mutation coverage`() {
+        val source = "fun addOne(x: Int): Int = x + 1"
+
+        runBlocking {
+            val baselineFailure =
+                pipeline.execute(
+                    sourceCode = source,
+                    testCode = "fun testAddOne() { check(addOne(1) == 99) }",
+                    config = MutationConfig(),
+                )
+            val noOpportunity =
+                pipeline.execute(
+                    sourceCode = "fun inert() {}",
+                    testCode = "fun main() { inert() }",
+                    config = MutationConfig(),
+                )
+
+            baselineFailure.baselineError.shouldNotBeNull() shouldContain "Baseline test failed before mutation"
+            baselineFailure.totalMutants shouldBe 0
+            baselineFailure.isPassed shouldBe false
+            MutationReportEvaluator.evaluate(baselineFailure).violations shouldContain AuditViolation.BASELINE_ERROR_PRESENT
+
+            noOpportunity.baselineError shouldBe null
+            MutationReportEvaluator.evaluate(noOpportunity).violations shouldContain AuditViolation.NO_MUTANTS
         }
     }
 

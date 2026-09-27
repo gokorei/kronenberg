@@ -2,11 +2,16 @@ package com.gokorei.kronenberg.cli
 
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.testing.test
+import io.kotest.assertions.withClue
 import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import org.junit.jupiter.api.Test
+import java.nio.file.Files
+import java.nio.file.Path
+import java.util.concurrent.TimeUnit
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.createTempFile
 import kotlin.io.path.readText
@@ -344,6 +349,155 @@ class KronenbergCliSpec {
         } finally {
             srcFile.toFile().delete()
             testFile.toFile().delete()
+        }
+    }
+
+    @Test
+    fun `diff scoped directory audit does not fail on unchanged source files`() {
+        val repo = createTempDirectory("diff-audit-repo")
+        try {
+            val srcDir = repo.resolve("src")
+            val testDir = repo.resolve("test")
+            Files.createDirectories(srcDir)
+            Files.createDirectories(testDir)
+
+            val changed = srcDir.resolve("Changed.kt")
+            val unchanged = srcDir.resolve("Unchanged.kt")
+            changed.writeText("fun addOne(x: Int): Int = x + 1")
+            unchanged.writeText("fun twice(x: Int): Int = x * 2")
+            testDir.resolve("ChangedTest.kt").writeText("fun testAddOne() { check(addOne(1) == 2) }")
+            testDir.resolve("UnchangedTest.kt").writeText("fun testTwice() { check(twice(2) == 4) }")
+
+            git(repo, "init", "-q")
+            git(repo, "add", ".")
+            git(repo, "-c", "user.email=t@t.io", "-c", "user.name=t", "commit", "-q", "-m", "base")
+
+            // Only Changed.kt is modified relative to HEAD, so Unchanged.kt is out of scope.
+            changed.writeText("fun addOne(x: Int): Int = x + 2")
+            testDir.resolve("ChangedTest.kt").writeText("fun testAddOne() { check(addOne(1) == 3) }")
+
+            val cli = KronenbergCli().subcommands(AuditCommand())
+            val result = cli.test("audit --source-dir $srcDir --test-dir $testDir --diff HEAD --threshold 50.0")
+
+            result.statusCode shouldBe 0
+            result.output shouldContain "unchanged 1"
+            result.output shouldContain "Source Coverage:"
+            result.output shouldNotContain "were not audited"
+        } finally {
+            repo.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `diff scoped directory audit reports unchanged files as skipped in junit xml`() {
+        val repo = createTempDirectory("diff-audit-xml-repo")
+        try {
+            val srcDir = repo.resolve("src")
+            val testDir = repo.resolve("test")
+            Files.createDirectories(srcDir)
+            Files.createDirectories(testDir)
+
+            val changed = srcDir.resolve("Changed.kt")
+            srcDir.resolve("Unchanged.kt").writeText("fun twice(x: Int): Int = x * 2")
+            changed.writeText("fun addOne(x: Int): Int = x + 1")
+            testDir.resolve("ChangedTest.kt").writeText("fun testAddOne() { check(addOne(1) == 2) }")
+            testDir.resolve("UnchangedTest.kt").writeText("fun testTwice() { check(twice(2) == 4) }")
+
+            git(repo, "init", "-q")
+            git(repo, "add", ".")
+            git(repo, "-c", "user.email=t@t.io", "-c", "user.name=t", "commit", "-q", "-m", "base")
+
+            changed.writeText("fun addOne(x: Int): Int = x + 2")
+            testDir.resolve("ChangedTest.kt").writeText("fun testAddOne() { check(addOne(1) == 3) }")
+
+            val xmlFile = createTempFile("diff-audit-report", ".xml")
+            val cli = KronenbergCli().subcommands(AuditCommand())
+            val result =
+                cli.test(
+                    "audit --source-dir $srcDir --test-dir $testDir --diff HEAD --threshold 50.0 --junit-xml $xmlFile",
+                )
+
+            result.statusCode shouldBe 0
+            val xml = xmlFile.readText()
+            xml shouldContain "skipped=\"1\""
+            xml shouldContain "name=\"skipped_unchanged\""
+            xml shouldContain "1 source file(s) had no changed lines in the requested diff window"
+            xml shouldNotContain "type=\"BaselineError\""
+            xmlFile.toFile().delete()
+        } finally {
+            repo.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `missing test suites still fail a directory audit and surface in junit xml`() {
+        val srcDir = createTempDirectory("missing-test-src")
+        val testDir = createTempDirectory("missing-test-dir")
+        val xmlFile = createTempFile("missing-test-report", ".xml")
+        try {
+            val covered = srcDir.resolve("Covered.kt")
+            covered.writeText("fun addOne(x: Int): Int = x + 1")
+            srcDir.resolve("Orphan.kt").writeText("fun orphan(x: Int): Int = x + 1")
+            testDir.resolve("CoveredTest.kt").writeText("fun testAddOne() { check(addOne(1) == 2) }")
+
+            val cli = KronenbergCli().subcommands(AuditCommand())
+            val result =
+                cli.test(
+                    "audit --source-dir $srcDir --test-dir $testDir --threshold 50.0 --junit-xml $xmlFile",
+                )
+
+            result.statusCode shouldBe 1
+            result.output shouldContain "no matching test was found"
+            val xml = xmlFile.readText()
+            xml shouldContain "type=\"BaselineError\""
+            xml shouldContain "1 source file(s) were not audited because no matching test was found"
+            xml shouldContain "name=\"skipped_missing_test\""
+        } finally {
+            srcDir.toFile().deleteRecursively()
+            testDir.toFile().deleteRecursively()
+            xmlFile.toFile().delete()
+        }
+    }
+
+    @Test
+    fun `failed baseline pre-flight is visible in junit xml as an error`() {
+        val srcFile = createTempFile("BaselineFailure", ".kt")
+        val testFile = createTempFile("BaselineFailureTest", ".kt")
+        val xmlFile = createTempFile("baseline-failure-report", ".xml")
+        try {
+            srcFile.writeText("fun addOne(x: Int): Int = x + 1")
+            // The baseline itself fails, so no mutant is ever evaluated.
+            testFile.writeText("fun testAddOne() { check(addOne(1) == 99) }")
+
+            val cli = KronenbergCli().subcommands(AuditCommand())
+            val result = cli.test("audit --source $srcFile --test $testFile --junit-xml $xmlFile --threshold 0.0")
+
+            result.statusCode shouldBe 1
+            result.output shouldContain "BASELINE PRE-FLIGHT ERROR"
+            val xml = xmlFile.readText()
+            xml shouldContain "type=\"BaselineError\""
+            xml shouldContain "errors=\"1\""
+            xml shouldContain "name=\"audit_baseline\""
+        } finally {
+            srcFile.toFile().delete()
+            testFile.toFile().delete()
+            xmlFile.toFile().delete()
+        }
+    }
+
+    private fun git(
+        workingDir: Path,
+        vararg args: String,
+    ) {
+        val process =
+            ProcessBuilder(listOf("git") + args)
+                .directory(workingDir.toFile())
+                .redirectErrorStream(true)
+                .start()
+        val output = process.inputStream.bufferedReader().readText()
+        process.waitFor(30, TimeUnit.SECONDS)
+        withClue("git ${args.joinToString(" ")} failed: $output") {
+            process.exitValue() shouldBe 0
         }
     }
 }

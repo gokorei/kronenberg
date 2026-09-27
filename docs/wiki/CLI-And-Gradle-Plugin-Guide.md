@@ -56,6 +56,26 @@ kronenberg audit --source-dir src/main/kotlin --test-dir src/test/kotlin --codec
 kronenberg audit --source src/main/kotlin/Service.kt --test src/test/kotlin/ServiceTest.kt --propose-tests
 ```
 
+#### JUnit XML and audit coverage
+The JUnit XML report (shared by the CLI and the Gradle plugin) makes incomplete audits visible
+instead of rendering them as a green suite:
+
+| Element | Meaning |
+| --- | --- |
+| `<failure type="MutationSurvived">` | A mutant survived the test suite. |
+| `<failure type="Timeout">` | A mutant exceeded the calibrated execution timeout. |
+| `<error type="CompileError">` | A mutant failed in-memory compilation. |
+| `<error type="BaselineError">` | The baseline pre-flight failed, or the audit could not cover every file. Increments `errors`. |
+| `<skipped/>` | Files that were out of the audit scope: unchanged in the diff window, or with no mutation opportunity. Increments `skipped`. |
+
+Only coverage gaps fail an audit. Source files with no matching test suite, and audits that
+covered no file at all, fail closed; unchanged files in a `--diff`/`--staged` audit are expected
+and never fail the build. Every audit prints its per-file coverage summary, for example:
+
+```
+ Source Coverage: audited 2 of 51 source file(s); unchanged 48, missing test 0, no mutation opportunity 1
+```
+
 ---
 
 ## 🐘 Gradle Plugin (`com.gokorei.kronenberg`)

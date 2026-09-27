@@ -1,8 +1,11 @@
 package com.gokorei.kronenberg.dogfood
 
+import com.gokorei.kronenberg.model.AuditViolation
 import com.gokorei.kronenberg.model.MutationConfig
+import com.gokorei.kronenberg.model.MutationReportEvaluator
 import com.gokorei.kronenberg.runner.DefaultMutationExecutionPipeline
 import com.gokorei.kronenberg.runner.MutationExecutionPipeline
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.runBlocking
@@ -100,7 +103,16 @@ class DogfoodMutationAuditSpec {
                 report.totalMutants shouldBeGreaterThan 0
                 report.killedCount shouldBeGreaterThan 0
                 report.survivedCount shouldBe 0
+                // Every mutant of this snippet is killed, but ReturnValueMutator rewrites the two
+                // `Double` returns to the `Int` literal `0`, which cannot compile. The fail-closed
+                // policy correctly refuses to certify a score computed over an incomplete mutant
+                // set, so the audit fails here even though the score itself is 100%.
+                // Tracked as a mutator defect: ReturnValueMutator should pick a type-compatible
+                // numeric literal (0.0) for floating point return types.
+                report.compileErrorCount shouldBeGreaterThan 0
+                report.mutationScore shouldBe 100.0
                 report.isPassed shouldBe false
+                MutationReportEvaluator.evaluate(report).violations shouldContain AuditViolation.COMPILE_ERRORS_PRESENT
             }
         }
     }
