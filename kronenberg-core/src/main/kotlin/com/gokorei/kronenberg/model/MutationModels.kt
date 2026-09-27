@@ -105,7 +105,7 @@ public data class MutationReport(
     val results: List<MutantResult> = emptyList(),
     val baselineError: String? = null,
 ) {
-    public val isPassed: Boolean get() = survivedCount == 0 && baselineError == null
+    public val isPassed: Boolean get() = MutationReportEvaluator.evaluate(this).isPassed
 }
 
 /**

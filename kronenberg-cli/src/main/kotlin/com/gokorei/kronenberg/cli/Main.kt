@@ -12,10 +12,14 @@ import com.github.ajalt.clikt.parameters.types.double
 import com.github.ajalt.clikt.parameters.types.int
 import com.github.ajalt.clikt.parameters.types.long
 import com.github.ajalt.clikt.parameters.types.path
-import com.gokorei.kronenberg.model.MutantResult
+import com.gokorei.kronenberg.model.AuditCoverage
+import com.gokorei.kronenberg.model.AuditOutcome
+import com.gokorei.kronenberg.model.AuditSkipReason
 import com.gokorei.kronenberg.model.MutantStatus
 import com.gokorei.kronenberg.model.MutationConfig
 import com.gokorei.kronenberg.model.MutationReport
+import com.gokorei.kronenberg.model.MutationReportEvaluator
+import com.gokorei.kronenberg.report.JUnitXmlReportWriter
 import com.gokorei.kronenberg.runner.DefaultMutationExecutionPipeline
 import com.gokorei.kronenberg.runner.SurvivingMutantTestProposer
 import com.gokorei.kronenberg.runner.TestStyle
@@ -35,76 +39,19 @@ private val jsonSerializer =
     }
 
 /**
- * Exporter converting Kronenberg MutationReports into standardized JUnit XML format.
+ * Exporter converting Kronenberg mutation audits into standardized JUnit XML format.
+ *
+ * Delegates to the shared [JUnitXmlReportWriter] in core so the CLI and the Gradle plugin emit an
+ * identical document, including aggregate baseline errors and per-reason coverage skips.
  */
 public object JUnitXmlReportExporter {
     public fun export(
-        report: MutationReport,
+        outcome: AuditOutcome,
         targetFile: Path,
-        testSuiteName: String = "Kronenberg Mutation Audit",
+        testSuiteName: String = JUnitXmlReportWriter.DEFAULT_SUITE_NAME,
     ) {
-        val totalTests = report.totalMutants
-        val failures = report.survivedCount + report.timeoutCount
-        val errors = report.compileErrorCount
-        val totalTimeSeconds = report.results.sumOf { it.executionTimeMs } / 1000.0
-
-        val sb = StringBuilder()
-        sb.appendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
-        sb.appendLine(
-            "<testsuite name=\"$testSuiteName\" tests=\"$totalTests\" failures=\"$failures\" errors=\"$errors\" time=\"$totalTimeSeconds\">",
-        )
-
-        for (result in report.results) {
-            val mutant = result.mutant
-            val durationSec = result.executionTimeMs / 1000.0
-            val className = "com.gokorei.kronenberg.mutant.${mutant.category.name.lowercase()}"
-            val testName = "${mutant.mutatorName}_line${mutant.line}_col${mutant.column}_${mutant.id.take(8)}"
-
-            sb.appendLine("    <testcase classname=\"$className\" name=\"$testName\" time=\"$durationSec\">")
-            when (result.status) {
-                MutantStatus.SURVIVED -> {
-                    val msg = escapeXml("Mutant survived: replaced '${mutant.originalText}' with '${mutant.replacementText}'")
-                    val body =
-                        escapeXml(
-                            "Mutant ID: ${mutant.id}\nMutator: ${mutant.mutatorName}\nLocation: line ${mutant.line}, column ${mutant.column}\nOriginal:\n${mutant.originalText}\nMutated:\n${mutant.replacementText}",
-                        )
-                    sb.appendLine("        <failure message=\"$msg\" type=\"MutationSurvived\">$body</failure>")
-                }
-
-                MutantStatus.TIMED_OUT -> {
-                    val msg = escapeXml(result.failureMessage ?: "Mutant execution timed out")
-                    sb.appendLine("        <failure message=\"$msg\" type=\"Timeout\">$msg</failure>")
-                }
-
-                MutantStatus.COMPILE_ERROR -> {
-                    val msg = escapeXml(result.failureMessage ?: "Mutant failed to compile")
-                    sb.appendLine("        <error message=\"$msg\" type=\"CompileError\">$msg</error>")
-                }
-
-                MutantStatus.BASELINE_ERROR -> {
-                    val msg = escapeXml(result.failureMessage ?: "Baseline execution failed before mutation")
-                    sb.appendLine("        <error message=\"$msg\" type=\"BaselineError\">$msg</error>")
-                }
-
-                MutantStatus.KILLED -> {
-                    // Passing test case
-                }
-            }
-            sb.appendLine("    </testcase>")
-        }
-        sb.appendLine("</testsuite>")
-
-        targetFile.parent?.let { Files.createDirectories(it) }
-        Files.writeString(targetFile, sb.toString())
+        JUnitXmlReportWriter.write(outcome, targetFile, testSuiteName)
     }
-
-    private fun escapeXml(str: String): String =
-        str
-            .replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace("\"", "&quot;")
-            .replace("'", "&apos;")
 }
 
 public class KronenbergCli :
@@ -263,7 +210,7 @@ public class AuditCommand :
                 extraClasspath = extraClasspathList,
             )
 
-        val report: MutationReport =
+        val outcome: AuditOutcome =
             if (sourceDir != null) {
                 auditDirectory(pipeline, sourceDir!!, testDir, config, effectiveStaged, diff)
             } else if (source != null && test != null) {
@@ -281,8 +228,10 @@ public class AuditCommand :
                 throw ProgramResult(1)
             }
 
+        val report = outcome.report
+
         junitXml?.let { xmlPath ->
-            JUnitXmlReportExporter.export(report, xmlPath)
+            JUnitXmlReportExporter.export(outcome, xmlPath)
         }
 
         htmlReport?.let { htmlPath ->
@@ -300,10 +249,10 @@ public class AuditCommand :
         if (json) {
             echo(jsonSerializer.encodeToString(report))
         } else {
-            renderTerminalReport(report)
+            renderTerminalReport(outcome)
         }
 
-        if (report.mutationScore < threshold) {
+        if (!MutationReportEvaluator.passes(report, threshold)) {
             throw ProgramResult(1)
         }
     }
@@ -313,15 +262,23 @@ public class AuditCommand :
         src: Path,
         tst: Path,
         config: MutationConfig,
-    ): MutationReport =
-        runBlocking {
-            pipeline.execute(
-                sourceCode = src.readText(),
-                testCode = tst.readText(),
-                config = config,
-                sourceFilePath = src.fileName.toString(),
+    ): AuditOutcome {
+        val report =
+            runBlocking {
+                pipeline.execute(
+                    sourceCode = src.readText(),
+                    testCode = tst.readText(),
+                    config = config,
+                    sourceFilePath = src.fileName.toString(),
+                )
+            }
+        val coverage =
+            AuditCoverage(
+                auditedSourceCount = if (report.results.isEmpty()) 0 else 1,
+                noMutationOpportunitySourceCount = if (report.results.isEmpty()) 1 else 0,
             )
-        }
+        return AuditOutcome(MutationReportEvaluator.aggregate(listOf(report), coverage), coverage)
+    }
 
     private fun auditDirectory(
         pipeline: DefaultMutationExecutionPipeline,
@@ -330,7 +287,7 @@ public class AuditCommand :
         config: MutationConfig,
         staged: Boolean = false,
         diffRef: String? = null,
-    ): MutationReport {
+    ): AuditOutcome {
         val srcFiles =
             Files
                 .walk(srcDir)
@@ -348,85 +305,110 @@ public class AuditCommand :
         staged: Boolean = false,
         diffRef: String? = null,
         baseDir: Path? = null,
-    ): MutationReport {
-        val allResults = mutableListOf<MutantResult>()
-        var totalMutants = 0
-        var killedCount = 0
-        var survivedCount = 0
-        var timeoutCount = 0
-        var compileErrorCount = 0
+    ): AuditOutcome {
+        val reports = mutableListOf<MutationReport>()
+        val coverage = AuditCoverageAccumulator()
 
         for (srcFile in srcFiles) {
-            val fileChangedLines =
-                if (staged || diffRef != null) {
-                    GitDiffParser.extractChangedLines(srcFile, diffRef, staged)
-                } else {
-                    baseConfig.targetLines
+            val disposition =
+                resolveDisposition(
+                    FileScope(
+                        srcFile = srcFile,
+                        tstDir = tstDir,
+                        baseConfig = baseConfig,
+                        staged = staged,
+                        diffRef = diffRef,
+                        baseDir = baseDir,
+                    ),
+                )
+            when (disposition) {
+                is SourceDisposition.Skip -> {
+                    coverage.skip(disposition.reason)
                 }
 
-            // If staged/diff is requested and no lines changed in this file, skip auditing it
-            if ((staged || diffRef != null) && fileChangedLines?.isEmpty() == true) {
-                continue
-            }
-
-            val fileConfig = baseConfig.copy(targetLines = fileChangedLines)
-            val baseName = srcFile.nameWithoutExtension
-            val matchingTestFile =
-                if (tstDir != null && Files.isDirectory(tstDir)) {
-                    Files
-                        .walk(tstDir)
-                        .filter {
-                            it.isRegularFile() &&
-                                (
-                                    it.nameWithoutExtension == "${baseName}Test" ||
-                                        it.nameWithoutExtension == "${baseName}Spec" ||
-                                        it.nameWithoutExtension == baseName
-                                )
-                        }.findFirst()
-                        .orElse(null)
-                } else {
-                    // Try adjacent or src/test path inference if no explicit tstDir provided
-                    findAdjacentTestFile(srcFile)
-                }
-
-            val testCode = matchingTestFile?.readText() ?: ""
-            if (testCode.isNotBlank()) {
-                val relPath = baseDir?.relativize(srcFile)?.toString() ?: srcFile.fileName.toString()
-                val fileReport =
-                    runBlocking {
-                        pipeline.execute(
-                            sourceCode = srcFile.readText(),
-                            testCode = testCode,
-                            config = fileConfig,
-                            sourceFilePath = relPath,
-                        )
+                is SourceDisposition.Audit -> {
+                    val report =
+                        runBlocking {
+                            pipeline.execute(
+                                sourceCode = srcFile.readText(),
+                                testCode = disposition.testCode,
+                                config = disposition.config,
+                                sourceFilePath = disposition.relativePath,
+                            )
+                        }
+                    reports += report
+                    if (report.results.isEmpty()) {
+                        coverage.skip(AuditSkipReason.NO_MUTATION_OPPORTUNITY)
+                    } else {
+                        coverage.audit()
                     }
-                totalMutants += fileReport.totalMutants
-                killedCount += fileReport.killedCount
-                survivedCount += fileReport.survivedCount
-                timeoutCount += fileReport.timeoutCount
-                compileErrorCount += fileReport.compileErrorCount
-                allResults.addAll(fileReport.results)
+                }
             }
         }
 
-        val totalEffective = killedCount + survivedCount + timeoutCount
-        val score =
-            if (totalEffective > 0) {
-                ((killedCount + timeoutCount).toDouble() / totalEffective.toDouble()) * 100.0
+        val resolvedCoverage = coverage.build()
+        return AuditOutcome(MutationReportEvaluator.aggregate(reports, resolvedCoverage), resolvedCoverage)
+    }
+
+    /**
+     * Decides whether [scope]'s source file is in scope and, if so, with which test suite and config.
+     *
+     * An untouched file inside a diff-scoped audit is an expected skip, while a file in scope with
+     * no matching test suite is a coverage gap. Keeping the two apart here is what allows normal
+     * multi-file diff audits to pass while still failing closed on missing tests.
+     */
+    private fun resolveDisposition(scope: FileScope): SourceDisposition {
+        val isIncrementalScope = scope.staged || scope.diffRef != null
+        val changedLines =
+            if (isIncrementalScope) {
+                GitDiffParser.extractChangedLines(scope.srcFile, scope.diffRef, scope.staged)
             } else {
-                100.0
+                scope.baseConfig.targetLines
+            }
+        val isUnchanged = isIncrementalScope && changedLines?.isEmpty() == true
+        val testCode = if (isUnchanged) null else locateTestCode(scope.srcFile, scope.tstDir)
+
+        return when {
+            isUnchanged -> {
+                SourceDisposition.Skip(AuditSkipReason.UNCHANGED)
             }
 
-        return MutationReport(
-            totalMutants = totalMutants,
-            killedCount = killedCount,
-            survivedCount = survivedCount,
-            timeoutCount = timeoutCount,
-            compileErrorCount = compileErrorCount,
-            mutationScore = (score * 10.0).toInt() / 10.0,
-            results = allResults,
-        )
+            testCode.isNullOrBlank() -> {
+                SourceDisposition.Skip(AuditSkipReason.MISSING_TEST)
+            }
+
+            else -> {
+                SourceDisposition.Audit(
+                    testCode = testCode,
+                    config = scope.baseConfig.copy(targetLines = changedLines),
+                    relativePath = scope.relativePath(),
+                )
+            }
+        }
+    }
+
+    private fun locateTestCode(
+        srcFile: Path,
+        tstDir: Path?,
+    ): String? {
+        val baseName = srcFile.nameWithoutExtension
+        val matchingTestFile =
+            if (tstDir != null && Files.isDirectory(tstDir)) {
+                Files
+                    .walk(tstDir)
+                    .filter {
+                        it.isRegularFile() &&
+                            (
+                                it.nameWithoutExtension == "${baseName}Test" ||
+                                    it.nameWithoutExtension == "${baseName}Spec" ||
+                                    it.nameWithoutExtension == baseName
+                            )
+                    }.findFirst()
+                    .orElse(null)
+            } else {
+                findAdjacentTestFile(srcFile)
+            }
+        return matchingTestFile?.readText()
     }
 
     private fun findAdjacentTestFile(srcFile: Path): Path? {
@@ -440,8 +422,15 @@ public class AuditCommand :
         return candidates.firstOrNull { Files.isRegularFile(it) }
     }
 
-    private fun renderTerminalReport(report: MutationReport) {
-        val statusSymbol = if (report.mutationScore >= threshold) "\u001B[32m✔ PASS\u001B[0m" else "\u001B[31m✘ FAIL\u001B[0m"
+    private fun renderTerminalReport(outcome: AuditOutcome) {
+        val report = outcome.report
+        val coverage = outcome.coverage
+        val statusSymbol =
+            if (MutationReportEvaluator.passes(report, threshold)) {
+                "\u001B[32m✔ PASS\u001B[0m"
+            } else {
+                "\u001B[31m✘ FAIL\u001B[0m"
+            }
         echo("\n=======================================================")
         echo("           KRONENBERG MUTATION AUDIT                   ")
         echo("=======================================================")
@@ -452,8 +441,12 @@ public class AuditCommand :
         echo("   - Survived:    \u001B[31m${report.survivedCount}\u001B[0m")
         echo("   - Timed Out:   \u001B[33m${report.timeoutCount}\u001B[0m")
         echo("   - Compile Err: ${report.compileErrorCount}")
+        echo(" Source Coverage: ${coverage.describe()}")
         if (report.baselineError != null) {
             echo("\n\u001B[31m🚨 BASELINE PRE-FLIGHT ERROR:\u001B[0m\n  ${report.baselineError}")
+        }
+        MutationReportEvaluator.evaluate(report).describe()?.let { violations ->
+            echo("\n\u001B[31m✘ AUDIT VIOLATIONS:\u001B[0m\n  $violations")
         }
 
         val survived = report.results.filter { it.status == MutantStatus.SURVIVED }
@@ -495,4 +488,63 @@ public fun main(args: Array<String>) {
     KronenbergCli()
         .subcommands(AuditCommand())
         .main(args)
+}
+
+/**
+ * Inputs used to decide whether one source file is in scope for a batch audit.
+ */
+internal data class FileScope(
+    val srcFile: Path,
+    val tstDir: Path?,
+    val baseConfig: MutationConfig,
+    val staged: Boolean,
+    val diffRef: String?,
+    val baseDir: Path?,
+) {
+    /** Path recorded on every mutant, relative to the audited base directory when there is one. */
+    fun relativePath(): String = baseDir?.relativize(srcFile)?.toString() ?: srcFile.fileName.toString()
+}
+
+/**
+ * Whether a single source file should be audited, and with what inputs.
+ */
+internal sealed interface SourceDisposition {
+    /** The file is out of scope or has no test suite; it is tallied under [reason]. */
+    data class Skip(
+        val reason: AuditSkipReason,
+    ) : SourceDisposition
+
+    /** The file is in scope and can be executed. */
+    data class Audit(
+        val testCode: String,
+        val config: MutationConfig,
+        val relativePath: String,
+    ) : SourceDisposition
+}
+
+/**
+ * Mutable tally of per-file audit dispositions collected during a batch audit.
+ *
+ * Skips are recorded by reason so that expected skips (untouched files) stay separable from
+ * coverage gaps (missing tests) when the centralized policy decides whether the audit passed.
+ */
+internal class AuditCoverageAccumulator {
+    private var audited = 0
+    private val skipped = mutableMapOf<AuditSkipReason, Int>()
+
+    fun audit() {
+        audited++
+    }
+
+    fun skip(reason: AuditSkipReason) {
+        skipped[reason] = (skipped[reason] ?: 0) + 1
+    }
+
+    fun build(): AuditCoverage =
+        AuditCoverage(
+            auditedSourceCount = audited,
+            unchangedSourceCount = skipped[AuditSkipReason.UNCHANGED] ?: 0,
+            missingTestSourceCount = skipped[AuditSkipReason.MISSING_TEST] ?: 0,
+            noMutationOpportunitySourceCount = skipped[AuditSkipReason.NO_MUTATION_OPPORTUNITY] ?: 0,
+        )
 }

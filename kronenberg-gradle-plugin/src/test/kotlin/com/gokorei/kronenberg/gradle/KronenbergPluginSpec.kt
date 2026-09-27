@@ -144,6 +144,85 @@ class KronenbergPluginSpec {
 
         val result = runner.buildAndFail()
         result.task(":kronenbergCheck")?.outcome shouldBe TaskOutcome.FAILED
-        result.output shouldContain "below threshold 100.0%"
+        result.output shouldContain "did not pass threshold 100.0%"
     }
+
+    @Test
+    fun `task audit reports missing test suites as an incomplete audit in junit xml`(
+        @TempDir testProjectDir: File,
+    ) {
+        writeProject(testProjectDir, "test-missing-suite-sample")
+        val srcDir = File(testProjectDir, "src/main/kotlin")
+        srcDir.mkdirs()
+        File(srcDir, "Covered.kt").writeText("fun addOne(x: Int): Int = x + 1")
+        File(srcDir, "Orphan.kt").writeText("fun orphan(x: Int): Int = x + 1")
+        val testDir = File(testProjectDir, "src/test/kotlin")
+        testDir.mkdirs()
+        File(testDir, "CoveredTest.kt").writeText("fun main() { check(addOne(1) == 2) }")
+
+        val result = gradleRunner(testProjectDir).buildAndFail()
+
+        result.task(":kronenbergCheck")?.outcome shouldBe TaskOutcome.FAILED
+        result.output shouldContain "1 source file(s) were not audited because no matching test was found"
+
+        val reportXml = File(testProjectDir, "build/reports/kronenberg/mutation-results.xml")
+        reportXml.exists() shouldBe true
+        val xml = reportXml.readText()
+        xml shouldContain "type=\"BaselineError\""
+        xml shouldContain "no matching test was found"
+        xml shouldContain "name=\"skipped_missing_test\""
+    }
+
+    @Test
+    fun `task audit renders a passing junit suite without baseline errors`(
+        @TempDir testProjectDir: File,
+    ) {
+        writeProject(testProjectDir, "test-clean-sample")
+        val srcDir = File(testProjectDir, "src/main/kotlin")
+        srcDir.mkdirs()
+        File(srcDir, "Calculator.kt").writeText("fun add(a: Int, b: Int): Int = a + b")
+        val testDir = File(testProjectDir, "src/test/kotlin")
+        testDir.mkdirs()
+        File(testDir, "CalculatorTest.kt").writeText("fun main() { check(add(2, 3) == 5) }")
+
+        val result = gradleRunner(testProjectDir).build()
+
+        result.task(":kronenbergCheck")?.outcome shouldBe TaskOutcome.SUCCESS
+        result.output shouldContain "Source Files  : audited 1 of 1 source file(s)"
+
+        val reportXml = File(testProjectDir, "build/reports/kronenberg/mutation-results.xml")
+        val xml = reportXml.readText()
+        xml shouldContain "<testsuite name=\"Kronenberg Mutation Audit\""
+        xml.contains("type=\"BaselineError\"") shouldBe false
+    }
+
+    private fun writeProject(
+        testProjectDir: File,
+        projectName: String,
+    ) {
+        File(testProjectDir, "settings.gradle.kts").writeText("rootProject.name = \"$projectName\"")
+        File(testProjectDir, "build.gradle.kts").writeText(
+            """
+            plugins {
+                kotlin("jvm") version "2.4.10"
+                id("com.gokorei.kronenberg")
+            }
+
+            repositories {
+                mavenCentral()
+            }
+
+            kronenberg {
+                minScore.set(50.0)
+            }
+            """.trimIndent(),
+        )
+    }
+
+    private fun gradleRunner(testProjectDir: File): GradleRunner =
+        GradleRunner
+            .create()
+            .withProjectDir(testProjectDir)
+            .withPluginClasspath()
+            .withArguments("kronenbergCheck", "--stacktrace")
 }
