@@ -10,7 +10,7 @@ mockk = "1.14.11"
 dokka = "2.2.0"
 binary-compatibility-validator = "0.18.1"
 spotless = "8.10.0"
-kover = "0.9.9"
+kover = "0.9.10"
 detekt = "1.23.8"
 
 [libraries]
