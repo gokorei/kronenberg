@@ -1,6 +1,6 @@
 [versions]
 kotlin = "2.4.10"
-kotlinx-serialization = "1.11.0"
+kotlinx-serialization = "1.12.0"
 kotlinx-coroutines = "1.11.0"
 clikt = "5.1.0"
 junit-jupiter = "6.1.3"
